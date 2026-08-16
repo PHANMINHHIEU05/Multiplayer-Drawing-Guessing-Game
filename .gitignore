@@ -1,0 +1,11 @@
+.env
+.env.local
+.env.*.local
+
+
+
+# IDEs
+.vscode/*
+.idea/*
+*.iml
+*.log

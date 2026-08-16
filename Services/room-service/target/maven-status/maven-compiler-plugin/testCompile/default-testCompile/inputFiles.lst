@@ -1,0 +1,5 @@
+/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/src/test/java/com/drawgame/room/RoomServiceApplicationTests.java
+/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/src/test/java/com/drawgame/room/grpc/RoomGrpcMapperTest.java
+/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/src/test/java/com/drawgame/room/grpc/RoomGrpcServiceTest.java
+/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/src/test/java/com/drawgame/room/repository/RedisRoomRepositoryTest.java
+/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/src/test/java/com/drawgame/room/service/RoomManagementServiceTest.java

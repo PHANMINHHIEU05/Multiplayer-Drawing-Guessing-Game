@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket Test</title>
+</head>
+
+<body>
+
+<h2>Realtime Gateway Test</h2>
+
+<div>
+    Status:
+    <strong id="status">Disconnected</strong>
+</div>
+
+<br>
+
+<input
+        id="message"
+        type="text"
+        placeholder="Type message..."
+/>
+
+<button onclick="sendMessage()">
+    Send
+</button>
+
+<h3>Messages</h3>
+
+<ul id="messages"></ul>
+
+<script>
+
+    const status = document.getElementById("status");
+    const messages = document.getElementById("messages");
+
+    const socket =
+        new WebSocket("ws://localhost:8080/ws");
+
+    socket.onopen = () => {
+        status.innerText = "Connected";
+        console.log("WebSocket connected");
+    };
+
+    socket.onmessage = (event) => {
+
+        console.log(
+            "Received:",
+            event.data
+        );
+
+        const li =
+            document.createElement("li");
+
+        li.innerText =
+            event.data;
+
+        messages.appendChild(li);
+    };
+
+    socket.onclose = () => {
+        status.innerText = "Disconnected";
+        console.log("WebSocket closed");
+    };
+
+    socket.onerror = (error) => {
+        console.error(
+            "WebSocket error:",
+            error
+        );
+    };
+
+    function sendMessage() {
+
+        const input =
+            document.getElementById("message");
+
+        const payload = JSON.stringify({
+            type: "MESSAGE",
+            data: input.value
+        });
+
+        socket.send(payload);
+
+        input.value = "";
+    }
+
+</script>
+
+</body>
+</html>

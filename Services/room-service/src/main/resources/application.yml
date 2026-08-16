@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: room-service
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  grpc:
+    server:
+      port: ${GRPC_PORT:9091}
+
+room:
+  ttl: 7200
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

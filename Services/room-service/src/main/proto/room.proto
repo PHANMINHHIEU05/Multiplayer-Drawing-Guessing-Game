@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package room;
+
+option java_multiple_files = true;
+
+option java_package =
+    "com.drawgame.room.grpc.generated";
+
+service RoomService {
+
+  rpc CreateRoom(CreateRoomRequest)
+      returns (RoomResponse);
+
+  rpc GetRoom(GetRoomRequest)
+      returns (RoomResponse);
+
+  rpc JoinRoom(JoinRoomRequest)
+      returns (RoomResponse);
+
+  rpc LeaveRoom(LeaveRoomRequest)
+      returns (RoomResponse);
+}
+
+message CreateRoomRequest {
+
+  string host_id = 1;
+
+  string username = 2;
+
+  string room_name = 3;
+
+  int32 max_players = 4;
+
+  int32 round_count = 5;
+
+  int32 round_duration = 6;
+}
+
+message GetRoomRequest {
+  string room_id = 1;
+}
+
+message JoinRoomRequest {
+
+  string room_id = 1;
+
+  string player_id = 2;
+
+  string username = 3;
+}
+
+message LeaveRoomRequest {
+
+  string room_id = 1;
+
+  string player_id = 2;
+}
+
+message PlayerMessage {
+
+  string player_id = 1;
+
+  string username = 2;
+}
+
+message RoomResponse {
+
+  string room_id = 1;
+
+  string name = 2;
+
+  string host_id = 3;
+
+  string status = 4;
+
+  int32 max_players = 5;
+
+  int32 round_count = 6;
+
+  int32 round_duration = 7;
+
+  repeated PlayerMessage players = 8;
+}

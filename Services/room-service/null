@@ -1,0 +1,43 @@
+
+¬
+
+room.protoroom"Î
+CreateRoomRequest
+host_id (	RhostId
+username (	Rusername
+	room_name (	RroomName
+max_players (R
+maxPlayers
+round_count (R
+roundCount%
+round_duration (RroundDuration")
+GetRoomRequest
+room_id (	RroomId"c
+JoinRoomRequest
+room_id (	RroomId
+	player_id (	RplayerId
+username (	Rusername"H
+LeaveRoomRequest
+room_id (	RroomId
+	player_id (	RplayerId"H
+PlayerMessage
+	player_id (	RplayerId
+username (	Rusername"„
+RoomResponse
+room_id (	RroomId
+name (	Rname
+host_id (	RhostId
+status (	Rstatus
+max_players (R
+maxPlayers
+round_count (R
+roundCount%
+round_duration (RroundDuration-
+players (2.room.PlayerMessageRplayers2í
+RoomService9
+
+CreateRoom.room.CreateRoomRequest.room.RoomResponse3
+GetRoom.room.GetRoomRequest.room.RoomResponse5
+JoinRoom.room.JoinRoomRequest.room.RoomResponse7
+	LeaveRoom.room.LeaveRoomRequest.room.RoomResponseB$
+ com.drawgame.room.grpc.generatedPbproto3

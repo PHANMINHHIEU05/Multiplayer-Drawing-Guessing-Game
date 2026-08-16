@@ -1,0 +1,5 @@
+com/drawgame/room/RoomServiceApplicationTests.class
+com/drawgame/room/grpc/RoomGrpcServiceTest.class
+com/drawgame/room/repository/RedisRoomRepositoryTest.class
+com/drawgame/room/service/RoomManagementServiceTest.class
+com/drawgame/room/grpc/RoomGrpcMapperTest.class

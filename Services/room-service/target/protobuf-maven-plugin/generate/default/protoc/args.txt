@@ -1,0 +1,8 @@
+--java_out=/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf
+--plugin=protoc-gen-QX_5uja_mjlBtzh34htZia3K5Do=/home/hiubeo/.m2/repository/io/grpc/protoc-gen-grpc-java/1.69.0/protoc-gen-grpc-java-1.69.0-linux-x86_64.exe
+--QX_5uja_mjlBtzh34htZia3K5Do_out=/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf
+--descriptor_set_out=null
+/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/src/main/proto/room.proto
+--proto_path=/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/src/main/proto
+--proto_path=/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/protobuf-maven-plugin/generate/default/archives/proto-google-common-protos-2.48.0-moumZ9j8znH8tFqx5XD32fmsE6c
+--proto_path=/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/protobuf-maven-plugin/generate/default/archives/protobuf-java-4.28.2-0P3OwFFsh-GRAX5GxjUY71vmO5s
