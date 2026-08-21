@@ -3,20 +3,16 @@ services:
     image: postgres:16-alpine
     container_name: drawgame-postgres
     restart: unless-stopped
-
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-
+      POSTGRES_DB: ${POSTGRES_DB:-drawgame}
+      POSTGRES_USER: ${POSTGRES_USER:-drawgame}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_password}
     ports:
-      - "${POSTGRES_PORT}:5432"
-
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-drawgame} -d ${POSTGRES_DB:-drawgame}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -25,20 +21,112 @@ services:
     image: redis:7-alpine
     container_name: drawgame-redis
     restart: unless-stopped
-
     ports:
-      - "${REDIS_PORT}:6379"
-
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
-
     command: redis-server --appendonly yes
-
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
+
+  room-service:
+    build:
+      context: .
+      dockerfile: Services/room-service/Dockerfile
+    container_name: drawgame-room-service
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      GRPC_PORT: 9091
+      SERVER_PORT: 8081
+    ports:
+      - "8081:8081"
+      - "9091:9091"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  game-service:
+    build:
+      context: .
+      dockerfile: Services/game-service/Dockerfile
+    container_name: drawgame-game-service
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-drawgame}
+      DB_USERNAME: ${POSTGRES_USER:-drawgame}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-your_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      GRPC_PORT: 9092
+      SERVER_PORT: 8082
+      ROOM_SERVICE_HOST: room-service
+      ROOM_SERVICE_PORT: 9091
+    ports:
+      - "8082:8082"
+      - "9092:9092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      room-service:
+        condition: service_started
+
+  chat-service:
+    build:
+      context: .
+      dockerfile: Services/chat-service/Dockerfile
+    container_name: drawgame-chat-service
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      GRPC_PORT: 9093
+      CHAT_GRPC_PORT: 9093
+      SERVER_PORT: 8083
+      ROOM_SERVICE_HOST: room-service
+      ROOM_SERVICE_PORT: 9091
+    ports:
+      - "8083:8083"
+      - "9093:9093"
+    depends_on:
+      redis:
+        condition: service_healthy
+      room-service:
+        condition: service_started
+
+  realtime-gateway:
+    build:
+      context: .
+      dockerfile: Services/realtime-gateway/Dockerfile
+    container_name: drawgame-realtime-gateway
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SERVER_PORT: 8080
+      ROOM_SERVICE_HOST: room-service
+      ROOM_SERVICE_PORT: 9091
+      GAME_SERVICE_HOST: game-service
+      GAME_SERVICE_PORT: 9092
+      CHAT_SERVICE_HOST: chat-service
+      CHAT_SERVICE_PORT: 9093
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      room-service:
+        condition: service_started
+      game-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
 
 volumes:
   postgres-data:

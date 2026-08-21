@@ -19,7 +19,7 @@ export class WebSocketClient {
   private isIntentionallyClosed = false;
 
   constructor(url?: string) {
-    this.url = url || (import.meta as any).env?.VITE_WS_URL || 'ws://localhost:8080/ws/game';
+    this.url = url || (import.meta as any).env?.VITE_WS_URL || 'ws://localhost:8080/ws';
   }
 
   public connect(): void {
