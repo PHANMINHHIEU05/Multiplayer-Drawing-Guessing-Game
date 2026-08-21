@@ -23,8 +23,8 @@ public class WebSocketConfig {
 
         Map<String, WebSocketHandler> handlers =
                 Map.of(
-                        "/ws",
-                        gameWebSocketHandler
+                        "/ws", gameWebSocketHandler,
+                        "/ws/game", gameWebSocketHandler
                 );
 
         SimpleUrlHandlerMapping mapping =
@@ -36,25 +36,22 @@ public class WebSocketConfig {
         CorsConfiguration cors =
                 new CorsConfiguration();
 
-        cors.setAllowedOrigins(
-                List.of(
-                        "http://localhost:5173",
-                        "http://localhost:8080"
-                )
-        );
+        cors.addAllowedOriginPattern("*");
 
         cors.setAllowedMethods(
-                List.of("GET")
+                List.of("GET", "POST", "OPTIONS")
         );
 
         cors.setAllowedHeaders(
                 List.of("*")
         );
 
+        cors.setAllowCredentials(true);
+
         mapping.setCorsConfigurations(
                 Map.of(
-                        "/ws",
-                        cors
+                        "/ws", cors,
+                        "/ws/game", cors
                 )
         );
 
