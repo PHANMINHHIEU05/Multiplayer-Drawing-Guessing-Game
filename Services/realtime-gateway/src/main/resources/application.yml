@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: realtime-gateway
+
+server:
+  port: 8080
+
+grpc:
+  client:
+    room-service:
+      host: ${ROOM_SERVICE_HOST:localhost}
+      port: ${ROOM_SERVICE_PORT:9091}
+    game-service:
+      host: ${GAME_SERVICE_HOST:localhost}
+      port: ${GAME_SERVICE_PORT:9092}
+    chat-service:
+      host: ${CHAT_SERVICE_HOST:localhost}
+      port: ${CHAT_SERVICE_PORT:9093}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

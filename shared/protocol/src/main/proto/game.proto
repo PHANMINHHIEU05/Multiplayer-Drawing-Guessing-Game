@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package game;
+
+option java_multiple_files = true;
+option java_package = "com.drawgame.game.grpc.generated";
+
+service GameService {
+
+  rpc StartGame(StartGameRequest)
+      returns (GameStateResponse);
+
+  rpc GetGameState(GetGameStateRequest)
+      returns (GameStateResponse);
+
+  rpc SubmitGuess(SubmitGuessRequest)
+      returns (GuessResponse);
+}
+
+message StartGameRequest {
+  string room_id = 1;
+  string requester_player_id = 2;
+}
+
+message GetGameStateRequest {
+  string room_id = 1;
+  string viewer_player_id = 2;
+}
+
+message SubmitGuessRequest {
+  string room_id = 1;
+  string player_id = 2;
+  string guess = 3;
+}
+
+message PlayerScoreMessage {
+  string player_id = 1;
+  string username = 2;
+  int32 score = 3;
+  bool has_guessed = 4;
+}
+
+message GuessResponse {
+  string room_id = 1;
+  string player_id = 2;
+  string guess_status = 3;
+  int32 score_awarded = 4;
+}
+
+message GameStateResponse {
+  string room_id = 1;
+  string status = 2;
+  int32 current_round = 3;
+  int32 total_rounds = 4;
+  string drawer_id = 5;
+  int64 round_started_at = 6;
+  int64 round_ends_at = 7;
+  repeated PlayerScoreMessage scores = 8;
+  string hint = 9;
+  string secret_word = 10;
+}

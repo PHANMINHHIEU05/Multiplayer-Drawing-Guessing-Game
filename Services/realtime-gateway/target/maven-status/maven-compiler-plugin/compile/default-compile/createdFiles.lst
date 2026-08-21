@@ -1,4 +1,4 @@
-com/drawgame/realtime_gateway/RealtimeGatewayApplication.class
 com/drawgame/realtime_gateway/connection/ConnectionManager.class
+com/drawgame/realtime_gateway/RealtimeGatewayApplication.class
 com/drawgame/realtime_gateway/websocket/GameWebSocketHandler.class
 WebSocketConfig.class

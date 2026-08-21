@@ -1,0 +1,17 @@
+Services/game-service/src/main/java/com/drawgame/game/GameApplication.java
+Services/game-service/src/main/java/com/drawgame/game/entity/WordEntity.java
+Services/game-service/src/main/java/com/drawgame/game/entity/GameResultEntity.java
+Services/game-service/src/main/java/com/drawgame/game/entity/GamePlayerResultEntity.java
+Services/game-service/src/main/java/com/drawgame/game/entity/WordAliasEntity.java
+Services/game-service/src/main/java/com/drawgame/game/repository/WordRepository.java
+Services/game-service/src/main/java/com/drawgame/game/repository/GameResultRepository.java
+Services/game-service/src/main/java/com/drawgame/game/repository/RedisGameRepository.java
+Services/game-service/src/main/java/com/drawgame/game/model/PlayerScoreData.java
+Services/game-service/src/main/java/com/drawgame/game/model/GameStateData.java
+Services/game-service/src/main/java/com/drawgame/game/service/component/HintGenerator.java
+Services/game-service/src/main/java/com/drawgame/game/service/component/ScoreCalculator.java
+Services/game-service/src/main/java/com/drawgame/game/service/component/AnswerEvaluator.java
+Services/game-service/src/main/java/com/drawgame/game/service/component/RoundScheduler.java
+Services/game-service/src/main/java/com/drawgame/game/service/GameCoreService.java
+Services/game-service/src/main/java/com/drawgame/game/grpc/client/RoomGrpcClient.java
+Services/game-service/src/main/java/com/drawgame/game/grpc/GameGrpcService.java

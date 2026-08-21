@@ -13,17 +13,3 @@
 /home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/src/main/java/com/drawgame/room/repository/RoomRepository.java
 /home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/src/main/java/com/drawgame/room/service/RoomCodeGenerator.java
 /home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/src/main/java/com/drawgame/room/service/RoomManagementService.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/CreateRoomRequest.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/CreateRoomRequestOrBuilder.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/GetRoomRequest.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/GetRoomRequestOrBuilder.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/JoinRoomRequest.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/JoinRoomRequestOrBuilder.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/LeaveRoomRequest.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/LeaveRoomRequestOrBuilder.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/PlayerMessage.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/PlayerMessageOrBuilder.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/Room.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/RoomResponse.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/RoomResponseOrBuilder.java
-/home/hiubeo/Documents/Multiplayer-Drawing-Guessing-Game/Services/room-service/target/generated-sources/protobuf/com/drawgame/room/grpc/generated/RoomServiceGrpc.java

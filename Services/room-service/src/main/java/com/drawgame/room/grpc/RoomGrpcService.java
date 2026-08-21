@@ -123,6 +123,40 @@ public class RoomGrpcService extends RoomServiceGrpc.RoomServiceImplBase {
         }
     }
 
+    @Override
+    public void beginGame(
+            com.drawgame.room.grpc.generated.BeginGameRequest request,
+            StreamObserver<RoomResponse> responseObserver
+    ) {
+        try {
+            Room room = roomService.beginGame(
+                    request.getRoomId(),
+                    request.getRequesterPlayerId()
+            );
+
+            RoomResponse response = mapper.toResponse(room);
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            handleException(e, responseObserver);
+        }
+    }
+
+    @Override
+    public void finishGame(
+            com.drawgame.room.grpc.generated.FinishGameRequest request,
+            StreamObserver<RoomResponse> responseObserver
+    ) {
+        try {
+            Room room = roomService.finishGame(request.getRoomId());
+            RoomResponse response = mapper.toResponse(room);
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            handleException(e, responseObserver);
+        }
+    }
+
     private void handleException(Exception e, StreamObserver<?> responseObserver) {
         if (e instanceof IllegalArgumentException) {
             responseObserver.onError(

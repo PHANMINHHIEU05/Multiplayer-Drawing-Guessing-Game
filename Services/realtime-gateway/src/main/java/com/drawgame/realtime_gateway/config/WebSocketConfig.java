@@ -1,4 +1,6 @@
 
+package com.drawgame.realtime_gateway.config;
+
 import com.drawgame.realtime_gateway.websocket.GameWebSocketHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

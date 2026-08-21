@@ -1,3 +1,33 @@
 spring:
   application:
-    name: chat
+    name: chat-service
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  grpc:
+    server:
+      port: ${CHAT_GRPC_PORT:${GRPC_PORT:9093}}
+
+grpc:
+  client:
+    room-service:
+      host: ${ROOM_SERVICE_HOST:localhost}
+      port: ${ROOM_SERVICE_PORT:9091}
+
+chat:
+  max-message-length: 300
+  history:
+    max-length: 200
+    ttl-seconds: 7200
+    default-limit: 50
+    max-limit: 100
+  rate-limit:
+    max-messages: 5
+    window-seconds: 2
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

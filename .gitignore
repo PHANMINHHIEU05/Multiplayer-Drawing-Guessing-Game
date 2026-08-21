@@ -9,3 +9,32 @@
 .idea/*
 *.iml
 *.log
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Loại bỏ thư mục .m2 nếu nó nằm trong thư mục gốc của project
+.m2/
+
+# Compiled class file
+*.class
+
+# Log file
+*.log
+
+# Package Files (Binaries)
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar

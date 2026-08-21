@@ -104,6 +104,29 @@ public class RoomManagementService {
         return updatedRoomOpt;
     }
 
+    public Room beginGame(String roomId, String requesterId) {
+        if (roomId == null || roomId.isBlank()) {
+            throw new IllegalArgumentException("Room ID cannot be blank");
+        }
+        if (requesterId == null || requesterId.isBlank()) {
+            throw new IllegalArgumentException("Requester ID cannot be blank");
+        }
+
+        Room room = repository.beginGame(roomId, requesterId);
+        log.info("ROOM_GAME_STARTED roomId={} hostId={}", roomId, requesterId);
+        return room;
+    }
+
+    public Room finishGame(String roomId) {
+        if (roomId == null || roomId.isBlank()) {
+            throw new IllegalArgumentException("Room ID cannot be blank");
+        }
+
+        Room room = repository.finishGame(roomId);
+        log.info("ROOM_GAME_FINISHED roomId={}", roomId);
+        return room;
+    }
+
     private String generateUniqueRoomId() {
         for (int attempt = 0; attempt < 10; attempt++) {
             String id = roomCodeGenerator.generate();

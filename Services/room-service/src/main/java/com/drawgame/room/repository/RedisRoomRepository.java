@@ -284,4 +284,30 @@ public class RedisRoomRepository implements RoomRepository {
 
         return findById(roomId);
     }
+
+    @Override
+    public Room beginGame(String roomId, String hostId) {
+        Room room = findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found: " + roomId));
+        if (!room.hostId().equals(hostId)) {
+            throw new IllegalArgumentException("Requester is not host of room " + roomId);
+        }
+        if (room.status() != RoomStatus.WAITING) {
+            throw new InvalidRoomStateException("Room is not in WAITING state: " + roomId);
+        }
+
+        redis.opsForHash().put(roomKey(roomId), "status", RoomStatus.PLAYING.name());
+        return findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found after status update: " + roomId));
+    }
+
+    @Override
+    public Room finishGame(String roomId) {
+        Room room = findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found: " + roomId));
+
+        redis.opsForHash().put(roomKey(roomId), "status", RoomStatus.FINISHED.name());
+        return findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found after finish: " + roomId));
+    }
 }

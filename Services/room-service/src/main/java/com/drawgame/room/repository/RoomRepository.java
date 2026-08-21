@@ -17,5 +17,9 @@ public interface RoomRepository {
 
     Optional<Room> removePlayer(String roomId, String playerId);
 
+    Room beginGame(String roomId, String hostId);
+
+    Room finishGame(String roomId);
+
     void delete(String roomId);
 }

@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package chat;
+
+option java_multiple_files = true;
+option java_package = "com.drawgame.chat.grpc.generated";
+
+service ChatService {
+    rpc SendMessage(SendMessageRequest) returns (ChatMessageResponse);
+    rpc GetRecentMessages(GetRecentMessagesRequest) returns (GetRecentMessagesResponse);
+}
+
+message SendMessageRequest {
+    string room_id = 1;
+    string player_id = 2;
+    string username = 3;
+    string content = 4;
+}
+
+message GetRecentMessagesRequest {
+    string room_id = 1;
+    string player_id = 2;
+    int32 limit = 3;
+}
+
+message ChatMessageResponse {
+    string message_id = 1;
+    string room_id = 2;
+    string player_id = 3;
+    string username = 4;
+    string content = 5;
+    string type = 6;
+    int64 created_at_epoch_ms = 7;
+}
+
+message GetRecentMessagesResponse {
+    repeated ChatMessageResponse messages = 1;
+}

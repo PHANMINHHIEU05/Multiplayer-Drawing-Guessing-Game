@@ -20,6 +20,21 @@ service RoomService {
 
   rpc LeaveRoom(LeaveRoomRequest)
       returns (RoomResponse);
+
+  rpc BeginGame(BeginGameRequest)
+      returns (RoomResponse);
+
+  rpc FinishGame(FinishGameRequest)
+      returns (RoomResponse);
+}
+
+message BeginGameRequest {
+  string room_id = 1;
+  string requester_player_id = 2;
+}
+
+message FinishGameRequest {
+  string room_id = 1;
 }
 
 message CreateRoomRequest {
