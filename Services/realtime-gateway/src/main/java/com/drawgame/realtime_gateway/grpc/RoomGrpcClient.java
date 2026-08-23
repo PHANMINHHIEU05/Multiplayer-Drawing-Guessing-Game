@@ -41,16 +41,23 @@ public class RoomGrpcClient {
         }
     }
 
-    public Mono<RoomResponse> createRoom(String hostPlayerId, String hostUsername, int maxPlayers, int totalRounds) {
+    public Mono<RoomResponse> createRoom(String hostPlayerId, String hostUsername, String roomName, int maxPlayers, int totalRounds, int roundDuration) {
         return Mono.fromCallable(() -> {
+            String validRoomName = (roomName != null && !roomName.isBlank()) ? roomName : (hostUsername + "'s Room");
             CreateRoomRequest request = CreateRoomRequest.newBuilder()
                     .setHostId(hostPlayerId)
                     .setUsername(hostUsername)
-                    .setMaxPlayers(maxPlayers)
-                    .setRoundCount(totalRounds)
+                    .setRoomName(validRoomName)
+                    .setMaxPlayers(maxPlayers > 0 ? maxPlayers : 4)
+                    .setRoundCount(totalRounds > 0 ? totalRounds : 5)
+                    .setRoundDuration(roundDuration > 0 ? roundDuration : 60)
                     .build();
             return blockingStub.createRoom(request);
         }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    public Mono<RoomResponse> createRoom(String hostPlayerId, String hostUsername, int maxPlayers, int totalRounds) {
+        return createRoom(hostPlayerId, hostUsername, hostUsername + "'s Room", maxPlayers, totalRounds, 60);
     }
 
     public Mono<RoomResponse> joinRoom(String roomId, String playerId, String username) {

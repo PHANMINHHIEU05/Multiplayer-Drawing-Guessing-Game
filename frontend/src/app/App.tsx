@@ -13,7 +13,7 @@ export const AppContent: React.FC = () => {
     return <HomePage />;
   }
 
-  if (room.status === 'LOBBY') {
+  if (room.status === 'LOBBY' || room.status === 'WAITING') {
     return <LobbyPage />;
   }
 

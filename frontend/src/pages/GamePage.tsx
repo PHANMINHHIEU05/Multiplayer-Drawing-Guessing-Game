@@ -20,8 +20,8 @@ export const GamePage: React.FC = () => {
   const isDrawer = gameState?.drawerId === playerId;
 
   useEffect(() => {
-    // Poll game state periodically if needed to keep state sync
-    if (roomId) {
+    // Poll game state periodically if needed to keep state sync when game is active
+    if (roomId && (gameState?.status === 'IN_ROUND' || room?.status === 'IN_GAME')) {
       const interval = setInterval(() => {
         wsClient
           .send(MessageType.GET_GAME_STATE, { roomId, playerId }, 5000)
@@ -29,7 +29,7 @@ export const GamePage: React.FC = () => {
       }, 5000);
       return () => clearInterval(interval);
     }
-  }, [roomId, playerId]);
+  }, [roomId, playerId, gameState?.status, room?.status]);
 
   if (!gameState) {
     return (

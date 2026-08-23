@@ -28,6 +28,7 @@ export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({ onSuccess }) => 
       await wsClient.send(MessageType.CREATE_ROOM, {
         playerId,
         username,
+        roomName: `${username}'s Room`,
         maxPlayers,
         totalRounds,
       });

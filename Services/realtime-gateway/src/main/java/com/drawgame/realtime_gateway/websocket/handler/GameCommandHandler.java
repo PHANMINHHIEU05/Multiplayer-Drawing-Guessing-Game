@@ -56,11 +56,16 @@ public class GameCommandHandler {
     private Mono<String> handleCreateRoom(String sessionId, JsonNode json, String requestId) {
         JsonNode node = getPayloadOrRoot(json);
         String playerId = extractString(node, "playerId", sessionId);
-        String username = extractString(node, "username", "Player-" + sessionId);
+        String username = extractString(node, "username", "Player-" + sessionId.substring(0, Math.min(6, sessionId.length())));
+        String roomName = extractString(node, "roomName", extractString(node, "name", username + "'s Room"));
+        if (roomName == null || roomName.isBlank()) {
+            roomName = username + "'s Room";
+        }
         int maxPlayers = node.has("maxPlayers") ? node.get("maxPlayers").asInt() : (node.has("max_players") ? node.get("max_players").asInt() : 4);
         int totalRounds = node.has("totalRounds") ? node.get("totalRounds").asInt() : (node.has("roundCount") ? node.get("roundCount").asInt() : 5);
+        int roundDuration = node.has("roundDuration") ? node.get("roundDuration").asInt() : (node.has("drawTime") ? node.get("drawTime").asInt() : 60);
 
-        return roomGrpcClient.createRoom(playerId, username, maxPlayers, totalRounds)
+        return roomGrpcClient.createRoom(playerId, username, roomName, maxPlayers, totalRounds, roundDuration)
                 .map(response -> {
                     connectionManager.bindSession(sessionId, response.getRoomId(), playerId);
                     return createRoomSuccessJson("ROOM_CREATED", response, requestId);
