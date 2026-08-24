@@ -42,6 +42,14 @@ export const gameStore = {
     };
     notify();
   },
+  addDrawPoints: (points: DrawPoint[]) => {
+    if (points.length === 0) return;
+    state = {
+      ...state,
+      drawPoints: [...state.drawPoints, ...points],
+    };
+    notify();
+  },
   clearDrawPoints: () => {
     state = { ...state, drawPoints: [] };
     notify();

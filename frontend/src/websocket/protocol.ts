@@ -27,6 +27,11 @@ export const MessageType = {
   SEND_CHAT: 'SEND_CHAT',
   GET_RECENT_CHAT: 'GET_RECENT_CHAT',
 
+  // Drawing Outbound (Client → Server)
+  DRAW_POINT: 'DRAW_POINT',
+  DRAW_BATCH: 'DRAW_BATCH',
+  CLEAR_CANVAS: 'CLEAR_CANVAS',
+
   // Inbound / Broadcast
   ROOM_CREATED: 'ROOM_CREATED',
   ROOM_JOINED: 'ROOM_JOINED',
@@ -44,4 +49,10 @@ export const MessageType = {
   CHAT_MESSAGE: 'CHAT_MESSAGE',
   CHAT_HISTORY: 'CHAT_HISTORY',
   ERROR: 'ERROR',
+
+  // Drawing Inbound (Server → Client broadcast)
+  DRAW_EVENT: 'DRAW_EVENT',
+  DRAW_BATCH_EVENT: 'DRAW_BATCH_EVENT',
+  CANVAS_CLEARED: 'CANVAS_CLEARED',
+  SYNC_CANVAS_STATE: 'SYNC_CANVAS_STATE',
 } as const;

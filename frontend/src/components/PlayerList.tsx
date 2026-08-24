@@ -8,6 +8,15 @@ interface PlayerListProps {
   drawerId?: string;
 }
 
+const AVATAR_BG_COLORS = [
+  'bg-amber-200 text-amber-800',
+  'bg-sky-200 text-sky-800',
+  'bg-emerald-200 text-emerald-800',
+  'bg-purple-200 text-purple-800',
+  'bg-pink-200 text-pink-800',
+  'bg-indigo-200 text-indigo-800',
+];
+
 export const PlayerList: React.FC<PlayerListProps> = ({
   players,
   hostPlayerId,
@@ -15,54 +24,55 @@ export const PlayerList: React.FC<PlayerListProps> = ({
   drawerId,
 }) => {
   return (
-    <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800 rounded-xl p-4 shadow-lg">
+    <div className="glass-panel-game p-4 shadow-lg select-none">
       <div className="flex justify-between items-center mb-3">
-        <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-          Players ({players.length})
+        <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+          <span>👥</span> Người chơi trong phòng ({players.length})
         </h3>
       </div>
-      <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
-        {players.map((player) => {
+      <div className="space-y-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+        {players.map((player, idx) => {
           const isCurrent = player.playerId === currentPlayerId;
           const isHost = player.playerId === hostPlayerId;
           const isDrawer = player.playerId === drawerId;
+          const avatarColor = AVATAR_BG_COLORS[idx % AVATAR_BG_COLORS.length];
 
           return (
             <div
               key={player.playerId}
-              className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-all ${
+              className={`flex items-center justify-between px-3 py-2.5 rounded-2xl border transition-all ${
                 isCurrent
-                  ? 'bg-indigo-950/40 border-indigo-500/40 text-indigo-200'
-                  : 'bg-slate-800/40 border-slate-700/50 text-slate-300'
+                  ? 'bg-sky-100/90 border-primary text-slate-800 shadow-sm'
+                  : 'bg-white/80 border-slate-200 text-slate-700 hover:bg-white'
               }`}
             >
               <div className="flex items-center gap-2.5">
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                    isDrawer
-                      ? 'bg-amber-500 text-slate-950 ring-2 ring-amber-400/50'
-                      : 'bg-slate-700 text-slate-200'
-                  }`}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black border-2 border-white shadow-sm ${avatarColor}`}
                 >
                   {player.username.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <div className="text-sm font-medium flex items-center gap-1.5">
+                  <div className="text-xs font-extrabold flex items-center gap-1.5 text-slate-800">
                     {player.username}
-                    {isCurrent && <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/30">You</span>}
+                    {isCurrent && (
+                      <span className="text-[9px] bg-primary text-white font-black px-1.5 py-0.5 rounded-md">
+                        Bạn
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5">
                 {isDrawer && (
-                  <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-md border border-amber-500/30 font-medium">
-                    ✏️ Drawer
+                  <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg border border-amber-300 font-extrabold flex items-center gap-1">
+                    ✏️ Người vẽ
                   </span>
                 )}
                 {isHost && (
-                  <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-md border border-purple-500/30 font-medium">
-                    👑 Host
+                  <span className="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded-lg border border-purple-300 font-extrabold flex items-center gap-1">
+                    👑 Chủ phòng
                   </span>
                 )}
               </div>
@@ -73,3 +83,4 @@ export const PlayerList: React.FC<PlayerListProps> = ({
     </div>
   );
 };
+

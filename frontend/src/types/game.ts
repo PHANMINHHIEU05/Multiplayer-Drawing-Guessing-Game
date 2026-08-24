@@ -28,9 +28,10 @@ export interface GuessResult {
 }
 
 export interface DrawPoint {
-  x: number;
-  y: number;
-  color?: string;
-  size?: number;
-  isNewPath?: boolean;
+  x: number;          // Normalized coordinate (0.0 - 1.0)
+  y: number;          // Normalized coordinate (0.0 - 1.0)
+  color: string;      // Hex color code (e.g. "#EF4444")
+  size: number;       // Stroke width in pixels (2-20)
+  isNewPath: boolean;  // true: PointerDown (new path), false: PointerMove (continue)
+  timestamp?: number; // Unix timestamp (ms) for latency tracking
 }

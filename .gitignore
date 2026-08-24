@@ -5,12 +5,15 @@
 *.env
 
 # Dependencies & Local Cache
+frontend/node_modules/
 node_modules/
 .pnpm-store/
 .yarn/
 .m2/
 .m2_local/
 .gradle/
+.bin/
+
 
 # Build & Output Directories
 dist/

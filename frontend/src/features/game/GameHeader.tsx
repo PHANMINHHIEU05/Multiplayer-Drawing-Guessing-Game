@@ -7,21 +7,29 @@ import { WordHint } from './WordHint';
 interface GameHeaderProps {
   gameState: GameState;
   isDrawer: boolean;
+  roomId?: string;
 }
 
-export const GameHeader: React.FC<GameHeaderProps> = ({ gameState, isDrawer }) => {
+export const GameHeader: React.FC<GameHeaderProps> = ({ gameState, isDrawer, roomId }) => {
   return (
-    <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-4">
-      <div className="flex items-center gap-3">
-        <div className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700">
-          <span className="text-xs text-slate-400 font-medium uppercase tracking-wider block">Round</span>
-          <span className="text-lg font-bold text-slate-100">
-            {gameState.currentRound} <span className="text-slate-500 font-normal">/ {gameState.totalRounds}</span>
-          </span>
+    <div className="glass-panel-game px-4 py-2 flex items-center justify-between gap-3 shrink-0 shadow-lg">
+      {/* Left: Logo & Room info */}
+      <div className="flex items-center gap-2">
+        <span className="text-2xl">🎨</span>
+        <div className="hidden sm:block">
+          <span className="bubbly-logo text-base font-black leading-none block">Dopamine</span>
+          {roomId && <span className="text-[9px] font-black text-sky-200 uppercase tracking-widest">#{roomId}</span>}
         </div>
       </div>
 
-      <div className="flex-1 flex justify-center">
+      {/* Center: Round & Secret Word / Word Hint */}
+      <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-center max-w-lg">
+        {/* Round Badge */}
+        <div className="bg-indigo-900/80 border border-indigo-400/40 text-white font-extrabold text-[11px] sm:text-xs px-3 py-1 rounded-full shadow-md whitespace-nowrap">
+          ROUND {gameState.currentRound}/{gameState.totalRounds}
+        </div>
+
+        {/* Word or Hint */}
         {isDrawer ? (
           <SecretWord secretWord={gameState.secretWord || '???'} />
         ) : (
@@ -29,7 +37,11 @@ export const GameHeader: React.FC<GameHeaderProps> = ({ gameState, isDrawer }) =
         )}
       </div>
 
-      <RoundTimer roundEndsAt={gameState.roundEndsAt} />
+      {/* Right: Round Timer */}
+      <div className="flex items-center gap-2">
+        <RoundTimer roundEndsAt={gameState.roundEndsAt} />
+      </div>
     </div>
   );
 };
+
