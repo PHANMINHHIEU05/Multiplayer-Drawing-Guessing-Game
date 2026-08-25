@@ -120,3 +120,13 @@
   animation: popInBounce 0.75s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
+/* Custom Drawing Cursors */
+.cursor-pencil {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28' fill='none'%3E%3Cpath d='M2 26l4.5-1.5 15.5-15.5-3-3L3.5 21.5 2 26z' fill='%23FBBF24' stroke='%230F172A' stroke-width='1.8' stroke-linejoin='round'/%3E%3Cpath d='M2 26l3.2-0.8-2.4-2.4L2 26z' fill='%231E293B'/%3E%3Cpath d='M19 6l3 3 2.5-2.5-3-3L19 6z' fill='%23EC4899' stroke='%230F172A' stroke-width='1.8'/%3E%3Cline x1='16' y1='9' x2='19' y2='12' stroke='%23CBD5E1' stroke-width='1.5'/%3E%3C/svg%3E") 2 26, crosshair;
+}
+
+.cursor-eraser {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28' fill='none'%3E%3Cg transform='rotate(-20 14 14)'%3E%3Crect x='4' y='8' width='20' height='12' rx='2.5' fill='%2338BDF8' stroke='%230F172A' stroke-width='1.8'/%3E%3Crect x='4' y='8' width='10' height='12' rx='1.5' fill='%23F472B6' stroke='%230F172A' stroke-width='1.8'/%3E%3Cline x1='14' y1='8' x2='14' y2='20' stroke='%230F172A' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") 2 22, crosshair;
+}
+
+

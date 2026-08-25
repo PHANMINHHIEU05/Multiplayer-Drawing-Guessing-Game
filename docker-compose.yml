@@ -128,6 +128,19 @@ services:
       chat-service:
         condition: service_started
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8080/ws}
+    container_name: drawgame-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - realtime-gateway
+
 volumes:
   postgres-data:
   redis-data:

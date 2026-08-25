@@ -305,7 +305,13 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
-          className={`w-full h-full touch-none ${isDrawer ? 'cursor-crosshair' : 'cursor-not-allowed'}`}
+          className={`w-full h-full touch-none ${
+            !isDrawer
+              ? 'cursor-not-allowed'
+              : isEraser
+              ? 'cursor-eraser'
+              : 'cursor-pencil'
+          }`}
         />
         {!isDrawer && (
           <div className="absolute top-3 left-3 bg-slate-900/75 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 text-[11px] text-slate-200 font-bold shadow-md">
