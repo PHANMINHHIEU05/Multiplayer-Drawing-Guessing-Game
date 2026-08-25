@@ -15,7 +15,7 @@ public class ConnectionManager {
     private static final Logger log =
             LoggerFactory.getLogger(ConnectionManager.class);
 
-    private final Map<String, Sinks.Many<String>> clients =
+    private final Map<String, Sinks.Many<OutboundFrame>> clients =
             new ConcurrentHashMap<>();
 
     private final Map<String, String> sessionToRoom =
@@ -24,8 +24,8 @@ public class ConnectionManager {
     private final Map<String, String> sessionToPlayer =
             new ConcurrentHashMap<>();
 
-    public Flux<String> register(String sessionId) {
-        Sinks.Many<String> outbound =
+    public Flux<OutboundFrame> register(String sessionId) {
+        Sinks.Many<OutboundFrame> outbound =
                 Sinks.many()
                         .unicast()
                         .onBackpressureBuffer();
@@ -59,60 +59,79 @@ public class ConnectionManager {
     }
 
     public void sendToSession(String sessionId, String message) {
-        Sinks.Many<String> sink = clients.get(sessionId);
-        if (sink != null) {
-            Sinks.EmitResult result = sink.tryEmitNext(message);
-            if (result.isFailure()) {
-                log.warn("Cannot send message to session {}. Result: {}", sessionId, result);
-            }
-        }
+        sendFrame(sessionId, new OutboundFrame.TextFrame(message));
+    }
+
+    public void sendBinaryToSession(String sessionId, byte[] bytes) {
+        sendFrame(sessionId, new OutboundFrame.BinaryFrame(bytes));
     }
 
     public void broadcastToRoom(String roomId, String message) {
-        clients.forEach((sessionId, sink) -> {
-            String boundRoom = sessionToRoom.get(sessionId);
-            if (boundRoom != null && boundRoom.equals(roomId)) {
-                Sinks.EmitResult result = sink.tryEmitNext(message);
-                if (result.isFailure()) {
-                    log.warn("Cannot send message to session {}. Result: {}", sessionId, result);
-                }
-            }
-        });
+        broadcastFrameToRoom(roomId, new OutboundFrame.TextFrame(message));
+    }
+
+    public void broadcastBinaryToRoom(String roomId, byte[] bytes) {
+        broadcastFrameToRoom(roomId, new OutboundFrame.BinaryFrame(bytes));
     }
 
     public void broadcastToRoomExcept(String roomId, String senderSessionId, String message) {
-        clients.forEach((sessionId, sink) -> {
-            if (sessionId.equals(senderSessionId)) {
-                return;
-            }
-            String boundRoom = sessionToRoom.get(sessionId);
-            if (boundRoom != null && boundRoom.equals(roomId)) {
-                Sinks.EmitResult result = sink.tryEmitNext(message);
-                if (result.isFailure()) {
-                    log.warn("Cannot send message to session {}. Result: {}", sessionId, result);
-                }
-            }
-        });
+        broadcastFrameToRoomExcept(roomId, senderSessionId, new OutboundFrame.TextFrame(message));
+    }
+
+    public void broadcastBinaryToRoomExcept(String roomId, String senderSessionId, byte[] bytes) {
+        broadcastFrameToRoomExcept(roomId, senderSessionId, new OutboundFrame.BinaryFrame(bytes));
     }
 
     public void broadcastExcept(
             String senderSessionId,
             String message
     ) {
+        OutboundFrame frame = new OutboundFrame.TextFrame(message);
         clients.forEach((sessionId, sink) -> {
             if (sessionId.equals(senderSessionId)) {
                 return;
             }
 
-            Sinks.EmitResult result =
-                    sink.tryEmitNext(message);
-
+            Sinks.EmitResult result = sink.tryEmitNext(frame);
             if (result.isFailure()) {
-                log.warn(
-                        "Cannot send message to session {}. Result: {}",
-                        sessionId,
-                        result
-                );
+                log.warn("Cannot send message to session {}. Result: {}", sessionId, result);
+            }
+        });
+    }
+
+    private void sendFrame(String sessionId, OutboundFrame frame) {
+        Sinks.Many<OutboundFrame> sink = clients.get(sessionId);
+        if (sink != null) {
+            Sinks.EmitResult result = sink.tryEmitNext(frame);
+            if (result.isFailure()) {
+                log.warn("Cannot send frame to session {}. Result: {}", sessionId, result);
+            }
+        }
+    }
+
+    private void broadcastFrameToRoom(String roomId, OutboundFrame frame) {
+        clients.forEach((sessionId, sink) -> {
+            String boundRoom = sessionToRoom.get(sessionId);
+            if (boundRoom != null && boundRoom.equals(roomId)) {
+                Sinks.EmitResult result = sink.tryEmitNext(frame);
+                if (result.isFailure()) {
+                    log.warn("Cannot send frame to session {}. Result: {}", sessionId, result);
+                }
+            }
+        });
+    }
+
+    private void broadcastFrameToRoomExcept(String roomId, String senderSessionId, OutboundFrame frame) {
+        clients.forEach((sessionId, sink) -> {
+            if (sessionId.equals(senderSessionId)) {
+                return;
+            }
+            String boundRoom = sessionToRoom.get(sessionId);
+            if (boundRoom != null && boundRoom.equals(roomId)) {
+                Sinks.EmitResult result = sink.tryEmitNext(frame);
+                if (result.isFailure()) {
+                    log.warn("Cannot send frame to session {}. Result: {}", sessionId, result);
+                }
             }
         });
     }
@@ -120,7 +139,7 @@ public class ConnectionManager {
     public void remove(String sessionId) {
         sessionToRoom.remove(sessionId);
         sessionToPlayer.remove(sessionId);
-        Sinks.Many<String> sink = clients.remove(sessionId);
+        Sinks.Many<OutboundFrame> sink = clients.remove(sessionId);
 
         if (sink != null) {
             sink.tryEmitComplete();

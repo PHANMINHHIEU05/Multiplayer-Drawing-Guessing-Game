@@ -62,4 +62,14 @@ public class WebSocketConfig {
     public WebSocketHandlerAdapter webSocketHandlerAdapter() {
         return new WebSocketHandlerAdapter();
     }
+
+    @Bean
+    public com.drawgame.realtime_gateway.drawing.protocol.BinaryDrawingDecoder binaryDrawingDecoder() {
+        return new com.drawgame.realtime_gateway.drawing.protocol.BinaryDrawingDecoder();
+    }
+
+    @Bean
+    public com.drawgame.realtime_gateway.drawing.protocol.BinaryDrawingEncoder binaryDrawingEncoder() {
+        return new com.drawgame.realtime_gateway.drawing.protocol.BinaryDrawingEncoder();
+    }
 }

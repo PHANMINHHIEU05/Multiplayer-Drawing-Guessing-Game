@@ -1,6 +1,11 @@
 package com.drawgame.realtime_gateway.grpc;
 
-import com.drawgame.game.grpc.generated.*;
+import com.drawgame.game.grpc.generated.GameServiceGrpc;
+import com.drawgame.game.grpc.generated.GameStateResponse;
+import com.drawgame.game.grpc.generated.GetGameStateRequest;
+import com.drawgame.game.grpc.generated.GuessResponse;
+import com.drawgame.game.grpc.generated.StartGameRequest;
+import com.drawgame.game.grpc.generated.SubmitGuessRequest;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import lombok.extern.slf4j.Slf4j;
