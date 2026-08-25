@@ -3,9 +3,14 @@ import React, { useEffect, useState } from 'react';
 interface RoundTimerProps {
   roundEndsAt: number;
   totalDurationSeconds?: number;
+  showBar?: boolean;
 }
 
-export const RoundTimer: React.FC<RoundTimerProps> = ({ roundEndsAt, totalDurationSeconds = 60 }) => {
+export const RoundTimer: React.FC<RoundTimerProps> = ({
+  roundEndsAt,
+  totalDurationSeconds = 60,
+  showBar = false,
+}) => {
   const [timeLeft, setTimeLeft] = useState<number>(0);
 
   useEffect(() => {
@@ -23,16 +28,21 @@ export const RoundTimer: React.FC<RoundTimerProps> = ({ roundEndsAt, totalDurati
   const percentage = Math.min(100, Math.max(0, (timeLeft / totalDurationSeconds) * 100));
 
   return (
-    <div className="flex items-center gap-3 bg-slate-900/60 border border-slate-800 rounded-xl px-4 py-2">
-      <div className="text-xl font-black text-indigo-400 font-mono w-10 text-center">{timeLeft}s</div>
-      <div className="w-32 h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
-        <div
-          className={`h-full transition-all duration-1000 ease-linear ${
-            percentage > 50 ? 'bg-indigo-500' : percentage > 20 ? 'bg-amber-500' : 'bg-rose-500 animate-pulse'
-          }`}
-          style={{ width: `${percentage}%` }}
-        />
+    <div className="flex flex-col items-center gap-1">
+      <div className="bg-red-600/90 border border-red-400/50 text-white font-black text-xs sm:text-sm px-3.5 py-1 rounded-full shadow-md flex items-center gap-1">
+        <span className="material-symbols-outlined text-sm">timer</span>
+        <span>{timeLeft}s</span>
       </div>
+
+      {showBar && (
+        <div className="w-full h-1.5 bg-black/20 rounded-full overflow-hidden border border-white/20">
+          <div
+            className="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-red-500 rounded-full transition-all duration-1000 ease-linear"
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 };
+

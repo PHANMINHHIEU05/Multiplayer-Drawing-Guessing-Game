@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Dopamine - Game Arena (Drawing &amp; Guessing)</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&amp;family=Plus+Jakarta+Sans:wght@500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+    body {
+        background-color: #1E88E5;
+        background-image: radial-gradient(circle at 50% 30%, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 70%);
+        min-height: 100vh;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .glass-panel {
+        background: rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-radius: 1.5rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    }
+    .bubbly-logo {
+        font-family: 'Bricolage Grotesque', sans-serif;
+        font-weight: 800;
+        background: linear-gradient(180deg, #FDE047 0%, #F59E0B 50%, #EF4444 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        filter: drop-shadow(0 3px 0 #0F172A) drop-shadow(0 6px 8px rgba(0,0,0,0.3));
+    }
+    .btn-3d {
+        transition: all 0.1s ease;
+    }
+    .btn-3d:active {
+        transform: translateY(3px);
+        box-shadow: none !important;
+    }
+    .timer-bar {
+        animation: countdown 45s linear forwards;
+    }
+    @keyframes countdown {
+        from { width: 100%; }
+        to { width: 0%; }
+    }
+</style>
+</head>
+<body class="p-3 md:p-4 flex flex-col gap-3 h-screen overflow-hidden text-slate-100 select-none">
+
+<!-- TOP HEADER -->
+<header class="glass-panel flex justify-between items-center px-5 py-2.5 w-full shrink-0 shadow-xl">
+    <!-- Logo & Room ID -->
+    <div class="flex items-center gap-3">
+        <span class="text-3xl">🎨</span>
+        <div>
+            <h1 class="text-2xl font-black bubbly-logo leading-none">Dopamine.io</h1>
+            <span class="text-[10px] font-extrabold text-sky-200 tracking-wider">PHÒNG #VM5CZD</span>
+        </div>
+    </div>
+
+    <!-- Center Game Bar: Round, Secret Word, Timer -->
+    <div class="flex flex-col items-center flex-1 max-w-xl mx-4">
+        <div class="flex items-center justify-between w-full gap-4 mb-1">
+            <!-- Round Badge -->
+            <div class="bg-indigo-900/80 border border-indigo-400/40 text-white font-extrabold text-xs px-3.5 py-1.5 rounded-full shadow-md">
+                ROUND 1/4
+            </div>
+
+            <!-- Secret Word Pill (For Drawer: Shows Word / For Guesser: Shows Hints) -->
+            <div class="bg-slate-900 border-2 border-amber-400 text-amber-300 font-extrabold text-sm md:text-base px-6 py-1 rounded-full shadow-inner tracking-widest flex items-center gap-2">
+                <span class="text-xs text-slate-400 uppercase font-bold">Từ Bí Mật:</span>
+                <span class="text-white bg-slate-800 px-3 py-0.5 rounded-lg">M Ặ T   T R Ờ I</span>
+            </div>
+
+            <!-- Countdown Timer -->
+            <div class="bg-red-600 border border-red-400 text-white font-black text-sm px-3.5 py-1 rounded-full shadow-md flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">timer</span>
+                <span>45s</span>
+            </div>
+        </div>
+
+        <!-- Animated Progress Bar -->
+        <div class="w-full h-2 bg-slate-900/40 rounded-full overflow-hidden border border-white/20">
+            <div class="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-red-500 timer-bar rounded-full"></div>
+        </div>
+    </div>
+
+    <!-- Right Utility Buttons -->
+    <div class="flex items-center gap-2">
+        <button class="btn-3d bg-white/20 hover:bg-white/30 text-white p-2 rounded-2xl border border-white/30 shadow-md">
+            <span class="material-symbols-outlined text-lg">volume_up</span>
+        </button>
+        <button class="btn-3d bg-white/20 hover:bg-white/30 text-white p-2 rounded-2xl border border-white/30 shadow-md">
+            <span class="material-symbols-outlined text-lg">help</span>
+        </button>
+    </div>
+</header>
+
+<!-- MAIN GAME WORKSPACE -->
+<main class="flex-1 flex gap-3 min-h-0 relative">
+    
+    <!-- LEFT COLUMN 1: Leaderboard (Bảng Xếp Hạng) -->
+    <div class="glass-panel w-56 flex flex-col h-full overflow-hidden shrink-0">
+        <div class="bg-indigo-950/60 p-2.5 text-center font-extrabold text-xs tracking-wider uppercase border-b border-white/20 flex items-center justify-center gap-1.5">
+            <span>🏆</span> Bảng Xếp Hạng
+        </div>
+        <div class="flex-1 overflow-y-auto p-2 space-y-2">
+            
+            <!-- Player 1 (Drawer) -->
+            <div class="flex items-center gap-2.5 bg-white/30 p-2 rounded-2xl border border-amber-300/80 shadow-md relative">
+                <div class="relative">
+                    <img class="w-9 h-9 rounded-full border-2 border-amber-300 bg-amber-100 object-cover" 
+                         src="https://api.dicebear.com/7.x/bottts/svg?seed=User1" alt="Avatar"/>
+                    <div class="absolute -bottom-1 -right-1 bg-amber-400 text-slate-900 rounded-full p-0.5 shadow-sm text-[10px] font-bold">
+                        ✏️
+                    </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-extrabold text-xs text-white truncate">HọaSĩTàiBa (Bạn)</div>
+                    <div class="text-[11px] font-black text-amber-300">45 điểm</div>
+                </div>
+            </div>
+
+            <!-- Player 2 (Guessed Correctly) -->
+            <div class="flex items-center gap-2.5 bg-white/10 p-2 rounded-2xl border border-white/20">
+                <div class="relative">
+                    <img class="w-9 h-9 rounded-full border-2 border-white/50 bg-sky-200 object-cover" 
+                         src="https://api.dicebear.com/7.x/bottts/svg?seed=User2" alt="Avatar"/>
+                    <div class="absolute -bottom-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm text-[10px] font-bold">
+                        ✓
+                    </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-bold text-xs text-slate-100 truncate">VợThầyÔngNội</div>
+                    <div class="text-[11px] font-extrabold text-emerald-300">40 điểm</div>
+                </div>
+            </div>
+
+            <!-- Player 3 -->
+            <div class="flex items-center gap-2.5 bg-white/5 p-2 rounded-2xl border border-white/10 opacity-90">
+                <img class="w-9 h-9 rounded-full border-2 border-white/30 bg-purple-200 object-cover" 
+                     src="https://api.dicebear.com/7.x/bottts/svg?seed=User3" alt="Avatar"/>
+                <div class="flex-1 min-w-0">
+                    <div class="font-bold text-xs text-slate-200 truncate">NoName99</div>
+                    <div class="text-[11px] font-extrabold text-slate-300">38 điểm</div>
+                </div>
+            </div>
+
+            <!-- Player 4 -->
+            <div class="flex items-center gap-2.5 bg-white/5 p-2 rounded-2xl border border-white/10 opacity-90">
+                <img class="w-9 h-9 rounded-full border-2 border-white/30 bg-pink-200 object-cover" 
+                     src="https://api.dicebear.com/7.x/bottts/svg?seed=User4" alt="Avatar"/>
+                <div class="flex-1 min-w-0">
+                    <div class="font-bold text-xs text-slate-200 truncate">IcyJewel</div>
+                    <div class="text-[11px] font-extrabold text-slate-300">25 điểm</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- LEFT COLUMN 2: Vertical Drawing Toolbar (Next to Leaderboard) -->
+    <div class="glass-panel w-20 flex flex-col items-center py-3 px-1.5 h-full shrink-0 gap-2.5 overflow-y-auto">
+        <!-- Tools List -->
+        <div class="flex flex-col gap-1.5 w-full">
+            <button class="w-full aspect-square rounded-xl bg-amber-400 text-slate-900 flex items-center justify-center font-bold shadow-md hover:scale-105 transition-all">
+                <span class="material-symbols-outlined text-lg">edit</span>
+            </button>
+            <button class="w-full aspect-square rounded-xl bg-white/20 text-white hover:bg-white/30 flex items-center justify-center transition-all">
+                <span class="material-symbols-outlined text-lg">ink_eraser</span>
+            </button>
+            <button class="w-full aspect-square rounded-xl bg-white/20 text-white hover:bg-white/30 flex items-center justify-center transition-all">
+                <span class="material-symbols-outlined text-lg">format_paint</span>
+            </button>
+            <button class="w-full aspect-square rounded-xl bg-white/20 text-white hover:bg-white/30 flex items-center justify-center transition-all">
+                <span class="material-symbols-outlined text-lg">circle</span>
+            </button>
+            <button class="w-full aspect-square rounded-xl bg-white/20 text-white hover:bg-white/30 flex items-center justify-center transition-all">
+                <span class="material-symbols-outlined text-lg">square</span>
+            </button>
+            <button class="w-full aspect-square rounded-xl bg-white/20 text-white hover:bg-white/30 flex items-center justify-center transition-all">
+                <span class="material-symbols-outlined text-lg">undo</span>
+            </button>
+            <button class="w-full aspect-square rounded-xl bg-white/20 text-white hover:bg-white/30 flex items-center justify-center transition-all">
+                <span class="material-symbols-outlined text-lg">delete</span>
+            </button>
+        </div>
+
+        <div class="w-full h-px bg-white/30 my-0.5"></div>
+
+        <!-- 2-Column Palette Grid -->
+        <div class="grid grid-cols-2 gap-1.5 w-full">
+            <button class="w-6 h-6 rounded-md bg-black border border-white/50 mx-auto hover:scale-110 transition-transform"></button>
+            <button class="w-6 h-6 rounded-md bg-white border border-slate-400 mx-auto hover:scale-110 transition-transform"></button>
+            <button class="w-6 h-6 rounded-md bg-red-500 mx-auto hover:scale-110 transition-transform"></button>
+            <button class="w-6 h-6 rounded-md bg-blue-500 mx-auto hover:scale-110 transition-transform"></button>
+            <button class="w-6 h-6 rounded-md bg-amber-400 mx-auto hover:scale-110 transition-transform ring-2 ring-white"></button>
+            <button class="w-6 h-6 rounded-md bg-emerald-500 mx-auto hover:scale-110 transition-transform"></button>
+            <button class="w-6 h-6 rounded-md bg-purple-500 mx-auto hover:scale-110 transition-transform"></button>
+            <button class="w-6 h-6 rounded-md bg-pink-400 mx-auto hover:scale-110 transition-transform"></button>
+        </div>
+
+        <!-- Expandable Circular Color Wheel Button -->
+        <button onclick="document.getElementById('color-wheel-modal').classList.toggle('hidden')" 
+                class="w-10 h-10 rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform my-1" 
+                style="background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);" title="Mở bảng màu tròn"></button>
+
+        <!-- Brush Size Slider -->
+        <div class="w-full flex flex-col items-center gap-1 mt-auto">
+            <span class="text-[9px] font-black text-sky-200 uppercase">Cỡ nét</span>
+            <input class="w-full accent-amber-400 cursor-pointer h-1.5 bg-white/30 rounded-lg" type="range" min="2" max="30" value="8"/>
+        </div>
+    </div>
+
+    <!-- CENTER & BOTTOM: Canvas + Split Guess/Chat Panels -->
+    <div class="flex-1 flex flex-col gap-3 min-w-0">
+        
+        <!-- White Drawing Canvas -->
+        <div class="flex-1 bg-white rounded-3xl border-4 border-white/60 shadow-2xl overflow-hidden relative flex items-center justify-center">
+            <!-- Simulated drawing on canvas -->
+            <svg class="w-full h-full p-6" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg">
+                <!-- Sun Illustration -->
+                <circle cx="300" cy="200" r="45" fill="#FBBF24" stroke="#000000" stroke-width="5"/>
+                <line x1="300" y1="120" x2="300" y2="90" stroke="#000000" stroke-width="6" stroke-linecap="round"/>
+                <line x1="300" y1="280" x2="300" y2="310" stroke="#000000" stroke-width="6" stroke-linecap="round"/>
+                <line x1="220" y1="200" x2="190" y2="200" stroke="#000000" stroke-width="6" stroke-linecap="round"/>
+                <line x1="380" y1="200" x2="410" y2="200" stroke="#000000" stroke-width="6" stroke-linecap="round"/>
+                <line x1="245" y1="145" x2="225" y2="125" stroke="#000000" stroke-width="6" stroke-linecap="round"/>
+                <line x1="355" y1="255" x2="375" y2="275" stroke="#000000" stroke-width="6" stroke-linecap="round"/>
+                <line x1="245" y1="255" x2="225" y2="275" stroke="#000000" stroke-width="6" stroke-linecap="round"/>
+                <line x1="355" y1="145" x2="375" y2="125" stroke="#000000" stroke-width="6" stroke-linecap="round"/>
+            </svg>
+            
+            <div class="absolute top-3 left-4 bg-slate-900/70 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-slate-200">
+                🖌️ Bạn đang vẽ...
+            </div>
+        </div>
+
+        <!-- BOTTOM SPLIT PANELS (Below Canvas) -->
+        <div class="h-44 grid grid-cols-1 md:grid-cols-2 gap-3 shrink-0">
+            
+            <!-- Left: Guessing Area (TRẢ LỜI / ĐOÁN TỪ) -->
+            <div class="glass-panel flex flex-col overflow-hidden">
+                <div class="bg-indigo-900/60 px-3 py-1.5 text-xs font-extrabold tracking-wider uppercase border-b border-white/20 flex items-center justify-between">
+                    <span>🎯 TRẢ LỜI / ĐOÁN TỪ</span>
+                    <span class="text-[10px] text-emerald-300">2 người đã đoán đúng</span>
+                </div>
+                <div class="flex-1 overflow-y-auto p-2.5 space-y-1.5 text-xs font-semibold">
+                    <div class="text-white/80"><strong class="text-white">IcyJewel:</strong> bông hoa?</div>
+                    <div class="text-emerald-300 font-extrabold bg-emerald-500/20 px-2 py-1 rounded-lg border border-emerald-500/40">
+                        ✓ <strong>VợThầyÔngNội</strong> đã đoán đúng từ khóa! (+100đ)
+                    </div>
+                    <div class="text-emerald-300 font-extrabold bg-emerald-500/20 px-2 py-1 rounded-lg border border-emerald-500/40">
+                        ✓ <strong>NoName99</strong> đã đoán đúng từ khóa! (+85đ)
+                    </div>
+                </div>
+                <div class="p-2 bg-slate-900/30 border-t border-white/20 flex gap-2">
+                    <input class="flex-1 bg-white/90 text-slate-900 text-xs font-bold px-3 py-2 rounded-xl outline-none placeholder:text-slate-500" 
+                           type="text" placeholder="Lượt của bạn... (Nhập từ dự đoán)"/>
+                    <button class="bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs px-4 py-2 rounded-xl shadow-md">
+                        ĐOÁN
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right: Chat Room (TRÒ CHUYỆN) -->
+            <div class="glass-panel flex flex-col overflow-hidden">
+                <div class="bg-indigo-900/60 px-3 py-1.5 text-xs font-extrabold tracking-wider uppercase border-b border-white/20">
+                    💬 TRÒ CHUYỆN
+                </div>
+                <div class="flex-1 overflow-y-auto p-2.5 space-y-1.5 text-xs">
+                    <div class="text-sky-200 italic"><span class="font-bold">Hệ thống:</span> Vòng 1 bắt đầu!</div>
+                    <div><strong class="text-amber-300">IcyJewel:</strong> vẽ đẹp đấy bro ơi 😂</div>
+                    <div><strong class="text-white">NoName99:</strong> dễ ợt haha</div>
+                </div>
+                <div class="p-2 bg-slate-900/30 border-t border-white/20 flex gap-2">
+                    <input class="flex-1 bg-white/90 text-slate-900 text-xs font-bold px-3 py-2 rounded-xl outline-none placeholder:text-slate-500" 
+                           type="text" placeholder="Nhắn tin với mọi người..."/>
+                    <button class="bg-primary hover:bg-sky-600 text-white font-extrabold text-xs px-4 py-2 rounded-xl shadow-md">
+                        GỬI
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</main>
+
+<!-- COLOR WHEEL POPUP MODAL -->
+<div id="color-wheel-modal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center hidden" onclick="if(event.target === this) this.classList.add('hidden')">
+    <div class="glass-panel p-6 max-w-sm w-full text-center space-y-4 bg-slate-900/90 border-2 border-white/50">
+        <h3 class="text-lg font-black text-amber-300 uppercase">Bảng Màu Quang Phổ 360°</h3>
+        <div class="w-48 h-48 rounded-full mx-auto border-4 border-white shadow-2xl cursor-crosshair relative"
+             style="background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);">
+            <div class="w-4 h-4 rounded-full border-2 border-white bg-white/40 absolute top-10 left-16 shadow-lg"></div>
+        </div>
+        <div class="flex items-center justify-center gap-3">
+            <span class="text-xs font-bold">Mã Màu:</span>
+            <input class="bg-white/20 border border-white/40 rounded-lg px-3 py-1 text-sm font-mono text-white text-center w-28" value="#FBBF24"/>
+        </div>
+        <button onclick="document.getElementById('color-wheel-modal').classList.add('hidden')" class="w-full py-2.5 bg-primary text-white font-bold rounded-xl shadow-md">
+            Xác Nhận Màu Này
+        </button>
+    </div>
+</div>
+
+</body>
+</html>

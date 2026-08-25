@@ -1,6 +1,3 @@
-import { Room } from '../types/room';
-import { GameState, GuessResult } from '../types/game';
-import { ChatMessage } from '../types/chat';
 
 export interface WSRequest<T = any> {
   type: string;

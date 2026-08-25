@@ -3,9 +3,10 @@ import { MessageType } from './protocol';
 import { roomStore } from '../store/roomStore';
 import { gameStore } from '../store/gameStore';
 import { chatStore } from '../store/chatStore';
+import { guessStore } from '../store/guessStore';
 import { connectionStore } from '../store/connectionStore';
 import { Room, Player } from '../types/room';
-import { GameState } from '../types/game';
+import { GameState, DrawPoint } from '../types/game';
 import { ChatMessage } from '../types/chat';
 
 export function setupMessageHandlers(onResponse?: (response: WSResponse) => void): (response: WSResponse) => void {
@@ -21,10 +22,10 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
         }));
 
         const room: Room = {
-          roomId: response.roomId,
-          name: response.name || `Room ${response.roomId}`,
+          roomId: response.roomId || '',
+          name: response.name || `Room ${response.roomId || ''}`,
           status: response.status || 'LOBBY',
-          hostPlayerId: response.hostPlayerId,
+          hostPlayerId: response.hostPlayerId || '',
           players,
           maxPlayers: response.maxPlayers || 4,
           roundCount: response.roundCount || 5,
@@ -84,13 +85,14 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
         roomStore.clearRoom();
         gameStore.clearGame();
         chatStore.clearMessages();
+        guessStore.clearGuesses();
         break;
       }
 
       case MessageType.GAME_STARTED:
       case MessageType.GAME_STATE: {
         const gameState: GameState = {
-          roomId: response.roomId,
+          roomId: response.roomId || '',
           status: response.status || 'IN_ROUND',
           currentRound: response.currentRound || 1,
           totalRounds: response.totalRounds || 5,
@@ -118,13 +120,14 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
       }
 
       case MessageType.PLAYER_GUESSED_CORRECTLY: {
-        chatStore.addMessage({
+        guessStore.addGuess({
+          id: `guess_${Date.now()}_${Math.random()}`,
           roomId: response.roomId || '',
-          playerId: 'system',
-          username: 'System',
-          content: `Player ${response.playerId} guessed the word correctly! (+${response.scoreAwarded || 0} pts)`,
-          type: 'SYSTEM',
-          createdAt: Date.now(),
+          playerId: response.playerId || '',
+          username: response.username || response.playerId || 'Người chơi',
+          guess: `đã đoán đúng từ khóa! (+${response.scoreAwarded || 0} điểm)`,
+          isCorrect: true,
+          timestamp: Date.now(),
         });
         break;
       }
@@ -156,6 +159,63 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
           createdAt: m.createdAt || Date.now(),
         }));
         chatStore.setMessages(formatted);
+        break;
+      }
+
+      // ─── Drawing Events ─────────────────────────────────────────────
+      case MessageType.DRAW_EVENT: {
+        const payload = response.payload || response;
+        const point: DrawPoint = {
+          x: payload.point?.x ?? payload.x ?? 0,
+          y: payload.point?.y ?? payload.y ?? 0,
+          color: payload.point?.color ?? payload.color ?? '#f8fafc',
+          size: payload.point?.size ?? payload.size ?? 4,
+          isNewPath: payload.point?.isNewPath ?? payload.isNewPath ?? false,
+          timestamp: payload.point?.timestamp ?? payload.timestamp,
+        };
+        gameStore.addDrawPoint(point);
+        break;
+      }
+
+      case MessageType.DRAW_BATCH:
+      case MessageType.DRAW_BATCH_EVENT: {
+        const payload = response.payload || response;
+        const rawPoints = payload.points || [];
+        const points: DrawPoint[] = rawPoints.map((p: any) => ({
+          x: p.x ?? 0,
+          y: p.y ?? 0,
+          color: p.color ?? payload.color ?? '#f8fafc',
+          size: p.size ?? payload.size ?? 4,
+          isNewPath: p.isNewPath ?? false,
+          timestamp: p.timestamp,
+        }));
+        gameStore.addDrawPoints(points);
+        break;
+      }
+
+      case MessageType.CANVAS_CLEARED: {
+        gameStore.clearDrawPoints();
+        break;
+      }
+
+      case MessageType.SYNC_CANVAS_STATE: {
+        const payload = response.payload || response;
+        const points: DrawPoint[] = (payload.points || []).map((p: any) => ({
+          x: p.x ?? 0,
+          y: p.y ?? 0,
+          color: p.color ?? '#f8fafc',
+          size: p.size ?? 4,
+          isNewPath: p.isNewPath ?? false,
+          timestamp: p.timestamp,
+        }));
+        gameStore.setDrawPoints(points);
+        break;
+      }
+
+      case MessageType.ROUND_STARTED: {
+        // Clear canvas and guess stream when a new round starts
+        gameStore.clearDrawPoints();
+        guessStore.clearGuesses();
         break;
       }
 

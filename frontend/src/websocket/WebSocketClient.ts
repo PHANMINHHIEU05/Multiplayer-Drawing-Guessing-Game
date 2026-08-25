@@ -8,11 +8,14 @@ interface PendingRequest {
   timer: any;
 }
 
+export type BinaryMessageHandler = (buffer: ArrayBuffer) => void;
+
 export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
   private pendingRequests = new Map<string, PendingRequest>();
   private messageListeners = new Set<MessageHandler>();
+  private binaryListeners = new Set<BinaryMessageHandler>();
   private reconnectAttempts = 0;
   private maxReconnectDelay = 16000;
   private reconnectTimer: any = null;
@@ -32,6 +35,7 @@ export class WebSocketClient {
 
     try {
       this.ws = new WebSocket(this.url);
+      this.ws.binaryType = 'arraybuffer';
 
       this.ws.onopen = () => {
         console.log('[WebSocket] Connected to', this.url);
@@ -108,12 +112,44 @@ export class WebSocketClient {
     });
   }
 
+  /** Fire-and-forget raw JSON string send (no promise / timeout overhead) */
+  public sendRaw(data: string): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    this.ws.send(data);
+  }
+
+  /** Fire-and-forget binary ArrayBuffer send for high frequency drawing */
+  public sendBinary(data: ArrayBuffer | ArrayBufferView): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    this.ws.send(data);
+  }
+
   public addMessageListener(listener: MessageHandler): () => void {
     this.messageListeners.add(listener);
     return () => this.messageListeners.delete(listener);
   }
 
-  private handleIncomingMessage(raw: string): void {
+  public addBinaryListener(listener: BinaryMessageHandler): () => void {
+    this.binaryListeners.add(listener);
+    return () => this.binaryListeners.delete(listener);
+  }
+
+  private handleIncomingMessage(raw: string | ArrayBuffer): void {
+    if (raw instanceof ArrayBuffer) {
+      this.binaryListeners.forEach((listener) => {
+        try {
+          listener(raw);
+        } catch (err) {
+          console.error('[WebSocket] Binary listener error:', err);
+        }
+      });
+      return;
+    }
+
     try {
       const response: WSResponse = JSON.parse(raw);
       console.log('[WebSocket] Inbound message:', response);

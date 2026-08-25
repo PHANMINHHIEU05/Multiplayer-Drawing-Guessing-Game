@@ -23,16 +23,19 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ roomId }) => {
   }, [roomId, playerId]);
 
   return (
-    <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col h-full min-h-[380px]">
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
-        <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-          <span>💬</span> Room Chat
-        </h3>
-        <span className="text-[10px] text-slate-500 font-mono">{messages.length} msgs</span>
+    <div className="glass-panel-game h-full flex flex-col overflow-hidden select-none">
+      <div className="bg-indigo-950/60 px-3 py-1.5 font-extrabold text-[11px] sm:text-xs text-white border-b border-white/20 flex items-center justify-between shrink-0">
+        <span className="flex items-center gap-1.5">
+          <span>💬</span> TRÒ CHUYỆN
+        </span>
+        <span className="text-[10px] text-sky-200 font-bold">{messages.length} tin</span>
       </div>
 
-      <ChatMessageList messages={messages} currentPlayerId={playerId} />
+      <div className="flex-1 min-h-0 flex flex-col p-2 bg-black/10">
+        <ChatMessageList messages={messages} currentPlayerId={playerId} />
+      </div>
       <ChatInput roomId={roomId} />
     </div>
   );
 };
+
