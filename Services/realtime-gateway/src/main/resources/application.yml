@@ -1,9 +1,13 @@
 spring:
   application:
     name: realtime-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 grpc:
   client:
@@ -16,6 +20,10 @@ grpc:
     chat-service:
       host: ${CHAT_SERVICE_HOST:localhost}
       port: ${CHAT_SERVICE_PORT:9093}
+
+# TV3: unique ID for this gateway instance, used for Redis Pub/Sub self-echo prevention
+gateway:
+  instance-id: ${GATEWAY_INSTANCE_ID:gateway-default}
 
 management:
   endpoints:

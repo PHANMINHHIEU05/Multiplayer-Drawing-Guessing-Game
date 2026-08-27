@@ -4,6 +4,7 @@ import com.drawgame.chat.grpc.generated.ChatMessageResponse;
 import com.drawgame.chat.grpc.generated.GetRecentMessagesResponse;
 import com.drawgame.game.grpc.generated.GuessResponse;
 import com.drawgame.realtime_gateway.connection.ConnectionManager;
+import com.drawgame.realtime_gateway.drawing.routing.DrawingRoomStateCache;
 import com.drawgame.realtime_gateway.grpc.ChatGrpcClient;
 import com.drawgame.realtime_gateway.grpc.GameGrpcClient;
 import com.drawgame.realtime_gateway.grpc.RoomGrpcClient;
@@ -41,13 +42,17 @@ class GameCommandHandlerTest {
     @Mock
     private ConnectionManager connectionManager;
 
+    @Mock
+    private DrawingRoomStateCache drawingRoomStateCache;
+
     private GameCommandHandler handler;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
-        handler = new GameCommandHandler(gameGrpcClient, roomGrpcClient, chatGrpcClient, connectionManager);
+        handler = new GameCommandHandler(gameGrpcClient, roomGrpcClient, chatGrpcClient, connectionManager, drawingRoomStateCache);
     }
+
 
     @Test
     void handleSendChat_Success_BroadcastsChatMessageToRoom() throws Exception {
@@ -244,4 +249,31 @@ class GameCommandHandlerTest {
         verify(chatGrpcClient).sendMessage("room-1", "player-1", "Minh", "con thỏ");
         verify(connectionManager).broadcastToRoom(eq("room-1"), contains("CHAT_MESSAGE"));
     }
+
+    @Test
+    void handleGameFinished_ClearsDrawingCacheAndBroadcasts() throws Exception {
+        String jsonStr = """
+            {
+                "type": "GAME_FINISHED",
+                "payload": {
+                    "roomId": "room-1"
+                },
+                "requestId": "req-999"
+            }
+            """;
+        JsonNode json = objectMapper.readTree(jsonStr);
+
+        Mono<String> resultMono = handler.handleCommand("session-1", json);
+
+        StepVerifier.create(resultMono)
+                .assertNext(res -> {
+                    assertTrue(res.contains("GAME_FINISHED_ACK"));
+                    assertTrue(res.contains("req-999"));
+                })
+                .verifyComplete();
+
+        verify(drawingRoomStateCache).remove("room-1");
+        verify(connectionManager).broadcastToRoom(eq("room-1"), contains("GAME_FINISHED"));
+    }
 }
+
