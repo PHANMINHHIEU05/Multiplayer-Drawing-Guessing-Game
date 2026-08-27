@@ -139,6 +139,68 @@ public final class RoomServiceGrpc {
     return getLeaveRoomMethod;
   }
 
+  private static volatile io.grpc.MethodDescriptor<com.drawgame.room.grpc.generated.BeginGameRequest,
+      com.drawgame.room.grpc.generated.RoomResponse> getBeginGameMethod;
+
+  @io.grpc.stub.annotations.RpcMethod(
+      fullMethodName = SERVICE_NAME + '/' + "BeginGame",
+      requestType = com.drawgame.room.grpc.generated.BeginGameRequest.class,
+      responseType = com.drawgame.room.grpc.generated.RoomResponse.class,
+      methodType = io.grpc.MethodDescriptor.MethodType.UNARY)
+  public static io.grpc.MethodDescriptor<com.drawgame.room.grpc.generated.BeginGameRequest,
+      com.drawgame.room.grpc.generated.RoomResponse> getBeginGameMethod() {
+    io.grpc.MethodDescriptor<com.drawgame.room.grpc.generated.BeginGameRequest, com.drawgame.room.grpc.generated.RoomResponse> getBeginGameMethod;
+    if ((getBeginGameMethod = RoomServiceGrpc.getBeginGameMethod) == null) {
+      synchronized (RoomServiceGrpc.class) {
+        if ((getBeginGameMethod = RoomServiceGrpc.getBeginGameMethod) == null) {
+          RoomServiceGrpc.getBeginGameMethod = getBeginGameMethod =
+              io.grpc.MethodDescriptor.<com.drawgame.room.grpc.generated.BeginGameRequest, com.drawgame.room.grpc.generated.RoomResponse>newBuilder()
+              .setType(io.grpc.MethodDescriptor.MethodType.UNARY)
+              .setFullMethodName(generateFullMethodName(SERVICE_NAME, "BeginGame"))
+              .setSampledToLocalTracing(true)
+              .setRequestMarshaller(io.grpc.protobuf.ProtoUtils.marshaller(
+                  com.drawgame.room.grpc.generated.BeginGameRequest.getDefaultInstance()))
+              .setResponseMarshaller(io.grpc.protobuf.ProtoUtils.marshaller(
+                  com.drawgame.room.grpc.generated.RoomResponse.getDefaultInstance()))
+              .setSchemaDescriptor(new RoomServiceMethodDescriptorSupplier("BeginGame"))
+              .build();
+        }
+      }
+    }
+    return getBeginGameMethod;
+  }
+
+  private static volatile io.grpc.MethodDescriptor<com.drawgame.room.grpc.generated.FinishGameRequest,
+      com.drawgame.room.grpc.generated.RoomResponse> getFinishGameMethod;
+
+  @io.grpc.stub.annotations.RpcMethod(
+      fullMethodName = SERVICE_NAME + '/' + "FinishGame",
+      requestType = com.drawgame.room.grpc.generated.FinishGameRequest.class,
+      responseType = com.drawgame.room.grpc.generated.RoomResponse.class,
+      methodType = io.grpc.MethodDescriptor.MethodType.UNARY)
+  public static io.grpc.MethodDescriptor<com.drawgame.room.grpc.generated.FinishGameRequest,
+      com.drawgame.room.grpc.generated.RoomResponse> getFinishGameMethod() {
+    io.grpc.MethodDescriptor<com.drawgame.room.grpc.generated.FinishGameRequest, com.drawgame.room.grpc.generated.RoomResponse> getFinishGameMethod;
+    if ((getFinishGameMethod = RoomServiceGrpc.getFinishGameMethod) == null) {
+      synchronized (RoomServiceGrpc.class) {
+        if ((getFinishGameMethod = RoomServiceGrpc.getFinishGameMethod) == null) {
+          RoomServiceGrpc.getFinishGameMethod = getFinishGameMethod =
+              io.grpc.MethodDescriptor.<com.drawgame.room.grpc.generated.FinishGameRequest, com.drawgame.room.grpc.generated.RoomResponse>newBuilder()
+              .setType(io.grpc.MethodDescriptor.MethodType.UNARY)
+              .setFullMethodName(generateFullMethodName(SERVICE_NAME, "FinishGame"))
+              .setSampledToLocalTracing(true)
+              .setRequestMarshaller(io.grpc.protobuf.ProtoUtils.marshaller(
+                  com.drawgame.room.grpc.generated.FinishGameRequest.getDefaultInstance()))
+              .setResponseMarshaller(io.grpc.protobuf.ProtoUtils.marshaller(
+                  com.drawgame.room.grpc.generated.RoomResponse.getDefaultInstance()))
+              .setSchemaDescriptor(new RoomServiceMethodDescriptorSupplier("FinishGame"))
+              .build();
+        }
+      }
+    }
+    return getFinishGameMethod;
+  }
+
   /**
    * Creates a new async stub that supports all call types for the service
    */
@@ -214,6 +276,20 @@ public final class RoomServiceGrpc {
         io.grpc.stub.StreamObserver<com.drawgame.room.grpc.generated.RoomResponse> responseObserver) {
       io.grpc.stub.ServerCalls.asyncUnimplementedUnaryCall(getLeaveRoomMethod(), responseObserver);
     }
+
+    /**
+     */
+    default void beginGame(com.drawgame.room.grpc.generated.BeginGameRequest request,
+        io.grpc.stub.StreamObserver<com.drawgame.room.grpc.generated.RoomResponse> responseObserver) {
+      io.grpc.stub.ServerCalls.asyncUnimplementedUnaryCall(getBeginGameMethod(), responseObserver);
+    }
+
+    /**
+     */
+    default void finishGame(com.drawgame.room.grpc.generated.FinishGameRequest request,
+        io.grpc.stub.StreamObserver<com.drawgame.room.grpc.generated.RoomResponse> responseObserver) {
+      io.grpc.stub.ServerCalls.asyncUnimplementedUnaryCall(getFinishGameMethod(), responseObserver);
+    }
   }
 
   /**
@@ -274,6 +350,22 @@ public final class RoomServiceGrpc {
       io.grpc.stub.ClientCalls.asyncUnaryCall(
           getChannel().newCall(getLeaveRoomMethod(), getCallOptions()), request, responseObserver);
     }
+
+    /**
+     */
+    public void beginGame(com.drawgame.room.grpc.generated.BeginGameRequest request,
+        io.grpc.stub.StreamObserver<com.drawgame.room.grpc.generated.RoomResponse> responseObserver) {
+      io.grpc.stub.ClientCalls.asyncUnaryCall(
+          getChannel().newCall(getBeginGameMethod(), getCallOptions()), request, responseObserver);
+    }
+
+    /**
+     */
+    public void finishGame(com.drawgame.room.grpc.generated.FinishGameRequest request,
+        io.grpc.stub.StreamObserver<com.drawgame.room.grpc.generated.RoomResponse> responseObserver) {
+      io.grpc.stub.ClientCalls.asyncUnaryCall(
+          getChannel().newCall(getFinishGameMethod(), getCallOptions()), request, responseObserver);
+    }
   }
 
   /**
@@ -318,6 +410,20 @@ public final class RoomServiceGrpc {
     public com.drawgame.room.grpc.generated.RoomResponse leaveRoom(com.drawgame.room.grpc.generated.LeaveRoomRequest request) {
       return io.grpc.stub.ClientCalls.blockingUnaryCall(
           getChannel(), getLeaveRoomMethod(), getCallOptions(), request);
+    }
+
+    /**
+     */
+    public com.drawgame.room.grpc.generated.RoomResponse beginGame(com.drawgame.room.grpc.generated.BeginGameRequest request) {
+      return io.grpc.stub.ClientCalls.blockingUnaryCall(
+          getChannel(), getBeginGameMethod(), getCallOptions(), request);
+    }
+
+    /**
+     */
+    public com.drawgame.room.grpc.generated.RoomResponse finishGame(com.drawgame.room.grpc.generated.FinishGameRequest request) {
+      return io.grpc.stub.ClientCalls.blockingUnaryCall(
+          getChannel(), getFinishGameMethod(), getCallOptions(), request);
     }
   }
 
@@ -368,12 +474,30 @@ public final class RoomServiceGrpc {
       return io.grpc.stub.ClientCalls.futureUnaryCall(
           getChannel().newCall(getLeaveRoomMethod(), getCallOptions()), request);
     }
+
+    /**
+     */
+    public com.google.common.util.concurrent.ListenableFuture<com.drawgame.room.grpc.generated.RoomResponse> beginGame(
+        com.drawgame.room.grpc.generated.BeginGameRequest request) {
+      return io.grpc.stub.ClientCalls.futureUnaryCall(
+          getChannel().newCall(getBeginGameMethod(), getCallOptions()), request);
+    }
+
+    /**
+     */
+    public com.google.common.util.concurrent.ListenableFuture<com.drawgame.room.grpc.generated.RoomResponse> finishGame(
+        com.drawgame.room.grpc.generated.FinishGameRequest request) {
+      return io.grpc.stub.ClientCalls.futureUnaryCall(
+          getChannel().newCall(getFinishGameMethod(), getCallOptions()), request);
+    }
   }
 
   private static final int METHODID_CREATE_ROOM = 0;
   private static final int METHODID_GET_ROOM = 1;
   private static final int METHODID_JOIN_ROOM = 2;
   private static final int METHODID_LEAVE_ROOM = 3;
+  private static final int METHODID_BEGIN_GAME = 4;
+  private static final int METHODID_FINISH_GAME = 5;
 
   private static final class MethodHandlers<Req, Resp> implements
       io.grpc.stub.ServerCalls.UnaryMethod<Req, Resp>,
@@ -406,6 +530,14 @@ public final class RoomServiceGrpc {
           break;
         case METHODID_LEAVE_ROOM:
           serviceImpl.leaveRoom((com.drawgame.room.grpc.generated.LeaveRoomRequest) request,
+              (io.grpc.stub.StreamObserver<com.drawgame.room.grpc.generated.RoomResponse>) responseObserver);
+          break;
+        case METHODID_BEGIN_GAME:
+          serviceImpl.beginGame((com.drawgame.room.grpc.generated.BeginGameRequest) request,
+              (io.grpc.stub.StreamObserver<com.drawgame.room.grpc.generated.RoomResponse>) responseObserver);
+          break;
+        case METHODID_FINISH_GAME:
+          serviceImpl.finishGame((com.drawgame.room.grpc.generated.FinishGameRequest) request,
               (io.grpc.stub.StreamObserver<com.drawgame.room.grpc.generated.RoomResponse>) responseObserver);
           break;
         default:
@@ -454,6 +586,20 @@ public final class RoomServiceGrpc {
               com.drawgame.room.grpc.generated.LeaveRoomRequest,
               com.drawgame.room.grpc.generated.RoomResponse>(
                 service, METHODID_LEAVE_ROOM)))
+        .addMethod(
+          getBeginGameMethod(),
+          io.grpc.stub.ServerCalls.asyncUnaryCall(
+            new MethodHandlers<
+              com.drawgame.room.grpc.generated.BeginGameRequest,
+              com.drawgame.room.grpc.generated.RoomResponse>(
+                service, METHODID_BEGIN_GAME)))
+        .addMethod(
+          getFinishGameMethod(),
+          io.grpc.stub.ServerCalls.asyncUnaryCall(
+            new MethodHandlers<
+              com.drawgame.room.grpc.generated.FinishGameRequest,
+              com.drawgame.room.grpc.generated.RoomResponse>(
+                service, METHODID_FINISH_GAME)))
         .build();
   }
 
@@ -506,6 +652,8 @@ public final class RoomServiceGrpc {
               .addMethod(getGetRoomMethod())
               .addMethod(getJoinRoomMethod())
               .addMethod(getLeaveRoomMethod())
+              .addMethod(getBeginGameMethod())
+              .addMethod(getFinishGameMethod())
               .build();
         }
       }

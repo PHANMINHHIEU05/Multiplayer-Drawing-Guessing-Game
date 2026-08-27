@@ -116,8 +116,42 @@ services:
       GAME_SERVICE_PORT: 9092
       CHAT_SERVICE_HOST: chat-service
       CHAT_SERVICE_PORT: 9093
+      GATEWAY_INSTANCE_ID: gateway-1
     ports:
       - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      room-service:
+        condition: service_started
+      game-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+
+  # TV3 — second Gateway instance for multi-Gateway / Redis Pub/Sub testing (M4)
+  # Run with: docker compose --profile multi-gateway up
+  realtime-gateway-2:
+    build:
+      context: .
+      dockerfile: Services/realtime-gateway/Dockerfile
+    container_name: drawgame-realtime-gateway-2
+    restart: unless-stopped
+    profiles:
+      - multi-gateway
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SERVER_PORT: 8080
+      ROOM_SERVICE_HOST: room-service
+      ROOM_SERVICE_PORT: 9091
+      GAME_SERVICE_HOST: game-service
+      GAME_SERVICE_PORT: 9092
+      CHAT_SERVICE_HOST: chat-service
+      CHAT_SERVICE_PORT: 9093
+      GATEWAY_INSTANCE_ID: gateway-2
+    ports:
+      - "8090:8080"
     depends_on:
       redis:
         condition: service_healthy

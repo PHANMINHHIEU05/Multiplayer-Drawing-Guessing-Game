@@ -4,6 +4,8 @@ import com.drawgame.chat.grpc.generated.ChatMessageResponse;
 import com.drawgame.game.grpc.generated.GameStateResponse;
 import com.drawgame.game.grpc.generated.PlayerScoreMessage;
 import com.drawgame.realtime_gateway.connection.ConnectionManager;
+import com.drawgame.realtime_gateway.drawing.routing.DrawingRoomState;
+import com.drawgame.realtime_gateway.drawing.routing.DrawingRoomStateCache;
 import com.drawgame.realtime_gateway.grpc.ChatGrpcClient;
 import com.drawgame.realtime_gateway.grpc.GameGrpcClient;
 import com.drawgame.realtime_gateway.grpc.RoomGrpcClient;
@@ -32,6 +34,7 @@ public class GameCommandHandler {
     private final RoomGrpcClient roomGrpcClient;
     private final ChatGrpcClient chatGrpcClient;
     private final ConnectionManager connectionManager;
+    private final DrawingRoomStateCache drawingRoomStateCache;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public Mono<String> handleCommand(String sessionId, JsonNode json) {
@@ -49,6 +52,11 @@ public class GameCommandHandler {
             case "SUBMIT_GUESS" -> handleSubmitGuess(sessionId, json, requestId);
             case "SEND_CHAT" -> handleSendChat(sessionId, json, requestId);
             case "GET_RECENT_CHAT" -> handleGetRecentChat(sessionId, json, requestId);
+            case "DRAW_POINT" -> handleDrawPoint(sessionId, json);
+            case "DRAW_BATCH" -> handleDrawBatch(sessionId, json);
+            case "CLEAR_CANVAS" -> handleClearCanvas(sessionId, json);
+            // TV3: clear drawing cache when game finishes
+            case "GAME_FINISHED" -> handleGameFinished(sessionId, json, requestId);
             default -> Mono.just(createErrorJson(requestId, "UNKNOWN_COMMAND", "Unknown command type: " + type));
         };
     }
@@ -123,6 +131,8 @@ public class GameCommandHandler {
                     String stateJson = createGameStateJson("GAME_STARTED", gameState, requestId);
                     // Broadcast to other players in room (without requestId)
                     connectionManager.broadcastToRoomExcept(roomId, sessionId, createGameStateJson("GAME_STARTED", gameState, null));
+                    // TV3: update drawing fast-path cache with the new drawer and round
+                    updateDrawingCache(roomId, gameState);
                     return stateJson;
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "START_GAME_FAILED", e.getMessage())));
@@ -135,7 +145,13 @@ public class GameCommandHandler {
         final String playerId = (rawPlayerId != null && !rawPlayerId.isBlank()) ? rawPlayerId : sessionId;
 
         return gameGrpcClient.getGameState(roomId, playerId)
-                .map(gameState -> createGameStateJson("GAME_STATE", gameState, requestId))
+                .map(gameState -> {
+                    // TV3: sync drawing fast-path cache on GET_GAME_STATE (handles cache miss after restart)
+                    if ("PLAYING".equalsIgnoreCase(gameState.getStatus())) {
+                        updateDrawingCache(roomId, gameState);
+                    }
+                    return createGameStateJson("GAME_STATE", gameState, requestId);
+                })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "GET_GAME_STATE_FAILED", e.getMessage())));
     }
 
@@ -228,6 +244,51 @@ public class GameCommandHandler {
                     return toJson(map);
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, mapGrpcErrorCode(e), e.getMessage())));
+    }
+
+    private Mono<String> handleDrawPoint(String sessionId, JsonNode json) {
+        JsonNode node = getPayloadOrRoot(json);
+        String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
+        if (roomId == null || roomId.isBlank() || !node.has("point")) {
+            return Mono.empty();
+        }
+
+        Map<String, Object> event = new HashMap<>();
+        event.put("type", "DRAW_EVENT");
+        event.put("roomId", roomId);
+        event.put("playerId", extractString(node, "drawerId", connectionManager.getPlayerId(sessionId)));
+        event.put("point", node.get("point"));
+        connectionManager.broadcastToRoomExcept(roomId, sessionId, toJson(event));
+        return Mono.empty();
+    }
+
+    private Mono<String> handleDrawBatch(String sessionId, JsonNode json) {
+        JsonNode node = getPayloadOrRoot(json);
+        String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
+        if (roomId == null || roomId.isBlank() || !node.has("points") || !node.get("points").isArray()) {
+            return Mono.empty();
+        }
+
+        Map<String, Object> event = new HashMap<>();
+        event.put("type", "DRAW_BATCH_EVENT");
+        event.put("roomId", roomId);
+        event.put("playerId", extractString(node, "drawerId", connectionManager.getPlayerId(sessionId)));
+        event.put("points", node.get("points"));
+        connectionManager.broadcastToRoomExcept(roomId, sessionId, toJson(event));
+        return Mono.empty();
+    }
+
+    private Mono<String> handleClearCanvas(String sessionId, JsonNode json) {
+        JsonNode node = getPayloadOrRoot(json);
+        String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
+        if (roomId == null || roomId.isBlank()) {
+            return Mono.empty();
+        }
+
+        connectionManager.broadcastToRoomExcept(roomId, sessionId,
+                createBroadcastJson("CANVAS_CLEARED", roomId,
+                        extractString(node, "drawerId", connectionManager.getPlayerId(sessionId)), ""));
+        return Mono.empty();
     }
 
     private JsonNode getPayloadOrRoot(JsonNode json) {
@@ -396,4 +457,59 @@ public class GameCommandHandler {
             return "{\"type\":\"ERROR\",\"message\":\"JSON serialization error\"}";
         }
     }
+
+    /**
+     * TV3 — update the drawing fast-path cache from a Game Service response.
+     * Called on GAME_STARTED and GET_GAME_STATE (when PLAYING) to keep the cache consistent.
+     *
+     * <p>TODO (phase 2): also handle ROUND_STARTED / ROUND_ENDED events pushed by Game Service
+     * to keep cache in sync across round transitions without requiring GET_GAME_STATE per round.
+     */
+    private void updateDrawingCache(String roomId, GameStateResponse gameState) {
+        if (gameState.getDrawerId() != null && !gameState.getDrawerId().isBlank()) {
+            DrawingRoomState state = DrawingRoomState.playing(
+                    gameState.getDrawerId(),
+                    gameState.getCurrentRound()
+            );
+            drawingRoomStateCache.update(roomId, state);
+            log.debug("DrawingRoomStateCache updated via game event: room={} drawer={} round={}",
+                    roomId, gameState.getDrawerId(), gameState.getCurrentRound());
+        }
+    }
+
+    /**
+     * TV3 — handle GAME_FINISHED event.
+     *
+     * <p>Clears the drawing fast-path cache for the room so stale state doesn't
+     * accumulate for next game. Also broadcasts the event to all players in the room.
+     *
+     * <p>This can be triggered by a client signal or by Game Service push (phase 2).
+     * For phase 1, the client sends GAME_FINISHED when it receives a game-over event from Game Service.
+     */
+    private Mono<String> handleGameFinished(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
+
+        if (roomId == null || roomId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "GAME_FINISHED_FAILED", "roomId is required"));
+        }
+
+        // TV3: evict drawing cache — game is over, state is stale
+        drawingRoomStateCache.remove(roomId);
+        log.info("DrawingRoomStateCache evicted on GAME_FINISHED: room={}", roomId);
+
+        // Broadcast GAME_FINISHED to all players in room (no exclusion — everyone should know)
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("type", "GAME_FINISHED");
+        payload.put("roomId", roomId);
+        if (requestId != null) payload.put("requestId", requestId);
+        connectionManager.broadcastToRoom(roomId, toJson(payload));
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("type", "GAME_FINISHED_ACK");
+        if (requestId != null) response.put("requestId", requestId);
+        return Mono.just(toJson(response));
+    }
 }
+
+

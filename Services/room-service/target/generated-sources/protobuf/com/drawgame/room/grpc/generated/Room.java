@@ -26,6 +26,16 @@ public final class Room {
         (com.google.protobuf.ExtensionRegistryLite) registry);
   }
   static final com.google.protobuf.Descriptors.Descriptor
+    internal_static_room_BeginGameRequest_descriptor;
+  static final 
+    com.google.protobuf.GeneratedMessage.FieldAccessorTable
+      internal_static_room_BeginGameRequest_fieldAccessorTable;
+  static final com.google.protobuf.Descriptors.Descriptor
+    internal_static_room_FinishGameRequest_descriptor;
+  static final 
+    com.google.protobuf.GeneratedMessage.FieldAccessorTable
+      internal_static_room_FinishGameRequest_fieldAccessorTable;
+  static final com.google.protobuf.Descriptors.Descriptor
     internal_static_room_CreateRoomRequest_descriptor;
   static final 
     com.google.protobuf.GeneratedMessage.FieldAccessorTable
@@ -64,65 +74,82 @@ public final class Room {
       descriptor;
   static {
     java.lang.String[] descriptorData = {
-      "\n\nroom.proto\022\004room\"\213\001\n\021CreateRoomRequest" +
-      "\022\017\n\007host_id\030\001 \001(\t\022\020\n\010username\030\002 \001(\t\022\021\n\tr" +
-      "oom_name\030\003 \001(\t\022\023\n\013max_players\030\004 \001(\005\022\023\n\013r" +
-      "ound_count\030\005 \001(\005\022\026\n\016round_duration\030\006 \001(\005" +
-      "\"!\n\016GetRoomRequest\022\017\n\007room_id\030\001 \001(\t\"G\n\017J" +
-      "oinRoomRequest\022\017\n\007room_id\030\001 \001(\t\022\021\n\tplaye" +
-      "r_id\030\002 \001(\t\022\020\n\010username\030\003 \001(\t\"6\n\020LeaveRoo" +
-      "mRequest\022\017\n\007room_id\030\001 \001(\t\022\021\n\tplayer_id\030\002" +
-      " \001(\t\"4\n\rPlayerMessage\022\021\n\tplayer_id\030\001 \001(\t" +
-      "\022\020\n\010username\030\002 \001(\t\"\266\001\n\014RoomResponse\022\017\n\007r" +
-      "oom_id\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\017\n\007host_id\030\003 " +
-      "\001(\t\022\016\n\006status\030\004 \001(\t\022\023\n\013max_players\030\005 \001(\005" +
-      "\022\023\n\013round_count\030\006 \001(\005\022\026\n\016round_duration\030" +
-      "\007 \001(\005\022$\n\007players\030\010 \003(\0132\023.room.PlayerMess" +
-      "age2\355\001\n\013RoomService\0229\n\nCreateRoom\022\027.room" +
-      ".CreateRoomRequest\032\022.room.RoomResponse\0223" +
-      "\n\007GetRoom\022\024.room.GetRoomRequest\032\022.room.R" +
-      "oomResponse\0225\n\010JoinRoom\022\025.room.JoinRoomR" +
-      "equest\032\022.room.RoomResponse\0227\n\tLeaveRoom\022" +
-      "\026.room.LeaveRoomRequest\032\022.room.RoomRespo" +
-      "nseB$\n com.drawgame.room.grpc.generatedP" +
-      "\001b\006proto3"
+      "\n\nroom.proto\022\004room\"@\n\020BeginGameRequest\022\017" +
+      "\n\007room_id\030\001 \001(\t\022\033\n\023requester_player_id\030\002" +
+      " \001(\t\"$\n\021FinishGameRequest\022\017\n\007room_id\030\001 \001" +
+      "(\t\"\213\001\n\021CreateRoomRequest\022\017\n\007host_id\030\001 \001(" +
+      "\t\022\020\n\010username\030\002 \001(\t\022\021\n\troom_name\030\003 \001(\t\022\023" +
+      "\n\013max_players\030\004 \001(\005\022\023\n\013round_count\030\005 \001(\005" +
+      "\022\026\n\016round_duration\030\006 \001(\005\"!\n\016GetRoomReque" +
+      "st\022\017\n\007room_id\030\001 \001(\t\"G\n\017JoinRoomRequest\022\017" +
+      "\n\007room_id\030\001 \001(\t\022\021\n\tplayer_id\030\002 \001(\t\022\020\n\010us" +
+      "ername\030\003 \001(\t\"6\n\020LeaveRoomRequest\022\017\n\007room" +
+      "_id\030\001 \001(\t\022\021\n\tplayer_id\030\002 \001(\t\"4\n\rPlayerMe" +
+      "ssage\022\021\n\tplayer_id\030\001 \001(\t\022\020\n\010username\030\002 \001" +
+      "(\t\"\266\001\n\014RoomResponse\022\017\n\007room_id\030\001 \001(\t\022\014\n\004" +
+      "name\030\002 \001(\t\022\017\n\007host_id\030\003 \001(\t\022\016\n\006status\030\004 " +
+      "\001(\t\022\023\n\013max_players\030\005 \001(\005\022\023\n\013round_count\030" +
+      "\006 \001(\005\022\026\n\016round_duration\030\007 \001(\005\022$\n\007players" +
+      "\030\010 \003(\0132\023.room.PlayerMessage2\341\002\n\013RoomServ" +
+      "ice\0229\n\nCreateRoom\022\027.room.CreateRoomReque" +
+      "st\032\022.room.RoomResponse\0223\n\007GetRoom\022\024.room" +
+      ".GetRoomRequest\032\022.room.RoomResponse\0225\n\010J" +
+      "oinRoom\022\025.room.JoinRoomRequest\032\022.room.Ro" +
+      "omResponse\0227\n\tLeaveRoom\022\026.room.LeaveRoom" +
+      "Request\032\022.room.RoomResponse\0227\n\tBeginGame" +
+      "\022\026.room.BeginGameRequest\032\022.room.RoomResp" +
+      "onse\0229\n\nFinishGame\022\027.room.FinishGameRequ" +
+      "est\032\022.room.RoomResponseB$\n com.drawgame." +
+      "room.grpc.generatedP\001b\006proto3"
     };
     descriptor = com.google.protobuf.Descriptors.FileDescriptor
       .internalBuildGeneratedFileFrom(descriptorData,
         new com.google.protobuf.Descriptors.FileDescriptor[] {
         });
-    internal_static_room_CreateRoomRequest_descriptor =
+    internal_static_room_BeginGameRequest_descriptor =
       getDescriptor().getMessageTypes().get(0);
+    internal_static_room_BeginGameRequest_fieldAccessorTable = new
+      com.google.protobuf.GeneratedMessage.FieldAccessorTable(
+        internal_static_room_BeginGameRequest_descriptor,
+        new java.lang.String[] { "RoomId", "RequesterPlayerId", });
+    internal_static_room_FinishGameRequest_descriptor =
+      getDescriptor().getMessageTypes().get(1);
+    internal_static_room_FinishGameRequest_fieldAccessorTable = new
+      com.google.protobuf.GeneratedMessage.FieldAccessorTable(
+        internal_static_room_FinishGameRequest_descriptor,
+        new java.lang.String[] { "RoomId", });
+    internal_static_room_CreateRoomRequest_descriptor =
+      getDescriptor().getMessageTypes().get(2);
     internal_static_room_CreateRoomRequest_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessage.FieldAccessorTable(
         internal_static_room_CreateRoomRequest_descriptor,
         new java.lang.String[] { "HostId", "Username", "RoomName", "MaxPlayers", "RoundCount", "RoundDuration", });
     internal_static_room_GetRoomRequest_descriptor =
-      getDescriptor().getMessageTypes().get(1);
+      getDescriptor().getMessageTypes().get(3);
     internal_static_room_GetRoomRequest_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessage.FieldAccessorTable(
         internal_static_room_GetRoomRequest_descriptor,
         new java.lang.String[] { "RoomId", });
     internal_static_room_JoinRoomRequest_descriptor =
-      getDescriptor().getMessageTypes().get(2);
+      getDescriptor().getMessageTypes().get(4);
     internal_static_room_JoinRoomRequest_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessage.FieldAccessorTable(
         internal_static_room_JoinRoomRequest_descriptor,
         new java.lang.String[] { "RoomId", "PlayerId", "Username", });
     internal_static_room_LeaveRoomRequest_descriptor =
-      getDescriptor().getMessageTypes().get(3);
+      getDescriptor().getMessageTypes().get(5);
     internal_static_room_LeaveRoomRequest_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessage.FieldAccessorTable(
         internal_static_room_LeaveRoomRequest_descriptor,
         new java.lang.String[] { "RoomId", "PlayerId", });
     internal_static_room_PlayerMessage_descriptor =
-      getDescriptor().getMessageTypes().get(4);
+      getDescriptor().getMessageTypes().get(6);
     internal_static_room_PlayerMessage_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessage.FieldAccessorTable(
         internal_static_room_PlayerMessage_descriptor,
         new java.lang.String[] { "PlayerId", "Username", });
     internal_static_room_RoomResponse_descriptor =
-      getDescriptor().getMessageTypes().get(5);
+      getDescriptor().getMessageTypes().get(7);
     internal_static_room_RoomResponse_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessage.FieldAccessorTable(
         internal_static_room_RoomResponse_descriptor,
