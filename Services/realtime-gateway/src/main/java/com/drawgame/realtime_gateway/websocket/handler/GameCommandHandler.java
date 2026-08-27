@@ -52,6 +52,9 @@ public class GameCommandHandler {
             case "SUBMIT_GUESS" -> handleSubmitGuess(sessionId, json, requestId);
             case "SEND_CHAT" -> handleSendChat(sessionId, json, requestId);
             case "GET_RECENT_CHAT" -> handleGetRecentChat(sessionId, json, requestId);
+            case "DRAW_POINT" -> handleDrawPoint(sessionId, json);
+            case "DRAW_BATCH" -> handleDrawBatch(sessionId, json);
+            case "CLEAR_CANVAS" -> handleClearCanvas(sessionId, json);
             // TV3: clear drawing cache when game finishes
             case "GAME_FINISHED" -> handleGameFinished(sessionId, json, requestId);
             default -> Mono.just(createErrorJson(requestId, "UNKNOWN_COMMAND", "Unknown command type: " + type));
@@ -241,6 +244,51 @@ public class GameCommandHandler {
                     return toJson(map);
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, mapGrpcErrorCode(e), e.getMessage())));
+    }
+
+    private Mono<String> handleDrawPoint(String sessionId, JsonNode json) {
+        JsonNode node = getPayloadOrRoot(json);
+        String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
+        if (roomId == null || roomId.isBlank() || !node.has("point")) {
+            return Mono.empty();
+        }
+
+        Map<String, Object> event = new HashMap<>();
+        event.put("type", "DRAW_EVENT");
+        event.put("roomId", roomId);
+        event.put("playerId", extractString(node, "drawerId", connectionManager.getPlayerId(sessionId)));
+        event.put("point", node.get("point"));
+        connectionManager.broadcastToRoomExcept(roomId, sessionId, toJson(event));
+        return Mono.empty();
+    }
+
+    private Mono<String> handleDrawBatch(String sessionId, JsonNode json) {
+        JsonNode node = getPayloadOrRoot(json);
+        String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
+        if (roomId == null || roomId.isBlank() || !node.has("points") || !node.get("points").isArray()) {
+            return Mono.empty();
+        }
+
+        Map<String, Object> event = new HashMap<>();
+        event.put("type", "DRAW_BATCH_EVENT");
+        event.put("roomId", roomId);
+        event.put("playerId", extractString(node, "drawerId", connectionManager.getPlayerId(sessionId)));
+        event.put("points", node.get("points"));
+        connectionManager.broadcastToRoomExcept(roomId, sessionId, toJson(event));
+        return Mono.empty();
+    }
+
+    private Mono<String> handleClearCanvas(String sessionId, JsonNode json) {
+        JsonNode node = getPayloadOrRoot(json);
+        String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
+        if (roomId == null || roomId.isBlank()) {
+            return Mono.empty();
+        }
+
+        connectionManager.broadcastToRoomExcept(roomId, sessionId,
+                createBroadcastJson("CANVAS_CLEARED", roomId,
+                        extractString(node, "drawerId", connectionManager.getPlayerId(sessionId)), ""));
+        return Mono.empty();
     }
 
     private JsonNode getPayloadOrRoot(JsonNode json) {
