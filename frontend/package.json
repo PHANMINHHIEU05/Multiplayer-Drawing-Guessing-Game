@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "lint": "tsc --noEmit",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run --no-isolate"
   },
   "dependencies": {
     "lucide-react": "^0.344.0",

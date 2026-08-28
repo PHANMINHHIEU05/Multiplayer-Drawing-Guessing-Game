@@ -6,7 +6,8 @@ import com.drawgame.realtime_gateway.drawing.transport.DrawingWebSocketTransport
 import com.drawgame.realtime_gateway.websocket.handler.GameCommandHandler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.socket.WebSocketHandler;
 import org.springframework.web.reactive.socket.WebSocketMessage;
@@ -14,9 +15,10 @@ import org.springframework.web.reactive.socket.WebSocketSession;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-@Slf4j
 @Component
 public class GameWebSocketHandler implements WebSocketHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GameWebSocketHandler.class);
 
     private final ConnectionManager connectionManager;
     private final GameCommandHandler commandHandler;

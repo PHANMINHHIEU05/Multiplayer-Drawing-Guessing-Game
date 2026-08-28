@@ -1,0 +1,26 @@
+{
+  "name": "load-test-harness",
+  "version": "1.0.0",
+  "description": "Multiplayer Drawing & Guessing Game — Load Testing & Protocol Benchmark Suite (TV4)",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "benchmark": "tsx src/index.ts --benchmark",
+    "test:idle": "tsx src/index.ts --scenario idle --clients 50 --duration 10",
+    "test:fanout": "tsx src/index.ts --scenario fanout --viewers 20 --duration 10",
+    "test:multiroom": "tsx src/index.ts --scenario multiroom --rooms 4 --clientsPerRoom 5 --duration 10",
+    "test:slow": "tsx src/index.ts --scenario slow --duration 10",
+    "test:all": "tsx src/index.ts --all"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.7.1",
+    "typescript": "^5.2.2"
+  }
+}

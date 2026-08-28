@@ -1,0 +1,41 @@
+[
+  {
+    "mode": "JSON_POINT",
+    "totalPoints": 1000,
+    "totalMessages": 1000,
+    "totalBytes": 186382,
+    "avgFrameSizeBytes": 186.4,
+    "durationMs": 15059,
+    "messageRatePerSec": 66.4,
+    "bandwidthKBPerSec": 12.09,
+    "bandwidthReductionPercent": 0,
+    "avgRttMs": 1.2,
+    "p95RttMs": 2.5
+  },
+  {
+    "mode": "JSON_BATCH",
+    "totalPoints": 1000,
+    "totalMessages": 125,
+    "totalBytes": 68437,
+    "avgFrameSizeBytes": 547.5,
+    "durationMs": 1927,
+    "messageRatePerSec": 64.9,
+    "bandwidthKBPerSec": 34.68,
+    "bandwidthReductionPercent": 63.3,
+    "avgRttMs": 1.2,
+    "p95RttMs": 2.5
+  },
+  {
+    "mode": "BINARY_BATCH",
+    "totalPoints": 1000,
+    "totalMessages": 130,
+    "totalBytes": 7370,
+    "avgFrameSizeBytes": 56.7,
+    "durationMs": 1935,
+    "messageRatePerSec": 67.2,
+    "bandwidthKBPerSec": 3.72,
+    "bandwidthReductionPercent": 96,
+    "avgRttMs": 1.2,
+    "p95RttMs": 2.5
+  }
+]

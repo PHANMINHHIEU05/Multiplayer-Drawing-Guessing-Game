@@ -9,6 +9,8 @@ import { Room, Player } from '../types/room';
 import { GameState, DrawPoint } from '../types/game';
 import { ChatMessage } from '../types/chat';
 
+import { metricsStore } from '../store/metricsStore';
+
 export function setupMessageHandlers(onResponse?: (response: WSResponse) => void): (response: WSResponse) => void {
   return (response: WSResponse) => {
     switch (response.type) {
@@ -86,6 +88,7 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
         gameStore.clearGame();
         chatStore.clearMessages();
         guessStore.clearGuesses();
+        metricsStore.resetStrokeSequence();
         break;
       }
 
@@ -174,6 +177,7 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
           timestamp: payload.point?.timestamp ?? payload.timestamp,
         };
         gameStore.addDrawPoint(point);
+        metricsStore.recordDrawBatchReceived(1, payload.strokeId, payload.seq);
         break;
       }
 
@@ -190,11 +194,13 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
           timestamp: p.timestamp,
         }));
         gameStore.addDrawPoints(points);
+        metricsStore.recordDrawBatchReceived(points.length, payload.strokeId, payload.seqStart);
         break;
       }
 
       case MessageType.CANVAS_CLEARED: {
         gameStore.clearDrawPoints();
+        metricsStore.resetStrokeSequence();
         break;
       }
 
@@ -216,6 +222,7 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
         // Clear canvas and guess stream when a new round starts
         gameStore.clearDrawPoints();
         guessStore.clearGuesses();
+        metricsStore.resetStrokeSequence();
         break;
       }
 

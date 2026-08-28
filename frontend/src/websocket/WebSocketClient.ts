@@ -1,6 +1,9 @@
 import { WSRequest, WSResponse, MessageHandler } from './messageTypes';
-import { createWSRequest } from './protocol';
+import { createWSRequest, MessageType } from './protocol';
 import { connectionStore } from '../store/connectionStore';
+import { metricsStore } from '../store/metricsStore';
+import { roomStore } from '../store/roomStore';
+import { playerStore } from '../store/playerStore';
 
 interface PendingRequest {
   resolve: (value: WSResponse | PromiseLike<WSResponse>) => void;
@@ -17,12 +20,22 @@ export class WebSocketClient {
   private messageListeners = new Set<MessageHandler>();
   private binaryListeners = new Set<BinaryMessageHandler>();
   private reconnectAttempts = 0;
-  private maxReconnectDelay = 16000;
+  private baseReconnectDelay = 1000;
+  private maxReconnectDelay = 10000;
   private reconnectTimer: any = null;
   private isIntentionallyClosed = false;
 
+  // Heartbeat Telemetry (TV4)
+  private heartbeatIntervalMs = 2000;
+  private heartbeatTimer: any = null;
+  private rateTickTimer: any = null;
+  private lastPingSentAt: number = 0;
+  private missedPongsCount = 0;
+  private maxMissedPongs = 3;
+
   constructor(url?: string) {
     this.url = url || (import.meta as any).env?.VITE_WS_URL || 'ws://localhost:8080/ws';
+    this.startRateTicker();
   }
 
   public connect(): void {
@@ -31,20 +44,37 @@ export class WebSocketClient {
     }
 
     this.isIntentionallyClosed = false;
-    connectionStore.setStatus(this.reconnectAttempts > 0 ? 'RECONNECTING' : 'CONNECTING');
+    const isReconnecting = this.reconnectAttempts > 0;
+    connectionStore.setStatus(isReconnecting ? 'RECONNECTING' : 'CONNECTING');
+    metricsStore.setStatus(isReconnecting ? 'RECONNECTING' : 'CONNECTING');
 
     try {
       this.ws = new WebSocket(this.url);
       this.ws.binaryType = 'arraybuffer';
 
       this.ws.onopen = () => {
-        console.log('[WebSocket] Connected to', this.url);
+        const wasReconnecting = this.reconnectAttempts > 0;
+        console.log('[WebSocket] Connected to', this.url, wasReconnecting ? '(Reconnected)' : '');
         this.reconnectAttempts = 0;
+        this.missedPongsCount = 0;
         connectionStore.setStatus('CONNECTED');
+        metricsStore.setStatus('CONNECTED');
+
+        this.startHeartbeat();
+
+        if (wasReconnecting) {
+          this.restoreStateAfterReconnect();
+        }
       };
 
       this.ws.onmessage = (event) => {
-        this.handleIncomingMessage(event.data);
+        const data = event.data;
+        if (data instanceof ArrayBuffer) {
+          metricsStore.recordRx(data.byteLength);
+        } else if (typeof data === 'string') {
+          metricsStore.recordRx(data.length);
+        }
+        this.handleIncomingMessage(data);
       };
 
       this.ws.onerror = (error) => {
@@ -55,13 +85,16 @@ export class WebSocketClient {
       this.ws.onclose = (event) => {
         console.log('[WebSocket] Disconnected code:', event.code, 'reason:', event.reason);
         this.ws = null;
+        this.stopHeartbeat();
         this.rejectAllPending('WebSocket connection closed');
 
         if (!this.isIntentionallyClosed) {
           connectionStore.setStatus('DISCONNECTED');
+          metricsStore.setStatus('DISCONNECTED');
           this.scheduleReconnect();
         } else {
           connectionStore.setStatus('DISCONNECTED');
+          metricsStore.setStatus('DISCONNECTED');
         }
       };
     } catch (err: any) {
@@ -73,6 +106,7 @@ export class WebSocketClient {
 
   public disconnect(): void {
     this.isIntentionallyClosed = true;
+    this.stopHeartbeat();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -83,6 +117,7 @@ export class WebSocketClient {
     }
     this.rejectAllPending('Client disconnected');
     connectionStore.setStatus('DISCONNECTED');
+    metricsStore.setStatus('DISCONNECTED');
   }
 
   public send<T = any>(type: string, payload: T, timeoutMs: number = 10000): Promise<WSResponse> {
@@ -92,6 +127,7 @@ export class WebSocketClient {
       }
 
       const req: WSRequest<T> = createWSRequest(type, payload);
+      const raw = JSON.stringify(req);
 
       const timer = setTimeout(() => {
         if (this.pendingRequests.has(req.requestId)) {
@@ -103,7 +139,8 @@ export class WebSocketClient {
       this.pendingRequests.set(req.requestId, { resolve, reject, timer });
 
       try {
-        this.ws.send(JSON.stringify(req));
+        metricsStore.recordTx(raw.length);
+        this.ws.send(raw);
       } catch (err) {
         clearTimeout(timer);
         this.pendingRequests.delete(req.requestId);
@@ -117,6 +154,7 @@ export class WebSocketClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
     }
+    metricsStore.recordTx(data.length);
     this.ws.send(data);
   }
 
@@ -125,6 +163,8 @@ export class WebSocketClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
     }
+    const byteLength = 'byteLength' in data ? data.byteLength : (data as ArrayBuffer).byteLength;
+    metricsStore.recordTx(byteLength);
     this.ws.send(data);
   }
 
@@ -152,9 +192,19 @@ export class WebSocketClient {
 
     try {
       const response: WSResponse = JSON.parse(raw);
-      console.log('[WebSocket] Inbound message:', response);
 
-      // Check correlation ID
+      // Heartbeat PONG interceptor (TV4)
+      if (response.type === 'APP_PONG' || response.type === 'PONG') {
+        const clientTimestamp = response.clientTimestamp || response.sentAt || this.lastPingSentAt;
+        const serverTimestamp = response.serverTimestamp;
+        const queueSize = response.queueSize;
+        const gatewayId = response.gatewayId;
+        this.missedPongsCount = 0;
+        metricsStore.recordHeartbeatPong(clientTimestamp, serverTimestamp, queueSize, gatewayId);
+        return;
+      }
+
+      // Correlation ID resolution
       if (response.requestId && this.pendingRequests.has(response.requestId)) {
         const pending = this.pendingRequests.get(response.requestId)!;
         clearTimeout(pending.timer);
@@ -181,18 +231,93 @@ export class WebSocketClient {
     }
   }
 
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+      this.missedPongsCount++;
+      if (this.missedPongsCount > this.maxMissedPongs) {
+        console.warn(`[WebSocket] Heartbeat timeout (${this.missedPongsCount} missed pongs). Reconnecting...`);
+        metricsStore.incrementHeartbeatTimeout();
+        this.ws.close();
+        return;
+      }
+
+      this.lastPingSentAt = Date.now();
+      const pingMsg = JSON.stringify({
+        type: 'APP_PING',
+        timestamp: this.lastPingSentAt,
+      });
+      this.sendRaw(pingMsg);
+    }, this.heartbeatIntervalMs);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  private startRateTicker(): void {
+    if (this.rateTickTimer) return;
+    this.rateTickTimer = setInterval(() => {
+      metricsStore.tickRates();
+    }, 1000);
+  }
+
   private scheduleReconnect(): void {
     if (this.isIntentionallyClosed || this.reconnectTimer) return;
 
     this.reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
+    metricsStore.incrementReconnect();
+
+    // Exponential backoff with ±20% jitter
+    const backoff = Math.min(
+      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+      this.maxReconnectDelay
+    );
+    const jitter = 0.8 + Math.random() * 0.4;
+    const delay = Math.round(backoff * jitter);
+
     console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt #${this.reconnectAttempts})...`);
     connectionStore.setStatus('RECONNECTING');
+    metricsStore.setStatus('RECONNECTING');
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  /** Restore room and game context after reconnecting */
+  private restoreStateAfterReconnect(): void {
+    const { playerId, username } = playerStore.getState();
+    const currentRoom = roomStore.getState().room;
+
+    if (currentRoom && currentRoom.roomId && playerId) {
+      console.log(`[WebSocket] Restoring session in room ${currentRoom.roomId}...`);
+      // Re-join/re-bind room on gateway
+      this.send(MessageType.JOIN_ROOM, {
+        roomId: currentRoom.roomId,
+        playerId,
+        username: username || `Player-${playerId}`,
+      }, 5000)
+        .then(() => {
+          console.log('[WebSocket] Room context restored successfully');
+          // Fetch latest game state if game is active
+          if (currentRoom.status === 'IN_GAME') {
+            return this.send(MessageType.GET_GAME_STATE, {
+              roomId: currentRoom.roomId,
+              playerId,
+            }, 5000);
+          }
+        })
+        .catch((err) => {
+          console.warn('[WebSocket] Failed to restore room/game state:', err);
+        });
+    }
   }
 
   private rejectAllPending(reason: string): void {
