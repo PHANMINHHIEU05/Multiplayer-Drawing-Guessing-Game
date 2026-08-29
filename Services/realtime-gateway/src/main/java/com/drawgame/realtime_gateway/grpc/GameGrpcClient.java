@@ -8,7 +8,8 @@ import com.drawgame.game.grpc.generated.StartGameRequest;
 import com.drawgame.game.grpc.generated.SubmitGuessRequest;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
@@ -17,9 +18,10 @@ import reactor.core.scheduler.Schedulers;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 
-@Slf4j
 @Component
 public class GameGrpcClient {
+
+    private static final Logger log = LoggerFactory.getLogger(GameGrpcClient.class);
 
     @Value("${grpc.client.game-service.host:localhost}")
     private String gameServiceHost;

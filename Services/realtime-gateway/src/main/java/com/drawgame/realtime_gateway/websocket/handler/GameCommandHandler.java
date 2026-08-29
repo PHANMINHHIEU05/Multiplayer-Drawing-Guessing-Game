@@ -3,6 +3,7 @@ package com.drawgame.realtime_gateway.websocket.handler;
 import com.drawgame.chat.grpc.generated.ChatMessageResponse;
 import com.drawgame.game.grpc.generated.GameStateResponse;
 import com.drawgame.game.grpc.generated.PlayerScoreMessage;
+import com.drawgame.realtime_gateway.connection.BoundedOutboundQueue;
 import com.drawgame.realtime_gateway.connection.ConnectionManager;
 import com.drawgame.realtime_gateway.drawing.routing.DrawingRoomState;
 import com.drawgame.realtime_gateway.drawing.routing.DrawingRoomStateCache;
@@ -15,8 +16,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -25,24 +26,58 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
 @Component
-@RequiredArgsConstructor
 public class GameCommandHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GameCommandHandler.class);
 
     private final GameGrpcClient gameGrpcClient;
     private final RoomGrpcClient roomGrpcClient;
     private final ChatGrpcClient chatGrpcClient;
     private final ConnectionManager connectionManager;
     private final DrawingRoomStateCache drawingRoomStateCache;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+    private final String gatewayInstanceId;
+
+    public GameCommandHandler(
+            GameGrpcClient gameGrpcClient,
+            RoomGrpcClient roomGrpcClient,
+            ChatGrpcClient chatGrpcClient,
+            ConnectionManager connectionManager,
+            DrawingRoomStateCache drawingRoomStateCache
+    ) {
+        this(gameGrpcClient, roomGrpcClient, chatGrpcClient, connectionManager, drawingRoomStateCache, "gateway-default");
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public GameCommandHandler(
+            GameGrpcClient gameGrpcClient,
+            RoomGrpcClient roomGrpcClient,
+            ChatGrpcClient chatGrpcClient,
+            ConnectionManager connectionManager,
+            DrawingRoomStateCache drawingRoomStateCache,
+            @org.springframework.beans.factory.annotation.Value("${gateway.instance-id:gateway-1}") String gatewayInstanceId
+    ) {
+        this.gameGrpcClient = gameGrpcClient;
+        this.roomGrpcClient = roomGrpcClient;
+        this.chatGrpcClient = chatGrpcClient;
+        this.connectionManager = connectionManager;
+        this.drawingRoomStateCache = drawingRoomStateCache;
+        this.objectMapper = new ObjectMapper();
+        this.gatewayInstanceId = gatewayInstanceId;
+    }
 
     public Mono<String> handleCommand(String sessionId, JsonNode json) {
         String type = json.has("type") ? json.get("type").asText() : "";
         String requestId = extractRequestId(json);
-        log.info("Handling command type '{}' (reqId: {}) from session {}", type, requestId, sessionId);
+        if ("PING".equalsIgnoreCase(type) || "APP_PING".equalsIgnoreCase(type)) {
+            log.trace("Handling heartbeat '{}' from session {}", type, sessionId);
+        } else {
+            log.info("Handling command type '{}' (reqId: {}) from session {}", type, requestId, sessionId);
+        }
 
         return switch (type) {
+            case "PING", "APP_PING" -> handlePing(sessionId, json, requestId);
             case "CREATE_ROOM" -> handleCreateRoom(sessionId, json, requestId);
             case "JOIN_ROOM" -> handleJoinRoom(sessionId, json, requestId);
             case "GET_ROOM" -> handleGetRoom(sessionId, json, requestId);
@@ -59,6 +94,40 @@ public class GameCommandHandler {
             case "GAME_FINISHED" -> handleGameFinished(sessionId, json, requestId);
             default -> Mono.just(createErrorJson(requestId, "UNKNOWN_COMMAND", "Unknown command type: " + type));
         };
+    }
+
+    private Mono<String> handlePing(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        long clientTimestamp = 0L;
+        if (node.has("timestamp")) {
+            clientTimestamp = node.get("timestamp").asLong();
+        } else if (node.has("sentAt")) {
+            clientTimestamp = node.get("sentAt").asLong();
+        } else if (node.has("clientTimestamp")) {
+            clientTimestamp = node.get("clientTimestamp").asLong();
+        } else {
+            clientTimestamp = System.currentTimeMillis();
+        }
+
+        if (connectionManager.getGatewayMetrics() != null) {
+            connectionManager.getGatewayMetrics().incrementHeartbeatPingReceived();
+            connectionManager.getGatewayMetrics().incrementHeartbeatPongSent();
+        }
+
+        BoundedOutboundQueue queue = connectionManager.getQueueForSession(sessionId);
+        int queueSize = (queue != null) ? queue.getCurrentQueueSize() : 0;
+
+        Map<String, Object> map = new HashMap<>();
+        map.put("type", "APP_PONG");
+        if (requestId != null && !requestId.isBlank()) {
+            map.put("requestId", requestId);
+        }
+        map.put("clientTimestamp", clientTimestamp);
+        map.put("serverTimestamp", System.currentTimeMillis());
+        map.put("queueSize", queueSize);
+        map.put("gatewayId", gatewayInstanceId);
+
+        return Mono.just(toJson(map));
     }
 
     private Mono<String> handleCreateRoom(String sessionId, JsonNode json, String requestId) {

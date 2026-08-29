@@ -5,7 +5,8 @@ import com.drawgame.realtime_gateway.drawing.protocol.BinaryDrawingDecoder;
 import com.drawgame.realtime_gateway.drawing.protocol.DrawingMessage;
 import com.drawgame.realtime_gateway.drawing.protocol.DrawingOpcode;
 import com.drawgame.realtime_gateway.drawing.protocol.DrawingProtocolException;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.stereotype.Component;
@@ -13,9 +14,10 @@ import org.springframework.web.reactive.socket.WebSocketMessage;
 import org.springframework.web.reactive.socket.WebSocketSession;
 import reactor.core.publisher.Mono;
 
-@Slf4j
 @Component
 public class DrawingWebSocketTransport {
+
+    private static final Logger log = LoggerFactory.getLogger(DrawingWebSocketTransport.class);
 
     private final BinaryDrawingDecoder decoder;
     private final DrawingMessageHandler messageHandler;

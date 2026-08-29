@@ -1,4 +1,31 @@
 
+è
+
+chat.protochat"Ä
+SendMessageRequest
+room_id (	RroomId
+	player_id (	RplayerId
+username (	Rusername
+content (	Rcontent"f
+GetRecentMessagesRequest
+room_id (	RroomId
+	player_id (	RplayerId
+limit (Rlimit"„
+ChatMessageResponse
+
+message_id (	R	messageId
+room_id (	RroomId
+	player_id (	RplayerId
+username (	Rusername
+content (	Rcontent
+type (	Rtype-
+created_at_epoch_ms (RcreatedAtEpochMs"R
+GetRecentMessagesResponse5
+messages (2.chat.ChatMessageResponseRmessages2ß
+ChatServiceB
+SendMessage.chat.SendMessageRequest.chat.ChatMessageResponseT
+GetRecentMessages.chat.GetRecentMessagesRequest.chat.GetRecentMessagesResponseB$
+ com.drawgame.chat.grpc.generatedPbproto3
 °	
 
 game.protogame"[
@@ -92,30 +119,3 @@ CreateRoom.room.CreateRoomRequest.room.RoomResponse3
 
 FinishGame.room.FinishGameRequest.room.RoomResponseB$
  com.drawgame.room.grpc.generatedPbproto3
-è
-
-chat.protochat"Ä
-SendMessageRequest
-room_id (	RroomId
-	player_id (	RplayerId
-username (	Rusername
-content (	Rcontent"f
-GetRecentMessagesRequest
-room_id (	RroomId
-	player_id (	RplayerId
-limit (Rlimit"„
-ChatMessageResponse
-
-message_id (	R	messageId
-room_id (	RroomId
-	player_id (	RplayerId
-username (	Rusername
-content (	Rcontent
-type (	Rtype-
-created_at_epoch_ms (RcreatedAtEpochMs"R
-GetRecentMessagesResponse5
-messages (2.chat.ChatMessageResponseRmessages2ß
-ChatServiceB
-SendMessage.chat.SendMessageRequest.chat.ChatMessageResponseT
-GetRecentMessages.chat.GetRecentMessagesRequest.chat.GetRecentMessagesResponseB$
- com.drawgame.chat.grpc.generatedPbproto3

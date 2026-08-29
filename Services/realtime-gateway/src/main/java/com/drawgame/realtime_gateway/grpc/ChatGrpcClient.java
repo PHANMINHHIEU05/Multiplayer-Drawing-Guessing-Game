@@ -9,15 +9,17 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-@Slf4j
 @Component
 public class ChatGrpcClient {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatGrpcClient.class);
 
     @Value("${grpc.client.chat-service.host:localhost}")
     private String chatServiceHost;

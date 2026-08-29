@@ -12,7 +12,14 @@ import { ConnectionStatus } from '../components/ConnectionStatus';
 import { wsClient } from '../websocket/WebSocketClient';
 import { MessageType, createWSRequest } from '../websocket/protocol';
 import { DrawPoint } from '../types/game';
-import { decodeDrawingFrame } from '../features/drawing/binaryCodec';
+import { metricsStore } from '../store/metricsStore';
+import {
+  encodeDrawStart,
+  encodeDrawBatch,
+  encodeClearCanvas,
+  generateStrokeId,
+  decodeDrawingFrame
+} from '../features/drawing/binaryCodec';
 
 export const GamePage: React.FC = () => {
   const gameState = useGameStore((s) => s.gameState);
@@ -26,8 +33,13 @@ export const GamePage: React.FC = () => {
   const [activeTool, setActiveTool] = useState<'pen' | 'eraser' | 'fill' | 'line' | 'circle' | 'rect'>('pen');
   const canvasHandleRef = useRef<DrawingCanvasHandle | null>(null);
 
+  // Stroke Tracking for Binary Mode
+  const currentStrokeIdRef = useRef<string>(generateStrokeId());
+  const seqCounterRef = useRef<number>(0);
+
   const roomId = room?.roomId || gameState?.roomId || '';
   const isDrawer = gameState?.drawerId === playerId;
+  const currentRound = gameState?.currentRound || 1;
 
   useEffect(() => {
     // Poll game state periodically if needed to keep state sync when game is active
@@ -50,6 +62,7 @@ export const GamePage: React.FC = () => {
 
       switch (decoded.type) {
         case 'DRAW_START': {
+          metricsStore.recordDrawBatchReceived(1, decoded.data.strokeId, 0);
           gameStore.addDrawPoint({
             x: decoded.data.x,
             y: decoded.data.y,
@@ -60,6 +73,11 @@ export const GamePage: React.FC = () => {
           break;
         }
         case 'DRAW_BATCH': {
+          metricsStore.recordDrawBatchReceived(
+            decoded.data.points.length,
+            decoded.data.strokeId,
+            decoded.data.seqStart
+          );
           const batchPoints: DrawPoint[] = decoded.data.points.map((p) => ({
             x: p.x,
             y: p.y,
@@ -70,7 +88,12 @@ export const GamePage: React.FC = () => {
           gameStore.addDrawPoints(batchPoints);
           break;
         }
+        case 'DRAW_END': {
+          metricsStore.resetStrokeSequence(decoded.data.strokeId);
+          break;
+        }
         case 'CLEAR_CANVAS': {
+          metricsStore.resetStrokeSequence();
           gameStore.clearDrawPoints();
           break;
         }
@@ -82,55 +105,108 @@ export const GamePage: React.FC = () => {
 
   // ─── Drawing Callbacks ─────────────────────────────────────────────
 
-  /** Send a batch of draw points to the server via WebSocket (~16ms batching) */
+  /** Send a batch of draw points to the server via WebSocket according to active mode */
   const handleDrawBatch = useCallback((points: DrawPoint[]) => {
     if (!roomId || points.length === 0) return;
 
+    const mode = metricsStore.getState().drawingMode;
+
+    if (mode === 'BINARY_BATCH') {
+      const hasNewPath = points.some((p) => p.isNewPath);
+      if (hasNewPath) {
+        currentStrokeIdRef.current = generateStrokeId();
+        seqCounterRef.current = 0;
+
+        const firstPt = points[0];
+        const startBuffer = encodeDrawStart({
+          round: currentRound,
+          strokeId: currentStrokeIdRef.current,
+          x: firstPt.x,
+          y: firstPt.y,
+          colorHex: firstPt.color || brushColor,
+          width: firstPt.size || brushSize,
+        });
+        wsClient.sendBinary(startBuffer);
+        metricsStore.recordDrawBatchSent(1);
+
+        if (points.length > 1) {
+          const restPoints = points.slice(1);
+          const batchBuffer = encodeDrawBatch({
+            round: currentRound,
+            strokeId: currentStrokeIdRef.current,
+            seqStart: seqCounterRef.current,
+            points: restPoints.map((p) => ({ x: p.x, y: p.y })),
+          });
+          seqCounterRef.current += restPoints.length;
+          wsClient.sendBinary(batchBuffer);
+          metricsStore.recordDrawBatchSent(restPoints.length);
+        }
+      } else {
+        const batchBuffer = encodeDrawBatch({
+          round: currentRound,
+          strokeId: currentStrokeIdRef.current,
+          seqStart: seqCounterRef.current,
+          points: points.map((p) => ({ x: p.x, y: p.y })),
+        });
+        seqCounterRef.current += points.length;
+        wsClient.sendBinary(batchBuffer);
+        metricsStore.recordDrawBatchSent(points.length);
+      }
+      return;
+    }
+
+    if (mode === 'JSON_POINT') {
+      for (const pt of points) {
+        const req = createWSRequest(MessageType.DRAW_POINT, {
+          roomId,
+          drawerId: playerId,
+          point: pt,
+        });
+        wsClient.sendRaw(JSON.stringify(req));
+        metricsStore.recordDrawBatchSent(1);
+      }
+      return;
+    }
+
+    // Default: JSON_BATCH
     if (points.length === 1) {
-      // Single point (e.g. initial touch/click point)
       const req = createWSRequest(MessageType.DRAW_POINT, {
         roomId,
         drawerId: playerId,
         point: points[0],
       });
-      try {
-        wsClient.sendRaw(JSON.stringify(req));
-      } catch (err) {
-        console.warn('[Drawing] Failed to send draw point:', err);
-      }
-      return;
-    }
-
-    // Batched points (60 FPS aggregation)
-    const req = createWSRequest(MessageType.DRAW_BATCH, {
-      roomId,
-      drawerId: playerId,
-      points,
-    });
-
-    try {
       wsClient.sendRaw(JSON.stringify(req));
-    } catch (err) {
-      console.warn('[Drawing] Failed to send draw batch:', err);
+      metricsStore.recordDrawBatchSent(1);
+    } else {
+      const req = createWSRequest(MessageType.DRAW_BATCH, {
+        roomId,
+        drawerId: playerId,
+        points,
+      });
+      wsClient.sendRaw(JSON.stringify(req));
+      metricsStore.recordDrawBatchSent(points.length);
     }
-  }, [roomId, playerId]);
+  }, [roomId, playerId, currentRound, brushColor, brushSize]);
 
   /** Send clear canvas command to the server */
   const handleClearCanvas = useCallback(() => {
     if (!roomId) return;
 
-    const req = createWSRequest(MessageType.CLEAR_CANVAS, {
-      roomId,
-      drawerId: playerId,
-      timestamp: Date.now(),
-    });
-
-    try {
+    const mode = metricsStore.getState().drawingMode;
+    if (mode === 'BINARY_BATCH') {
+      const buffer = encodeClearCanvas({ round: currentRound });
+      wsClient.sendBinary(buffer);
+      metricsStore.resetStrokeSequence();
+    } else {
+      const req = createWSRequest(MessageType.CLEAR_CANVAS, {
+        roomId,
+        drawerId: playerId,
+        timestamp: Date.now(),
+      });
       wsClient.sendRaw(JSON.stringify(req));
-    } catch (err) {
-      console.warn('[Drawing] Failed to send clear canvas:', err);
+      metricsStore.resetStrokeSequence();
     }
-  }, [roomId, playerId]);
+  }, [roomId, playerId, currentRound]);
 
   if (!gameState) {
     return (

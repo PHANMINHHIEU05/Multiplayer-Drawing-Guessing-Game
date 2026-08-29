@@ -1,15 +1,17 @@
 package com.drawgame.realtime_gateway.drawing.transport;
 
 import com.drawgame.realtime_gateway.drawing.protocol.DrawingMessage;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
-@Slf4j
 @Component
 @ConditionalOnMissingBean(name = "customDrawingMessageHandler")
 public class DefaultDrawingMessageHandler implements DrawingMessageHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultDrawingMessageHandler.class);
 
     @Override
     public Mono<Void> handle(DrawingSessionContext session, DrawingMessage message) {

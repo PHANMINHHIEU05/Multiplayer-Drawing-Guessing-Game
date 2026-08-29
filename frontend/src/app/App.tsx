@@ -5,6 +5,7 @@ import { HomePage } from '../pages/HomePage';
 import { LobbyPage } from '../pages/LobbyPage';
 import { GamePage } from '../pages/GamePage';
 import { ErrorMessage } from '../components/ErrorMessage';
+import { NetworkInspector } from '../components/NetworkInspector';
 
 export const AppContent: React.FC = () => {
   const { room, isInRoom } = useRoomStore((s) => s);
@@ -25,6 +26,7 @@ export const App: React.FC = () => {
     <WebSocketProvider>
       <AppContent />
       <ErrorMessage />
+      <NetworkInspector />
     </WebSocketProvider>
   );
 };
