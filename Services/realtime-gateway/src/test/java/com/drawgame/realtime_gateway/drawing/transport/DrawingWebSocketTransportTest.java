@@ -10,10 +10,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import org.springframework.core.io.buffer.NettyDataBuffer;
+import org.springframework.core.io.buffer.NettyDataBufferFactory;
 import org.springframework.web.reactive.socket.WebSocketMessage;
 import org.springframework.web.reactive.socket.WebSocketSession;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.Unpooled;
 
 import java.util.List;
 import java.util.UUID;
@@ -38,6 +43,24 @@ class DrawingWebSocketTransportTest {
     private BinaryDrawingEncoder encoder;
     private DrawingWebSocketTransport transport;
     private final DefaultDataBufferFactory bufferFactory = new DefaultDataBufferFactory();
+
+    @Test
+    void handleBinaryMessage_DoesNotReleaseInboundNettyBuffer() {
+        ClearCanvasMessage originalMsg = new ClearCanvasMessage((byte) 1, 1);
+        byte[] payloadBytes = encoder.encode(originalMsg);
+        ByteBuf byteBuf = Unpooled.wrappedBuffer(payloadBytes);
+        NettyDataBuffer dataBuffer = new NettyDataBufferFactory(ByteBufAllocator.DEFAULT).wrap(byteBuf);
+        WebSocketMessage wsMessage = new WebSocketMessage(WebSocketMessage.Type.BINARY, dataBuffer);
+
+        when(messageHandler.handle(any(), any())).thenReturn(Mono.empty());
+
+        StepVerifier.create(transport.handleBinaryMessage(session, wsMessage)).verifyComplete();
+
+        // The WebSocket receive pipeline releases the native frame. The transport must
+        // leave the buffer alive until that pipeline performs its single release.
+        assertEquals(1, byteBuf.refCnt());
+        byteBuf.release();
+    }
 
     @BeforeEach
     void setUp() {

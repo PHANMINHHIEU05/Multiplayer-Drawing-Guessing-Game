@@ -8,7 +8,6 @@ import com.drawgame.realtime_gateway.drawing.protocol.DrawingProtocolException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.socket.WebSocketMessage;
 import org.springframework.web.reactive.socket.WebSocketSession;
@@ -37,12 +36,11 @@ public class DrawingWebSocketTransport {
         String sessionId = session.getId();
         DataBuffer dataBuffer = webSocketMessage.getPayload();
         byte[] bytes;
-        try {
-            bytes = new byte[dataBuffer.readableByteCount()];
-            dataBuffer.read(bytes);
-        } finally {
-            DataBufferUtils.release(dataBuffer);
-        }
+        // WebFlux/Netty owns the inbound WebSocketMessage lifecycle and releases its
+        // native frame after this receive callback. Copy the payload synchronously, but
+        // do not release it here or the frame will be released twice.
+        bytes = new byte[dataBuffer.readableByteCount()];
+        dataBuffer.read(bytes);
 
         DrawingMessage drawingMessage;
         try {

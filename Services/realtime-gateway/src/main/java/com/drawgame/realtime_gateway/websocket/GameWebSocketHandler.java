@@ -40,8 +40,11 @@ public class GameWebSocketHandler implements WebSocketHandler {
         String sessionId = session.getId();
         Flux<OutboundFrame> outboundMessages = connectionManager.register(sessionId);
 
+        // WebSocket frames are ordered, and drawing depends on DRAW_START arriving before
+        // its DRAW_BATCH/DRAW_END frames. Keep one session's inbound frames ordered instead
+        // of allowing concurrent flatMap subscriptions to reorder broadcasts under load.
         Mono<Void> inbound = session.receive()
-                .flatMap(message -> {
+                .concatMap(message -> {
                     WebSocketMessage.Type type = message.getType();
                     if (type == WebSocketMessage.Type.TEXT) {
                         String rawMessage = message.getPayloadAsText();

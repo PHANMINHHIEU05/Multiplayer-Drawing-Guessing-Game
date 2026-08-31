@@ -95,4 +95,22 @@ class GameWebSocketHandlerDispatchTest {
         verifyNoInteractions(commandHandler);
         verifyNoInteractions(drawingTransport);
     }
+
+    @Test
+    void handle_BinaryMessages_PreservesInboundOrder() {
+        DataBuffer firstBuffer = bufferFactory.wrap(new byte[]{0x01, 0x04, 0x00, 0x01});
+        DataBuffer secondBuffer = bufferFactory.wrap(new byte[]{0x01, 0x04, 0x00, 0x01});
+        WebSocketMessage firstMessage = new WebSocketMessage(WebSocketMessage.Type.BINARY, firstBuffer);
+        WebSocketMessage secondMessage = new WebSocketMessage(WebSocketMessage.Type.BINARY, secondBuffer);
+
+        when(session.receive()).thenReturn(Flux.just(firstMessage, secondMessage));
+        when(drawingTransport.handleBinaryMessage(eq(session), any(WebSocketMessage.class)))
+                .thenReturn(Mono.empty());
+
+        StepVerifier.create(handler.handle(session)).verifyComplete();
+
+        var inOrder = inOrder(drawingTransport);
+        inOrder.verify(drawingTransport).handleBinaryMessage(eq(session), same(firstMessage));
+        inOrder.verify(drawingTransport).handleBinaryMessage(eq(session), same(secondMessage));
+    }
 }

@@ -5,6 +5,8 @@
 > **Phiên bản:** `v1.2.0`  
 > **Trạng thái:** `Active / Standardized`  
 
+> **Recovery note:** Tài liệu này là source of truth cho live drawing wire format. Reconnect, current-round replay, Redis Stream keys, cleanup và recovery/live ordering được chốt riêng tại [`reconnect-canvas-recovery.md`](reconnect-canvas-recovery.md). Task preparation đó chưa có nghĩa canvas recovery đã được implement.
+
 ---
 
 ## 📌 1. Tổng quan (Overview)
@@ -12,7 +14,7 @@
 **Drawing Protocol** quy định định dạng dữ liệu, cơ chế đóng gói và luồng giao tiếp WebSocket giữa Client (React Canvas) và Backend (Realtime Gateway, Redis Pub/Sub) nhằm đảm bảo:
 - **Độ trễ thấp (Low Latency):** Đồng bộ nét vẽ tức thì với tốc độ 60 FPS (~16ms/frame).
 - **Độ phân giải độc lập (Resolution Independence):** Chuẩn hóa tọa độ theo tỉ lệ phần trăm ($0.0 \to 1.0$) để hiển thị chuẩn xác trên mọi kích thước màn hình (Mobile, Tablet, Desktop).
-- **Tính toàn vẹn (State Consistency):** Cho phép người chơi kết nối lại (reconnect) hoặc người theo dõi (guesser) nhận đủ lịch sử nét vẽ mà không bị đứt đoạn.
+- **Tính toàn vẹn (State Consistency):** Định nghĩa dữ liệu cần thiết cho live drawing; current-round recovery khi reconnect được quy định và triển khai theo tài liệu contract riêng.
 
 ---
 
@@ -29,7 +31,7 @@ sequenceDiagram
     Drawer->>GW: WS Payload: DRAW_EVENT (x, y, color, size, isNewPath)
     GW->>GW: Kiểm tra vai trò (Is active drawer?)
     GW->>Redis: Publish to room:drawing:{roomId}
-    GW->>GW: Cache stroke history (Redis List / Memory Buffer)
+    GW->>GW: (Phase 2) Record accepted current-round event in Redis Stream
     Redis-->>GW: Broadcast to all room subscribers
     GW-->>Guesser: WS Broadcast: DRAW_EVENT
     Guesser->>Guesser: Render nét vẽ lên HTML5 Canvas
@@ -131,22 +133,25 @@ Gửi khi người vẽ bấm nút **Clear Canvas** để làm sạch toàn bộ
 
 ### 4.3. Sự kiện Đồng Bộ Lịch Sử Vẽ (`SYNC_CANVAS_STATE`)
 
-Tự động phát khi người chơi mới tham gia giữa lượt vẽ hoặc khi reconnect.
+`SYNC_CANVAS_STATE` là response recovery được tái sử dụng cho reconnect/current-round replay theo contract Phase 2. Hiện code chỉ có frontend message type và handler; backend chưa có recovery history store tự động phát response này.
 
 #### 🔹 Broadcast / Response Payload:
 ```json
 {
   "type": "SYNC_CANVAS_STATE",
+  "requestId": "req-canvas-001",
   "payload": {
     "roomId": "room-8888",
-    "points": [
-      { "x": 0.1, "y": 0.1, "color": "#000000", "size": 4, "isNewPath": true },
-      { "x": 0.12, "y": 0.15, "color": "#000000", "size": 4, "isNewPath": false },
-      { "x": 0.15, "y": 0.2, "color": "#000000", "size": 4, "isNewPath": false }
-    ]
+    "round": 2,
+    "mode": "EVENT_REPLAY",
+    "historyComplete": true,
+    "lastStreamId": "1735600000250-0",
+    "events": []
   }
 }
 ```
+
+Request command `GET_CANVAS_STATE` and the exact event schema are defined in [`reconnect-canvas-recovery.md`](reconnect-canvas-recovery.md). Recovery is JSON application data; the existing binary drawing frame layout is unchanged.
 
 ---
 
@@ -168,9 +173,9 @@ Tự động phát khi người chơi mới tham gia giữa lượt vẽ hoặc 
 ## 🔒 6. Bảo Mật & Phân Quyền (Security & Validation)
 
 1. **Drawer Verification (Xác thực quyền vẽ):**
-   - Realtime Gateway sẽ từ chối hoặc hủy bỏ mọi gói tin `DRAW_POINT` nếu `senderId` không khớp với `currentDrawerId` trong trạng thái lượt chơi (`GameState`).
+   - Binary drawing path hiện đã có Gateway authorization dựa trên session-bound room/player, current drawer và round. JSON drawing handlers hiện tại vẫn chưa đi qua boundary này; Phase 2 phải hợp nhất hai path trước khi coi recovery là compliant.
 2. **Rate Limiting:**
-   - Mỗi Client bị giới hạn tối đa `100 WebSocket messages/sec`. Gói tin vượt ngưỡng sẽ bị drop tự động để phòng chống tấn công DoS/Spam.
+   - Rate limit là reliability/security requirement cần được triển khai và cấu hình; không coi con số `100 WebSocket messages/sec` trong tài liệu cũ là runtime behavior đã được xác minh.
 
 ---
 

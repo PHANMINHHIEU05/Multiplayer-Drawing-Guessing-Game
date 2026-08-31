@@ -3,6 +3,8 @@ package com.drawgame.realtime_gateway.websocket.handler;
 import com.drawgame.chat.grpc.generated.ChatMessageResponse;
 import com.drawgame.chat.grpc.generated.GetRecentMessagesResponse;
 import com.drawgame.game.grpc.generated.GuessResponse;
+import com.drawgame.room.grpc.generated.PlayerMessage;
+import com.drawgame.room.grpc.generated.RoomResponse;
 import com.drawgame.realtime_gateway.connection.ConnectionManager;
 import com.drawgame.realtime_gateway.drawing.routing.DrawingRoomStateCache;
 import com.drawgame.realtime_gateway.grpc.ChatGrpcClient;
@@ -275,5 +277,72 @@ class GameCommandHandlerTest {
         verify(drawingRoomStateCache).remove("room-1");
         verify(connectionManager).broadcastToRoom(eq("room-1"), contains("GAME_FINISHED"));
     }
-}
 
+    @Test
+    void handleResumeSession_PlayingRoom_BindsSessionWithoutJoining() throws Exception {
+        String jsonStr = """
+            {
+                "type": "RESUME_SESSION",
+                "requestId": "req-resume",
+                "payload": {
+                    "roomId": "room-1",
+                    "playerId": "player-1"
+                }
+            }
+            """;
+        JsonNode json = objectMapper.readTree(jsonStr);
+
+        RoomResponse room = RoomResponse.newBuilder()
+                .setRoomId("room-1")
+                .setStatus("PLAYING")
+                .addPlayers(PlayerMessage.newBuilder()
+                        .setPlayerId("player-1")
+                        .setUsername("Minh")
+                        .build())
+                .build();
+
+        when(roomGrpcClient.getRoom("room-1")).thenReturn(Mono.just(room));
+
+        StepVerifier.create(handler.handleCommand("new-session", json))
+                .assertNext(res -> {
+                    assertTrue(res.contains("SESSION_RESUMED"));
+                    assertTrue(res.contains("PLAYING"));
+                    assertTrue(res.contains("req-resume"));
+                })
+                .verifyComplete();
+
+        verify(connectionManager).bindSession("new-session", "room-1", "player-1");
+        verify(roomGrpcClient, never()).joinRoom(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void handleResumeSession_NonMember_DoesNotBindSession() throws Exception {
+        String jsonStr = """
+            {
+                "type": "RESUME_SESSION",
+                "requestId": "req-resume",
+                "payload": {
+                    "roomId": "room-1",
+                    "playerId": "player-2"
+                }
+            }
+            """;
+        JsonNode json = objectMapper.readTree(jsonStr);
+
+        RoomResponse room = RoomResponse.newBuilder()
+                .setRoomId("room-1")
+                .setStatus("PLAYING")
+                .addPlayers(PlayerMessage.newBuilder()
+                        .setPlayerId("player-1")
+                        .build())
+                .build();
+
+        when(roomGrpcClient.getRoom("room-1")).thenReturn(Mono.just(room));
+
+        StepVerifier.create(handler.handleCommand("new-session", json))
+                .assertNext(res -> assertTrue(res.contains("PLAYER_NOT_IN_ROOM")))
+                .verifyComplete();
+
+        verify(connectionManager, never()).bindSession(anyString(), anyString(), anyString());
+    }
+}

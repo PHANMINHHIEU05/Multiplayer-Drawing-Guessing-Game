@@ -291,28 +291,32 @@ export class WebSocketClient {
     }, delay);
   }
 
-  /** Restore room and game context after reconnecting */
+  /** Re-bind the new WebSocket session and refresh room/game context after reconnecting. */
   private restoreStateAfterReconnect(): void {
-    const { playerId, username } = playerStore.getState();
+    const { playerId } = playerStore.getState();
     const currentRoom = roomStore.getState().room;
 
     if (currentRoom && currentRoom.roomId && playerId) {
       console.log(`[WebSocket] Restoring session in room ${currentRoom.roomId}...`);
-      // Re-join/re-bind room on gateway
-      this.send(MessageType.JOIN_ROOM, {
+      // Re-bind the new WebSocket session without mutating room membership.
+      this.send(MessageType.RESUME_SESSION, {
         roomId: currentRoom.roomId,
         playerId,
-        username: username || `Player-${playerId}`,
       }, 5000)
-        .then(() => {
-          console.log('[WebSocket] Room context restored successfully');
-          // Fetch latest game state if game is active
-          if (currentRoom.status === 'IN_GAME') {
-            return this.send(MessageType.GET_GAME_STATE, {
-              roomId: currentRoom.roomId,
-              playerId,
-            }, 5000);
-          }
+        .then((resumeResponse) => {
+          console.log('[WebSocket] Session resumed successfully');
+          return this.send(MessageType.GET_ROOM, {}, 5000)
+            .then((roomResponse) => {
+              const resumedStatus = resumeResponse.payload?.roomStatus;
+              const roomStatus = roomResponse.status || resumedStatus;
+
+              // Room Service uses PLAYING; the frontend may still have the legacy IN_GAME value.
+              if (roomStatus === 'PLAYING' || roomStatus === 'IN_GAME') {
+                return this.send(MessageType.GET_GAME_STATE, {}, 5000);
+              }
+
+              return roomResponse;
+            });
         })
         .catch((err) => {
           console.warn('[WebSocket] Failed to restore room/game state:', err);

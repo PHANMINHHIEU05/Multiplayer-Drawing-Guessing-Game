@@ -80,6 +80,7 @@ public class GameCommandHandler {
             case "PING", "APP_PING" -> handlePing(sessionId, json, requestId);
             case "CREATE_ROOM" -> handleCreateRoom(sessionId, json, requestId);
             case "JOIN_ROOM" -> handleJoinRoom(sessionId, json, requestId);
+            case "RESUME_SESSION" -> handleResumeSession(sessionId, json, requestId);
             case "GET_ROOM" -> handleGetRoom(sessionId, json, requestId);
             case "LEAVE_ROOM" -> handleLeaveRoom(sessionId, json, requestId);
             case "START_GAME" -> handleStartGame(sessionId, json, requestId);
@@ -164,6 +165,59 @@ public class GameCommandHandler {
                     return responseJson;
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "ROOM_JOIN_FAILED", e.getMessage())));
+    }
+
+    /**
+     * Re-bind a new WebSocket session to an existing Room Service membership.
+     * This must not call JOIN_ROOM: reconnecting is not a new room membership.
+     */
+    private Mono<String> handleResumeSession(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        String roomId = extractString(node, "roomId", "");
+        String playerId = extractString(node, "playerId", "");
+
+        if (roomId.isBlank() || playerId.isBlank()) {
+            return Mono.just(createErrorJson(
+                    requestId,
+                    "INVALID_SESSION",
+                    "roomId and playerId are required to resume a session"
+            ));
+        }
+
+        return roomGrpcClient.getRoom(roomId)
+                .map(room -> {
+                    boolean isMember = room.getPlayersList().stream()
+                            .map(PlayerMessage::getPlayerId)
+                            .anyMatch(playerId::equals);
+
+                    if (!isMember) {
+                        return createErrorJson(
+                                requestId,
+                                "PLAYER_NOT_IN_ROOM",
+                                "Player is not a member of room: " + roomId
+                        );
+                    }
+
+                    connectionManager.bindSession(sessionId, roomId, playerId);
+
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("playerId", playerId);
+                    payload.put("roomId", roomId);
+                    payload.put("roomStatus", room.getStatus());
+
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("type", "SESSION_RESUMED");
+                    if (requestId != null && !requestId.isBlank()) {
+                        response.put("requestId", requestId);
+                    }
+                    response.put("payload", payload);
+                    return toJson(response);
+                })
+                .onErrorResume(e -> Mono.just(createErrorJson(
+                        requestId,
+                        mapResumeErrorCode(e),
+                        e.getMessage() != null ? e.getMessage() : "Unable to resume session"
+                )));
     }
 
     private Mono<String> handleGetRoom(String sessionId, JsonNode json, String requestId) {
@@ -519,6 +573,17 @@ public class GameCommandHandler {
         return "INTERNAL_ERROR";
     }
 
+    private String mapResumeErrorCode(Throwable e) {
+        if (e instanceof StatusRuntimeException sre) {
+            return switch (sre.getStatus().getCode()) {
+                case NOT_FOUND -> "ROOM_NOT_FOUND";
+                case UNAVAILABLE, DEADLINE_EXCEEDED -> "RESUME_RETRYABLE";
+                default -> "INVALID_SESSION";
+            };
+        }
+        return "RESUME_RETRYABLE";
+    }
+
     private String toJson(Object obj) {
         try {
             return objectMapper.writeValueAsString(obj);
@@ -580,5 +645,4 @@ public class GameCommandHandler {
         return Mono.just(toJson(response));
     }
 }
-
 
