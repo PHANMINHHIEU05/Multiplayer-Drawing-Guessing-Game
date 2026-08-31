@@ -40,7 +40,7 @@ The current fix implements the minimal `RESUME_SESSION` bind path. This task doe
 | Drawing binary path | `DrawingWebSocketTransport` decodes to `DrawingMessage`; `DrawingAuthorizationService` checks bound room/player, cached playing state, current drawer, and round. `DrawingMessageRouter` broadcasts locally and publishes to Redis. | This is the intended authorization boundary and must also own recovery recording. |
 | Drawing JSON path | `GameCommandHandler.handleDrawPoint/handleDrawBatch/handleClearCanvas` directly broadcasts using payload `roomId`/`drawerId`; it does not use the binary authorization router, does not record history, and does not validate round. | This is an implementation gap. TV3 must not treat this path as compliant until it is routed through the same authorization and recovery boundary. |
 | Drawing state cache | `DrawingRoomStateCache` is local memory only. It is updated on `GAME_STARTED` and `GET_GAME_STATE` when status is `PLAYING`; there is no push handling for round transitions. | It is a fast-path projection, not authoritative state or shared recovery storage. A cache miss must be repaired from Game Service. |
-| Redis drawing | `DrawingRedisPublisher` publishes raw encoded bytes to `drawing:room:{roomId}`. `DrawingRedisSubscriber` only fans out Pub/Sub messages and suppresses self-echo. | Pub/Sub is live fanout only; it cannot recover events for an offline client. |
+| Redis drawing | `DrawingRedisPublisher` publishes raw encoded bytes to `drawing:room:{roomId}`. `DrawingRedisSubscriber` only fans out Pub/Sub messages and suppresses self-echo. Chat already uses Redis Streams with bounded length and TTL, but drawing does not yet have a recovery stream. | Pub/Sub is live fanout only; it cannot recover events for an offline client. Reuse the existing Redis Streams approach for the new drawing recovery store, without treating the Pub/Sub channel as history. |
 
 ### 2.3 Room Service and Game Service
 
@@ -301,7 +301,7 @@ This saves bandwidth and guarantees that replay cannot restore pre-clear data. T
 
 ## 6. Recovery commands and response
 
-### 6.1 New command: `GET_CANVAS_STATE`
+### 6.1 New command: `GET_CANVAS_STATE` (contract only)
 
 The request uses the same JSON envelope as existing commands. `roomId` and `playerId` are not sent because they come from the bound connection context.
 
@@ -322,6 +322,10 @@ Validation:
 - the room must have an active `PLAYING` game;
 - the requester must be a current room member;
 - stale, malformed, or cross-room requests are rejected and do not read/write recovery state.
+
+`GET_CANVAS_STATE` is present as a frontend protocol constant so TV2 and TV3 share the
+same name. The realtime-gateway handler and Redis recovery implementation are intentionally
+not part of this preparation task.
 
 ### 6.2 Reused response type: `SYNC_CANVAS_STATE`
 

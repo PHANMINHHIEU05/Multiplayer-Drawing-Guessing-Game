@@ -24,6 +24,8 @@ export const MessageType = {
   LEAVE_ROOM: 'LEAVE_ROOM',
   START_GAME: 'START_GAME',
   GET_GAME_STATE: 'GET_GAME_STATE',
+  // Phase 2 canvas-recovery contract; backend handling is owned by TV3.
+  GET_CANVAS_STATE: 'GET_CANVAS_STATE',
   SUBMIT_GUESS: 'SUBMIT_GUESS',
   SEND_CHAT: 'SEND_CHAT',
   GET_RECENT_CHAT: 'GET_RECENT_CHAT',
