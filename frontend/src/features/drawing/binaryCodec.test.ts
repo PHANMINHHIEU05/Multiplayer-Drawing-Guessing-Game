@@ -144,6 +144,28 @@ describe('BinaryDrawingCodec', () => {
       expect(decoded.data.round).toBe(5);
     });
 
+    it('encodes and decodes DRAW_START frame with ERASER tool', () => {
+      const buffer = encodeDrawStart({
+        round: 1,
+        strokeId,
+        x: 0.5,
+        y: 0.5,
+        colorHex: '#000000',
+        width: 16,
+        tool: 'ERASER',
+      });
+
+      expect(buffer.byteLength).toBe(28);
+
+      const decoded = decodeDrawingFrame(buffer);
+      expect(decoded).not.toBeNull();
+      if (!decoded || decoded.type !== 'DRAW_START') throw new Error('Expected DRAW_START');
+
+      expect(decoded.data.tool).toBe('ERASER');
+      expect(decoded.data.colorHex.toLowerCase()).toBe('#ffffff');
+      expect(decoded.data.width).toBe(16);
+    });
+
     it('returns null on truncated frames', () => {
       const shortBuffer = new ArrayBuffer(2);
       expect(decodeDrawingFrame(shortBuffer)).toBeNull();
