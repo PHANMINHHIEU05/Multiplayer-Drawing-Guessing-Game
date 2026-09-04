@@ -168,13 +168,18 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
       // ─── Drawing Events ─────────────────────────────────────────────
       case MessageType.DRAW_EVENT: {
         const payload = response.payload || response;
+        const pointData = payload.point || payload;
+        const color = pointData.color || payload.color || '#000000';
+        const isEraser = pointData.tool === 'ERASER' || payload.tool === 'ERASER' || color.toUpperCase() === '#FFFFFF';
         const point: DrawPoint = {
-          x: payload.point?.x ?? payload.x ?? 0,
-          y: payload.point?.y ?? payload.y ?? 0,
-          color: payload.point?.color ?? payload.color ?? '#f8fafc',
-          size: payload.point?.size ?? payload.size ?? 4,
-          isNewPath: payload.point?.isNewPath ?? payload.isNewPath ?? false,
-          timestamp: payload.point?.timestamp ?? payload.timestamp,
+          x: pointData.x ?? 0,
+          y: pointData.y ?? 0,
+          color,
+          size: pointData.size ?? payload.size ?? 4,
+          isNewPath: pointData.isNewPath ?? payload.isNewPath ?? false,
+          tool: isEraser ? 'ERASER' : 'BRUSH',
+          strokeId: payload.strokeId || pointData.strokeId,
+          timestamp: pointData.timestamp ?? payload.timestamp,
         };
         gameStore.addDrawPoint(point);
         metricsStore.recordDrawBatchReceived(1, payload.strokeId, payload.seq);
@@ -185,14 +190,22 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
       case MessageType.DRAW_BATCH_EVENT: {
         const payload = response.payload || response;
         const rawPoints = payload.points || [];
-        const points: DrawPoint[] = rawPoints.map((p: any) => ({
-          x: p.x ?? 0,
-          y: p.y ?? 0,
-          color: p.color ?? payload.color ?? '#f8fafc',
-          size: p.size ?? payload.size ?? 4,
-          isNewPath: p.isNewPath ?? false,
-          timestamp: p.timestamp,
-        }));
+        const batchColor = payload.color || '#000000';
+        const batchIsEraser = payload.tool === 'ERASER' || batchColor.toUpperCase() === '#FFFFFF';
+        const points: DrawPoint[] = rawPoints.map((p: any) => {
+          const ptColor = p.color || batchColor;
+          const isPtEraser = p.tool === 'ERASER' || batchIsEraser || ptColor.toUpperCase() === '#FFFFFF';
+          return {
+            x: p.x ?? 0,
+            y: p.y ?? 0,
+            color: ptColor,
+            size: p.size ?? payload.size ?? 4,
+            isNewPath: p.isNewPath ?? false,
+            tool: isPtEraser ? 'ERASER' : 'BRUSH',
+            strokeId: p.strokeId || payload.strokeId,
+            timestamp: p.timestamp,
+          };
+        });
         gameStore.addDrawPoints(points);
         metricsStore.recordDrawBatchReceived(points.length, payload.strokeId, payload.seqStart);
         break;

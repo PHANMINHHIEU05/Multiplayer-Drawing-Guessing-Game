@@ -31,6 +31,7 @@ export interface DrawStartData {
   y: number;        // 0.0 - 1.0
   colorHex: string; // e.g. "#EF4444"
   width: number;    // 1 - 64 px
+  tool?: 'BRUSH' | 'ERASER';
 }
 
 export interface DrawBatchData {
@@ -150,7 +151,8 @@ export function encodeDrawStart(data: DrawStartData): ArrayBuffer {
   view.setUint16(20, encodeCoordinate(data.x), false);
   view.setUint16(22, encodeCoordinate(data.y), false);
 
-  const { r, g, b } = hexToRgb(data.colorHex);
+  const colorHex = data.tool === 'ERASER' ? '#FFFFFF' : data.colorHex;
+  const { r, g, b } = hexToRgb(colorHex);
   view.setUint8(24, r);
   view.setUint8(25, g);
   view.setUint8(26, b);
@@ -244,6 +246,8 @@ export function decodeDrawingFrame(buffer: ArrayBuffer): DecodedDrawingMessage |
       const g = view.getUint8(25);
       const b = view.getUint8(26);
       const width = view.getUint8(27);
+      const colorHex = rgbToHex(r, g, b);
+      const isEraser = r === 255 && g === 255 && b === 255;
 
       return {
         type: 'DRAW_START',
@@ -253,8 +257,9 @@ export function decodeDrawingFrame(buffer: ArrayBuffer): DecodedDrawingMessage |
           strokeId,
           x,
           y,
-          colorHex: rgbToHex(r, g, b),
+          colorHex,
           width,
+          tool: isEraser ? 'ERASER' : 'BRUSH',
         },
       };
     }

@@ -1,9 +1,11 @@
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { DrawPoint } from '../../types/game';
 import { usePointBatcher } from './usePointBatcher';
+import { generateStrokeId } from './binaryCodec';
 
 export interface DrawingCanvasHandle {
   clear: () => void;
+  cancelActiveStroke: () => void;
 }
 
 interface DrawingCanvasProps {
@@ -34,11 +36,12 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isDrawing = useRef(false);
+  const currentStrokeIdRef = useRef<string>('');
 
   const [internalColor, setInternalColor] = useState('#000000');
   const [internalSize] = useState(4);
 
-  const activeColor = isEraser ? CANVAS_BG : (controlledColor ?? internalColor);
+  const activeColor = controlledColor ?? internalColor;
   const activeSize = isEraser ? (controlledSize ?? internalSize) * 2.5 : (controlledSize ?? internalSize);
 
   // Track the last rendered external point index to avoid re-rendering everything
@@ -92,18 +95,31 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     const { x, y } = denormalizeCoords(point.x, point.y);
 
-    context.strokeStyle = point.color || '#000000';
-    context.lineWidth = point.size || 4;
+    const isEraserTool = point.tool === 'ERASER';
+    if (isEraserTool) {
+      context.globalCompositeOperation = 'destination-out';
+      context.strokeStyle = 'rgba(0,0,0,1)';
+      context.lineWidth = point.size || 16;
+    } else {
+      context.globalCompositeOperation = 'source-over';
+      context.strokeStyle = point.color || '#000000';
+      context.lineWidth = point.size || 4;
+    }
     context.lineCap = 'round';
     context.lineJoin = 'round';
 
     if (point.isNewPath) {
       context.beginPath();
       context.moveTo(x, y);
+      context.lineTo(x, y);
+      context.stroke();
     } else {
       context.lineTo(x, y);
       context.stroke();
     }
+
+    // Always restore default source-over composite operation
+    context.globalCompositeOperation = 'source-over';
   }, [denormalizeCoords]);
 
   const renderAllPoints = useCallback((
@@ -112,6 +128,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     width: number,
     height: number
   ) => {
+    ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = CANVAS_BG;
     ctx.fillRect(0, 0, width, height);
 
@@ -119,19 +136,31 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       const x = point.x * width;
       const y = point.y * height;
 
-      ctx.strokeStyle = point.color || '#000000';
-      ctx.lineWidth = point.size || 4;
+      if (point.tool === 'ERASER') {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.strokeStyle = 'rgba(0,0,0,1)';
+        ctx.lineWidth = point.size || 16;
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = point.color || '#000000';
+        ctx.lineWidth = point.size || 4;
+      }
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
       if (point.isNewPath) {
         ctx.beginPath();
         ctx.moveTo(x, y);
+        ctx.lineTo(x, y);
+        ctx.stroke();
       } else {
         ctx.lineTo(x, y);
         ctx.stroke();
       }
     }
+
+    // Always restore default source-over composite operation
+    ctx.globalCompositeOperation = 'source-over';
   }, []);
 
   // ─── Canvas Setup & ResizeObserver ─────────────────────────────────
@@ -216,12 +245,18 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     const { x, y } = normalizeCoords(pixelX, pixelY);
 
+    const strokeId = generateStrokeId();
+    currentStrokeIdRef.current = strokeId;
+    const currentTool = isEraser ? 'ERASER' : 'BRUSH';
+
     const point: DrawPoint = {
       x,
       y,
-      color: activeColor,
+      color: isEraser ? '#ffffff' : activeColor,
       size: activeSize,
       isNewPath: true,
+      tool: currentTool,
+      strokeId,
       timestamp: Date.now(),
     };
 
@@ -242,12 +277,16 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     const { x, y } = normalizeCoords(pixelX, pixelY);
 
+    const currentTool = isEraser ? 'ERASER' : 'BRUSH';
+
     const point: DrawPoint = {
       x,
       y,
-      color: activeColor,
+      color: isEraser ? '#ffffff' : activeColor,
       size: activeSize,
       isNewPath: false,
+      tool: currentTool,
+      strokeId: currentStrokeIdRef.current,
       timestamp: Date.now(),
     };
 
@@ -262,23 +301,39 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     }
   };
 
-  // ─── Clear Canvas ──────────────────────────────────────────────────
+  // ─── Clear & Cancellation Handlers ─────────────────────────────────
+  const cancelActiveStroke = useCallback(() => {
+    isDrawing.current = false;
+    batcher.cancelActiveStroke();
+  }, [batcher]);
+
   const clearCanvas = useCallback(() => {
+    cancelActiveStroke();
+    lastRenderedIndexRef.current = 0;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = CANVAS_BG;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    lastRenderedIndexRef.current = 0;
-    batcher.clear();
 
     if (onClearCanvas) onClearCanvas();
-  }, [batcher, onClearCanvas]);
+  }, [cancelActiveStroke, onClearCanvas]);
 
   useImperativeHandle(ref, () => ({
     clear: clearCanvas,
+    cancelActiveStroke,
   }));
+
+  // Cancel active stroke if player loses drawer role
+  useEffect(() => {
+    if (!isDrawer && isDrawing.current) {
+      cancelActiveStroke();
+    }
+  }, [isDrawer, cancelActiveStroke]);
 
   // Reset canvas when external points are cleared
   useEffect(() => {

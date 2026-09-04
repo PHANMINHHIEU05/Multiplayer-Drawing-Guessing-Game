@@ -27,11 +27,25 @@ export interface GuessResult {
   scoreAwarded: number;
 }
 
+export type DrawingTool = 'BRUSH' | 'ERASER';
+
+export interface RemoteStrokeState {
+  strokeId: string;
+  tool: DrawingTool;
+  color: string;
+  width: number;
+  round: number;
+  lastX?: number;
+  lastY?: number;
+}
+
 export interface DrawPoint {
   x: number;          // Normalized coordinate (0.0 - 1.0)
   y: number;          // Normalized coordinate (0.0 - 1.0)
   color: string;      // Hex color code (e.g. "#EF4444")
   size: number;       // Stroke width in pixels (2-20)
   isNewPath: boolean;  // true: PointerDown (new path), false: PointerMove (continue)
+  tool?: DrawingTool; // 'BRUSH' or 'ERASER'
+  strokeId?: string;  // Unique identifier for the stroke
   timestamp?: number; // Unix timestamp (ms) for latency tracking
 }

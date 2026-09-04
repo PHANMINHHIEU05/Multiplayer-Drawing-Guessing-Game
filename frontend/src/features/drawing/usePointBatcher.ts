@@ -118,6 +118,7 @@ export function usePointBatcher(options: PointBatcherOptions) {
     addPoint,
     flush,
     clear,
+    cancelActiveStroke: clear,
     getPendingCount,
   };
 }

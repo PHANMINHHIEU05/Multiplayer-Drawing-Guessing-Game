@@ -11,7 +11,7 @@ import { GuessInput } from '../features/game/GuessInput';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { wsClient } from '../websocket/WebSocketClient';
 import { MessageType, createWSRequest } from '../websocket/protocol';
-import { DrawPoint } from '../types/game';
+import { DrawPoint, RemoteStrokeState } from '../types/game';
 import { metricsStore } from '../store/metricsStore';
 import {
   encodeDrawStart,
@@ -36,6 +36,7 @@ export const GamePage: React.FC = () => {
   // Stroke Tracking for Binary Mode
   const currentStrokeIdRef = useRef<string>(generateStrokeId());
   const seqCounterRef = useRef<number>(0);
+  const remoteStrokeMapRef = useRef<Map<string, RemoteStrokeState>>(new Map());
 
   const roomId = room?.roomId || gameState?.roomId || '';
   const isDrawer = gameState?.drawerId === playerId;
@@ -63,11 +64,25 @@ export const GamePage: React.FC = () => {
       switch (decoded.type) {
         case 'DRAW_START': {
           metricsStore.recordDrawBatchReceived(1, decoded.data.strokeId, 0);
+          const isEraser = decoded.data.tool === 'ERASER' || decoded.data.colorHex.toUpperCase() === '#FFFFFF';
+          const strokeState: RemoteStrokeState = {
+            strokeId: decoded.data.strokeId,
+            tool: isEraser ? 'ERASER' : 'BRUSH',
+            color: decoded.data.colorHex,
+            width: decoded.data.width,
+            round: decoded.data.round,
+            lastX: decoded.data.x,
+            lastY: decoded.data.y,
+          };
+          remoteStrokeMapRef.current.set(decoded.data.strokeId, strokeState);
+
           gameStore.addDrawPoint({
             x: decoded.data.x,
             y: decoded.data.y,
-            color: decoded.data.colorHex,
-            size: decoded.data.width,
+            color: strokeState.color,
+            size: strokeState.width,
+            tool: strokeState.tool,
+            strokeId: strokeState.strokeId,
             isNewPath: true,
           });
           break;
@@ -78,11 +93,18 @@ export const GamePage: React.FC = () => {
             decoded.data.strokeId,
             decoded.data.seqStart
           );
+          const strokeState = remoteStrokeMapRef.current.get(decoded.data.strokeId);
+          const color = strokeState?.color ?? '#000000';
+          const size = strokeState?.width ?? 4;
+          const tool = strokeState?.tool ?? 'BRUSH';
+
           const batchPoints: DrawPoint[] = decoded.data.points.map((p) => ({
             x: p.x,
             y: p.y,
-            color: brushColor,
-            size: brushSize,
+            color,
+            size,
+            tool,
+            strokeId: decoded.data.strokeId,
             isNewPath: false,
           }));
           gameStore.addDrawPoints(batchPoints);
@@ -90,18 +112,51 @@ export const GamePage: React.FC = () => {
         }
         case 'DRAW_END': {
           metricsStore.resetStrokeSequence(decoded.data.strokeId);
+          remoteStrokeMapRef.current.delete(decoded.data.strokeId);
           break;
         }
         case 'CLEAR_CANVAS': {
           metricsStore.resetStrokeSequence();
+          remoteStrokeMapRef.current.clear();
           gameStore.clearDrawPoints();
+          canvasHandleRef.current?.clear();
           break;
         }
       }
     });
 
     return unsubscribe;
-  }, [brushColor, brushSize]);
+  }, []);
+
+  // ─── Lifecycle: Round Transition (TV2-F04) ──────────────────────────
+  const prevRoundRef = useRef<number>(currentRound);
+  useEffect(() => {
+    if (currentRound !== prevRoundRef.current) {
+      console.log(`[GamePage] Round transitioned from ${prevRoundRef.current} to ${currentRound}. Resetting canvas state.`);
+      prevRoundRef.current = currentRound;
+      // Cancel active stroke if in progress
+      canvasHandleRef.current?.cancelActiveStroke();
+      canvasHandleRef.current?.clear();
+      remoteStrokeMapRef.current.clear();
+      gameStore.clearDrawPoints();
+      currentStrokeIdRef.current = generateStrokeId();
+      seqCounterRef.current = 0;
+      metricsStore.resetStrokeSequence();
+    }
+  }, [currentRound]);
+
+  // ─── Lifecycle: Drawer Transition (TV2-F05) ─────────────────────────
+  const prevDrawerRef = useRef<boolean>(isDrawer);
+  useEffect(() => {
+    if (prevDrawerRef.current !== isDrawer) {
+      prevDrawerRef.current = isDrawer;
+      if (!isDrawer) {
+        // Player lost drawer role - immediately cancel active stroke and flush buffers
+        console.log('[GamePage] Drawer privilege revoked. Cancelling active drawing stroke.');
+        canvasHandleRef.current?.cancelActiveStroke();
+      }
+    }
+  }, [isDrawer]);
 
   // ─── Drawing Callbacks ─────────────────────────────────────────────
 
@@ -109,6 +164,7 @@ export const GamePage: React.FC = () => {
   const handleDrawBatch = useCallback((points: DrawPoint[]) => {
     if (!roomId || points.length === 0) return;
 
+    const isEraserTool = activeTool === 'eraser';
     const mode = metricsStore.getState().drawingMode;
 
     if (mode === 'BINARY_BATCH') {
@@ -123,8 +179,9 @@ export const GamePage: React.FC = () => {
           strokeId: currentStrokeIdRef.current,
           x: firstPt.x,
           y: firstPt.y,
-          colorHex: firstPt.color || brushColor,
-          width: firstPt.size || brushSize,
+          colorHex: isEraserTool ? '#FFFFFF' : (firstPt.color || brushColor),
+          width: isEraserTool ? Math.min(64, Math.round((brushSize || 4) * 2.5)) : Math.min(64, Math.round(firstPt.size || brushSize)),
+          tool: isEraserTool ? 'ERASER' : 'BRUSH',
         });
         wsClient.sendBinary(startBuffer);
         metricsStore.recordDrawBatchSent(1);
@@ -155,8 +212,15 @@ export const GamePage: React.FC = () => {
       return;
     }
 
+    // JSON Modes: Include tool and strokeId in payload
+    const pointsWithTool = points.map((p) => ({
+      ...p,
+      tool: isEraserTool ? ('ERASER' as const) : ('BRUSH' as const),
+      strokeId: currentStrokeIdRef.current,
+    }));
+
     if (mode === 'JSON_POINT') {
-      for (const pt of points) {
+      for (const pt of pointsWithTool) {
         const req = createWSRequest(MessageType.DRAW_POINT, {
           roomId,
           drawerId: playerId,
@@ -169,11 +233,11 @@ export const GamePage: React.FC = () => {
     }
 
     // Default: JSON_BATCH
-    if (points.length === 1) {
+    if (pointsWithTool.length === 1) {
       const req = createWSRequest(MessageType.DRAW_POINT, {
         roomId,
         drawerId: playerId,
-        point: points[0],
+        point: pointsWithTool[0],
       });
       wsClient.sendRaw(JSON.stringify(req));
       metricsStore.recordDrawBatchSent(1);
@@ -181,16 +245,20 @@ export const GamePage: React.FC = () => {
       const req = createWSRequest(MessageType.DRAW_BATCH, {
         roomId,
         drawerId: playerId,
-        points,
+        points: pointsWithTool,
       });
       wsClient.sendRaw(JSON.stringify(req));
-      metricsStore.recordDrawBatchSent(points.length);
+      metricsStore.recordDrawBatchSent(pointsWithTool.length);
     }
-  }, [roomId, playerId, currentRound, brushColor, brushSize]);
+  }, [roomId, playerId, currentRound, brushColor, brushSize, activeTool]);
 
   /** Send clear canvas command to the server */
   const handleClearCanvas = useCallback(() => {
     if (!roomId) return;
+
+    remoteStrokeMapRef.current.clear();
+    gameStore.clearDrawPoints();
+    canvasHandleRef.current?.clear();
 
     const mode = metricsStore.getState().drawingMode;
     if (mode === 'BINARY_BATCH') {
