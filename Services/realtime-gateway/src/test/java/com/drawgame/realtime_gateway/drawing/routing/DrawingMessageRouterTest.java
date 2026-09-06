@@ -34,13 +34,16 @@ class DrawingMessageRouterTest {
     @Mock
     private DrawingWebSocketEncoder encoder;
 
+    @Mock
+    private DrawingEventHook eventHook;
+
     private DrawingMessageRouter router;
 
     private static final byte[] FAKE_BYTES = new byte[]{0x01, 0x02, 0x03};
 
     @BeforeEach
     void setUp() {
-        router = new DrawingMessageRouter(authService, broadcaster, redisPublisher, encoder);
+        router = new DrawingMessageRouter(authService, broadcaster, redisPublisher, encoder, eventHook);
     }
 
     private DrawStartMessage drawStart(int round) {
