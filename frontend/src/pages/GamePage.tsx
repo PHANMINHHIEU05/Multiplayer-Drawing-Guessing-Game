@@ -57,7 +57,7 @@ export const GamePage: React.FC = () => {
   // ─── Binary WebSocket Drawing Listener ──────────────────────────────
   useEffect(() => {
     // Listen for binary ArrayBuffer frames from WebSocket
-    const unsubscribe = wsClient.addBinaryListener((buffer) => {
+    const unsubscribeBinary = wsClient.addBinaryListener((buffer) => {
       const decoded = decodeDrawingFrame(buffer);
       if (!decoded) return;
 
@@ -125,7 +125,19 @@ export const GamePage: React.FC = () => {
       }
     });
 
-    return unsubscribe;
+    const unsubscribeMessage = wsClient.addMessageListener((msg) => {
+      if (msg.type === MessageType.CANVAS_CLEARED || msg.type === 'CANVAS_CLEARED') {
+        metricsStore.resetStrokeSequence();
+        remoteStrokeMapRef.current.clear();
+        gameStore.clearDrawPoints();
+        canvasHandleRef.current?.clear();
+      }
+    });
+
+    return () => {
+      unsubscribeBinary();
+      unsubscribeMessage();
+    };
   }, []);
 
   // ─── Lifecycle: Round Transition (TV2-F04) ──────────────────────────
@@ -327,10 +339,7 @@ export const GamePage: React.FC = () => {
             onColorChange={setBrushColor}
             onSizeChange={setBrushSize}
             onToolChange={setActiveTool}
-            onClearCanvas={() => {
-              canvasHandleRef.current?.clear();
-              handleClearCanvas();
-            }}
+            onClearCanvas={handleClearCanvas}
           />
         )}
 
