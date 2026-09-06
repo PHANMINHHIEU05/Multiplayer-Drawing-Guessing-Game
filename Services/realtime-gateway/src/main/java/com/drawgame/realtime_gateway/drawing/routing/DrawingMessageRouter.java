@@ -11,23 +11,18 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 /**
- * TV3 entry point: receives a decoded {@link DrawingMessage} from the transport layer (TV1)
+ * TV3 entry point: receives a decoded DrawingMessage from the transport layer (TV1)
  * and orchestrates the full drawing fast-path pipeline:
  *
- * <pre>
  *   DrawingMessage
- *     → Authorization (drawer check, round check)
- *     → Local room broadcast (exclude sender)
- *     → Redis Pub/Sub publish (cross-Gateway fanout)
- * </pre>
+ *     -> Authorization (drawer check, round check)
+ *     -> DrawingEventHook.onAccepted() (recovery groundwork hook — no-op in stabilization sprint)
+ *     -> Local room broadcast (exclude sender)
+ *     -> Redis Pub/Sub publish (cross-Gateway fanout)
  *
- * <p>Registered as {@code customDrawingMessageHandler} to override the TV1 stub
- * ({@code DefaultDrawingMessageHandler} is {@code @ConditionalOnMissingBean(name = "customDrawingMessageHandler")}).
- *
- * <p>Drawing bytes are encoded once and reused for both local broadcast and Redis publish
- * to avoid double serialization.
- *
- * <p>This bean is fully non-blocking: no {@code block()}, no Thread.sleep(), no blocking I/O.
+ * Registered as "customDrawingMessageHandler" to override the TV1 stub.
+ * Drawing bytes are encoded once and reused for both local broadcast and Redis publish.
+ * This bean is fully non-blocking.
  */
 @Component("customDrawingMessageHandler")
 public class DrawingMessageRouter implements DrawingMessageHandler {
@@ -38,8 +33,10 @@ public class DrawingMessageRouter implements DrawingMessageHandler {
     private final DrawingBroadcaster broadcaster;
     private final DrawingRedisPublisher redisPublisher;
     private final DrawingWebSocketEncoder encoder;
+    /** TV3 Stabilization (TV3-G08) — recovery groundwork hook; no-op by default. */
+    private final DrawingEventHook eventHook;
 
-    // Metrics hooks — TV4 can instrument these via Actuator
+    // Metrics hooks — TV4 can instrument via Actuator
     private volatile long acceptedCount = 0L;
     private volatile long rejectedCount = 0L;
     private volatile long localBroadcastCount = 0L;
@@ -49,12 +46,14 @@ public class DrawingMessageRouter implements DrawingMessageHandler {
             DrawingAuthorizationService authService,
             DrawingBroadcaster broadcaster,
             DrawingRedisPublisher redisPublisher,
-            DrawingWebSocketEncoder encoder
+            DrawingWebSocketEncoder encoder,
+            DrawingEventHook eventHook
     ) {
         this.authService = authService;
         this.broadcaster = broadcaster;
         this.redisPublisher = redisPublisher;
         this.encoder = encoder;
+        this.eventHook = eventHook;
     }
 
     @Override
@@ -77,22 +76,23 @@ public class DrawingMessageRouter implements DrawingMessageHandler {
         // 2. Encode once — reuse for both local broadcast and Redis
         byte[] drawingBytes = encoder.encodeToBytes(message);
 
-        // 3. Local room broadcast (exclude the sender — drawer renders locally)
+        // 3. Recovery groundwork hook (TV3-G08) — no-op in this sprint, swappable in next phase
+        eventHook.onAccepted(session, message, drawingBytes);
+
+        // 4. Local room broadcast (exclude the sender — drawer renders locally)
         broadcaster.broadcastBytesToRoomExcept(session.roomId(), session.sessionId(), drawingBytes);
         localBroadcastCount++;
 
-        // 4. Publish to Redis for cross-Gateway fanout (failure is isolated inside publisher)
+        // 5. Publish to Redis for cross-Gateway fanout (failure is isolated inside publisher)
         return redisPublisher.publish(session.roomId(), drawingBytes)
                 .doOnSuccess(v -> redisPublishedCount++)
                 .onErrorResume(e -> {
-                    // Should not reach here — publisher already handles errors internally
                     log.warn("DrawingMessageRouter unexpected error from Redis publisher: {}", e.getMessage());
                     return Mono.empty();
                 });
     }
 
     // --- Metrics hooks for TV4 ---
-
     public long getAcceptedCount()       { return acceptedCount; }
     public long getRejectedCount()       { return rejectedCount; }
     public long getLocalBroadcastCount() { return localBroadcastCount; }

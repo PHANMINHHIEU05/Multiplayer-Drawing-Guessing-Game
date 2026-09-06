@@ -207,7 +207,19 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
   // ─── Remote Point Rendering (from WebSocket) ────────────────────────
   useEffect(() => {
+    if (isDrawer) return;
+
     if (externalPoints.length === 0) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = CANVAS_BG;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+      }
       lastRenderedIndexRef.current = 0;
       return;
     }
@@ -319,9 +331,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = CANVAS_BG;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    if (onClearCanvas) onClearCanvas();
-  }, [cancelActiveStroke, onClearCanvas]);
+  }, [cancelActiveStroke]);
 
   useImperativeHandle(ref, () => ({
     clear: clearCanvas,
@@ -334,19 +344,6 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       cancelActiveStroke();
     }
   }, [isDrawer, cancelActiveStroke]);
-
-  // Reset canvas when external points are cleared
-  useEffect(() => {
-    if (externalPoints.length === 0 && lastRenderedIndexRef.current > 0) {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.fillStyle = CANVAS_BG;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      lastRenderedIndexRef.current = 0;
-    }
-  }, [externalPoints.length]);
 
   return (
     <div className="relative w-full h-full flex flex-col">
@@ -388,7 +385,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
             ))}
           </div>
           <button
-            onClick={clearCanvas}
+            onClick={() => {
+              clearCanvas();
+              if (onClearCanvas) onClearCanvas();
+            }}
             className="px-3 py-1 bg-rose-500 text-white rounded-lg text-xs font-bold"
           >
             Clear

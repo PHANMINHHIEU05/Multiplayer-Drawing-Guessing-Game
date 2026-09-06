@@ -238,6 +238,15 @@ public class GameCommandHandler {
                 .map(response -> {
                     String responseJson = createRoomSuccessJson("ROOM_LEFT", response, requestId);
                     connectionManager.broadcastToRoomExcept(roomId, sessionId, createBroadcastJson("PLAYER_LEFT", roomId, playerId, ""));
+                    // TV3 Stabilization (GW-07): unbind session from room routing so this session
+                    // no longer receives drawing events or passes drawing authorization checks.
+                    connectionManager.unbindSession(sessionId);
+                    // TV3 Stabilization: evict drawing cache if room is now empty or game ended.
+                    // Safe to call even if cache entry doesn't exist.
+                    if (response.getPlayersList().isEmpty()) {
+                        drawingRoomStateCache.remove(roomId);
+                        log.info("DrawingRoomStateCache evicted — last player left room={}", roomId);
+                    }
                     return responseJson;
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "LEAVE_ROOM_FAILED", e.getMessage())));
@@ -295,7 +304,29 @@ public class GameCommandHandler {
                         connectionManager.broadcastToRoomExcept(roomId, sessionId, broadcastMsg);
 
                         Map<String, Object> map = createGuessResultMap(roomId, playerId, status, response.getScoreAwarded(), requestId);
-                        return Mono.just(toJson(map));
+
+                        // TV3 Stabilization (GW-05/GW-06): a correct guess may trigger round transition.
+                        // Refresh drawing cache so new drawer/round is authoritative without delay.
+                        // Failure to refresh is non-fatal — next GET_GAME_STATE will re-sync.
+                        return gameGrpcClient.getGameState(roomId, playerId)
+                                .doOnNext(gameState -> {
+                                    if ("PLAYING".equalsIgnoreCase(gameState.getStatus())) {
+                                        updateDrawingCache(roomId, gameState);
+                                        log.info("DrawingRoomStateCache refreshed after CORRECT guess: room={} drawer={} round={}",
+                                                roomId, gameState.getDrawerId(), gameState.getCurrentRound());
+                                    } else {
+                                        // Game finished after last round
+                                        drawingRoomStateCache.remove(roomId);
+                                        log.info("DrawingRoomStateCache evicted — game ended after CORRECT guess: room={} status={}",
+                                                roomId, gameState.getStatus());
+                                    }
+                                })
+                                .onErrorResume(e -> {
+                                    log.warn("Failed to refresh drawing cache after CORRECT guess: room={} — will resync on next GET_GAME_STATE: {}",
+                                            roomId, e.getMessage());
+                                    return reactor.core.publisher.Mono.empty();
+                                })
+                                .thenReturn(toJson(map));
                     } else if ("WRONG".equalsIgnoreCase(status)) {
                         // Forward wrong guess to Chat Service to record & broadcast
                         return chatGrpcClient.sendMessage(roomId, playerId, username, guess)

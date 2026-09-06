@@ -2,6 +2,7 @@ package com.drawgame.realtime_gateway.websocket.handler;
 
 import com.drawgame.chat.grpc.generated.ChatMessageResponse;
 import com.drawgame.chat.grpc.generated.GetRecentMessagesResponse;
+import com.drawgame.game.grpc.generated.GameStateResponse;
 import com.drawgame.game.grpc.generated.GuessResponse;
 import com.drawgame.room.grpc.generated.PlayerMessage;
 import com.drawgame.room.grpc.generated.RoomResponse;
@@ -185,6 +186,15 @@ class GameCommandHandlerTest {
         when(gameGrpcClient.submitGuess("room-1", "player-1", "máy bay"))
                 .thenReturn(Mono.just(guessRes));
 
+        GameStateResponse gameState = GameStateResponse.newBuilder()
+                .setRoomId("room-1")
+                .setDrawerId("player-2")
+                .setCurrentRound(2)
+                .setStatus("PLAYING")
+                .build();
+        when(gameGrpcClient.getGameState("room-1", "player-1"))
+                .thenReturn(Mono.just(gameState));
+
         Mono<String> resultMono = handler.handleCommand("session-1", json);
 
         StepVerifier.create(resultMono)
@@ -197,8 +207,42 @@ class GameCommandHandlerTest {
 
         // Broadcasts PLAYER_GUESSED_CORRECTLY without secret word
         verify(connectionManager).broadcastToRoomExcept(eq("room-1"), eq("session-1"), contains("PLAYER_GUESSED_CORRECTLY"));
+        // Drawing cache refreshed on correct guess
+        verify(drawingRoomStateCache).update(eq("room-1"), any());
         // Chat service MUST NOT be called for correct guess
         verifyNoInteractions(chatGrpcClient);
+    }
+
+    @Test
+    void handleLeaveRoom_UnbindsSession_AndEvictsCacheIfRoomEmpty() throws Exception {
+        String jsonStr = """
+            {
+                "type": "LEAVE_ROOM",
+                "payload": {
+                    "roomId": "room-1",
+                    "playerId": "player-1"
+                },
+                "requestId": "req-leave"
+            }
+            """;
+        JsonNode json = objectMapper.readTree(jsonStr);
+
+        RoomResponse emptyRoom = RoomResponse.newBuilder()
+                .setRoomId("room-1")
+                .setStatus("WAITING")
+                .build(); // playersList is empty
+
+        when(roomGrpcClient.leaveRoom("room-1", "player-1")).thenReturn(Mono.just(emptyRoom));
+
+        StepVerifier.create(handler.handleCommand("session-1", json))
+                .assertNext(res -> {
+                    assertTrue(res.contains("ROOM_LEFT"));
+                    assertTrue(res.contains("req-leave"));
+                })
+                .verifyComplete();
+
+        verify(connectionManager).unbindSession("session-1");
+        verify(drawingRoomStateCache).remove("room-1");
     }
 
     @Test
