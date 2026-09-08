@@ -1,4 +1,73 @@
 
+è
+
+chat.protochat"Ä
+SendMessageRequest
+room_id (	RroomId
+	player_id (	RplayerId
+username (	Rusername
+content (	Rcontent"f
+GetRecentMessagesRequest
+room_id (	RroomId
+	player_id (	RplayerId
+limit (Rlimit"„
+ChatMessageResponse
+
+message_id (	R	messageId
+room_id (	RroomId
+	player_id (	RplayerId
+username (	Rusername
+content (	Rcontent
+type (	Rtype-
+created_at_epoch_ms (RcreatedAtEpochMs"R
+GetRecentMessagesResponse5
+messages (2.chat.ChatMessageResponseRmessages2ß
+ChatServiceB
+SendMessage.chat.SendMessageRequest.chat.ChatMessageResponseT
+GetRecentMessages.chat.GetRecentMessagesRequest.chat.GetRecentMessagesResponseB$
+ com.drawgame.chat.grpc.generatedPbproto3
+°	
+
+game.protogame"[
+StartGameRequest
+room_id (	RroomId.
+requester_player_id (	RrequesterPlayerId"X
+GetGameStateRequest
+room_id (	RroomId(
+viewer_player_id (	RviewerPlayerId"`
+SubmitGuessRequest
+room_id (	RroomId
+	player_id (	RplayerId
+guess (	Rguess"Ñ
+PlayerScoreMessage
+	player_id (	RplayerId
+username (	Rusername
+score (Rscore
+has_guessed (R
+hasGuessed"ç
+GuessResponse
+room_id (	RroomId
+	player_id (	RplayerId!
+guess_status (	RguessStatus#
+score_awarded (RscoreAwarded"ﬁ
+GameStateResponse
+room_id (	RroomId
+status (	Rstatus#
+current_round (RcurrentRound!
+total_rounds (RtotalRounds
+	drawer_id (	RdrawerId(
+round_started_at (RroundStartedAt"
+round_ends_at (RroundEndsAt0
+scores (2.game.PlayerScoreMessageRscores
+hint	 (	Rhint
+secret_word
+ (	R
+secretWord2Õ
+GameService<
+	StartGame.game.StartGameRequest.game.GameStateResponseB
+GetGameState.game.GetGameStateRequest.game.GameStateResponse<
+SubmitGuess.game.SubmitGuessRequest.game.GuessResponseB$
+ com.drawgame.game.grpc.generatedPbproto3
 ´
 
 
@@ -50,72 +119,3 @@ CreateRoom.room.CreateRoomRequest.room.RoomResponse3
 
 FinishGame.room.FinishGameRequest.room.RoomResponseB$
  com.drawgame.room.grpc.generatedPbproto3
-°	
-
-game.protogame"[
-StartGameRequest
-room_id (	RroomId.
-requester_player_id (	RrequesterPlayerId"X
-GetGameStateRequest
-room_id (	RroomId(
-viewer_player_id (	RviewerPlayerId"`
-SubmitGuessRequest
-room_id (	RroomId
-	player_id (	RplayerId
-guess (	Rguess"Ñ
-PlayerScoreMessage
-	player_id (	RplayerId
-username (	Rusername
-score (Rscore
-has_guessed (R
-hasGuessed"ç
-GuessResponse
-room_id (	RroomId
-	player_id (	RplayerId!
-guess_status (	RguessStatus#
-score_awarded (RscoreAwarded"ﬁ
-GameStateResponse
-room_id (	RroomId
-status (	Rstatus#
-current_round (RcurrentRound!
-total_rounds (RtotalRounds
-	drawer_id (	RdrawerId(
-round_started_at (RroundStartedAt"
-round_ends_at (RroundEndsAt0
-scores (2.game.PlayerScoreMessageRscores
-hint	 (	Rhint
-secret_word
- (	R
-secretWord2Õ
-GameService<
-	StartGame.game.StartGameRequest.game.GameStateResponseB
-GetGameState.game.GetGameStateRequest.game.GameStateResponse<
-SubmitGuess.game.SubmitGuessRequest.game.GuessResponseB$
- com.drawgame.game.grpc.generatedPbproto3
-è
-
-chat.protochat"Ä
-SendMessageRequest
-room_id (	RroomId
-	player_id (	RplayerId
-username (	Rusername
-content (	Rcontent"f
-GetRecentMessagesRequest
-room_id (	RroomId
-	player_id (	RplayerId
-limit (Rlimit"„
-ChatMessageResponse
-
-message_id (	R	messageId
-room_id (	RroomId
-	player_id (	RplayerId
-username (	Rusername
-content (	Rcontent
-type (	Rtype-
-created_at_epoch_ms (RcreatedAtEpochMs"R
-GetRecentMessagesResponse5
-messages (2.chat.ChatMessageResponseRmessages2ß
-ChatServiceB
-SendMessage.chat.SendMessageRequest.chat.ChatMessageResponseT
-GetRecentMessages.chat.GetRecentMessagesRequest.chat.GetRecentMessagesResponseB$
- com.drawgame.chat.grpc.generatedPbproto3

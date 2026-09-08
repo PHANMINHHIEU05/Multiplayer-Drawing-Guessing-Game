@@ -26,6 +26,7 @@ describe('metricsStore & Calculations (TV4)', () => {
 
   describe('calculateJitter', () => {
     it('returns 0 for samples with length < 2', () => {
+      expect(calculateJitter([])).toBe(0);
       expect(calculateJitter([10])).toBe(0);
     });
 
@@ -41,17 +42,30 @@ describe('metricsStore & Calculations (TV4)', () => {
     });
   });
 
-  describe('Heartbeat & Sequence Gap Tracking', () => {
-    it('records heartbeat pong and computes RTT & stats', () => {
+  describe('Heartbeat & Latency Telemetry', () => {
+    it('records heartbeat pong and tracks sample count and rolling window', () => {
       const pingSent = Date.now() - 30; // 30ms ago
       metricsStore.recordHeartbeatPong(pingSent, Date.now(), 5, 'gateway-test');
 
       const state = metricsStore.getState();
       expect(state.rttCurrent).toBeGreaterThanOrEqual(25);
+      expect(state.rttSamplesCount).toBe(1);
       expect(state.gatewayId).toBe('gateway-test');
       expect(state.gatewayQueueSize).toBe(5);
     });
 
+    it('increments reconnects and heartbeat timeout counters', () => {
+      metricsStore.incrementReconnect();
+      metricsStore.incrementReconnect();
+      metricsStore.incrementHeartbeatTimeout();
+
+      const state = metricsStore.getState();
+      expect(state.reconnectCount).toBe(2);
+      expect(state.heartbeatTimeoutCount).toBe(1);
+    });
+  });
+
+  describe('Sequence Gap & Drawing Stream Tracking', () => {
     it('detects sequence gaps accurately when packets are dropped', () => {
       const strokeId = 'stroke-test-123';
 
@@ -68,10 +82,50 @@ describe('metricsStore & Calculations (TV4)', () => {
       expect(metricsStore.getState().sequenceGapCount).toBe(3);
     });
 
+    it('tracks batch count and average points per batch', () => {
+      metricsStore.recordDrawBatchSent(10);
+      metricsStore.recordDrawBatchSent(20);
+
+      const state = metricsStore.getState();
+      expect(state.drawBatchesSent).toBe(2);
+      expect(state.pointsSent).toBe(30);
+      expect(state.avgPointsPerBatch).toBe(15);
+    });
+
+    it('resets stroke sequence cleanly', () => {
+      const strokeId = 'stroke-reset-test';
+      metricsStore.recordDrawBatchReceived(5, strokeId, 0);
+      metricsStore.resetStrokeSequence(strokeId);
+
+      // After reset, receiving from seq 10 should not compute gap from old stroke
+      metricsStore.recordDrawBatchReceived(5, strokeId, 10);
+      expect(metricsStore.getState().sequenceGapCount).toBe(0);
+    });
+  });
+
+  describe('Protocol Switching & Reset', () => {
     it('allows changing drawing mode', () => {
       expect(metricsStore.getState().drawingMode).toBe('BINARY_BATCH');
       metricsStore.setDrawingMode('JSON_POINT');
       expect(metricsStore.getState().drawingMode).toBe('JSON_POINT');
+      metricsStore.setDrawingMode('JSON_BATCH');
+      expect(metricsStore.getState().drawingMode).toBe('JSON_BATCH');
+    });
+
+    it('resets all telemetry counters without altering connection state', () => {
+      metricsStore.setStatus('CONNECTED');
+      metricsStore.recordTx(1024);
+      metricsStore.recordRx(2048);
+      metricsStore.incrementReconnect();
+
+      metricsStore.reset();
+      const state = metricsStore.getState();
+
+      expect(state.txBytes).toBe(0);
+      expect(state.rxBytes).toBe(0);
+      expect(state.reconnectCount).toBe(0);
+      expect(state.rttSamplesCount).toBe(0);
+      expect(state.status).toBe('CONNECTED'); // Connection status preserved
     });
   });
 });

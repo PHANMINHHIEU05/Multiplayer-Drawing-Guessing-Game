@@ -181,7 +181,7 @@ public class GameCoreService {
         } else if (evalResult == AnswerEvaluator.Result.CLOSE) {
             return new GuessResult("CLOSE", 0);
         } else {
-            return new GuessResult("INCORRECT", 0);
+            return new GuessResult("WRONG", 0);
         }
     }
 

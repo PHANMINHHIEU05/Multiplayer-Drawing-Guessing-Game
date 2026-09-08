@@ -15,6 +15,7 @@ export interface MetricsState {
   rttAvg: number;
   rttP95: number;
   jitter: number;
+  rttSamplesCount: number;
   lastPongReceivedAt: number;
 
   // Throughput & Bandwidth (Total counters)
@@ -43,7 +44,7 @@ export interface MetricsState {
   isInspectorOpen: boolean;
 }
 
-const RTT_WINDOW_SIZE = 200;
+const RTT_WINDOW_SIZE = 100;
 let rttSamples: number[] = [];
 let strokeSeqMap = new Map<string, number>();
 
@@ -66,6 +67,7 @@ let state: MetricsState = {
   rttAvg: 0,
   rttP95: 0,
   jitter: 0,
+  rttSamplesCount: 0,
   lastPongReceivedAt: 0,
 
   txMessages: 0,
@@ -151,6 +153,7 @@ export const metricsStore = {
       rttAvg: avg,
       rttP95: p95,
       jitter,
+      rttSamplesCount: rttSamples.length,
       lastPongReceivedAt: now,
       gatewayQueueSize: queueSize !== undefined ? queueSize : state.gatewayQueueSize,
       gatewayId: gatewayId || state.gatewayId,
@@ -257,11 +260,11 @@ export const metricsStore = {
 
     state = {
       ...state,
-      txMsgRate: Math.round(txMsgDelta / elapsedSec),
-      rxMsgRate: Math.round(rxMsgDelta / elapsedSec),
-      txBandwidthBytesPerSec: Math.round(txBytesDelta / elapsedSec),
-      rxBandwidthBytesPerSec: Math.round(rxBytesDelta / elapsedSec),
-      drawBatchesPerSec: Math.round(drawBatchesDelta / elapsedSec),
+      txMsgRate: Math.max(0, Math.round(txMsgDelta / elapsedSec)),
+      rxMsgRate: Math.max(0, Math.round(rxMsgDelta / elapsedSec)),
+      txBandwidthBytesPerSec: Math.max(0, Math.round(txBytesDelta / elapsedSec)),
+      rxBandwidthBytesPerSec: Math.max(0, Math.round(rxBytesDelta / elapsedSec)),
+      drawBatchesPerSec: Math.max(0, Math.round(drawBatchesDelta / elapsedSec)),
     };
 
     lastTickTime = now;
@@ -292,6 +295,8 @@ export const metricsStore = {
       rttAvg: 0,
       rttP95: 0,
       jitter: 0,
+      rttSamplesCount: 0,
+      lastPongReceivedAt: 0,
       txMessages: 0,
       rxMessages: 0,
       txBytes: 0,
