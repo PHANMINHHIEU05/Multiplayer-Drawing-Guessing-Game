@@ -2,7 +2,8 @@ package com.drawgame.chat.repository;
 
 import com.drawgame.chat.domain.ChatMessage;
 import com.drawgame.chat.domain.ChatMessageType;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.RedisZSetCommands.Limit;
@@ -18,9 +19,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
 @Repository
 public class RedisChatRepository implements ChatRepository {
+    private static final Logger log = LoggerFactory.getLogger(RedisChatRepository.class);
 
     private final StringRedisTemplate redisTemplate;
     private final long maxLength;

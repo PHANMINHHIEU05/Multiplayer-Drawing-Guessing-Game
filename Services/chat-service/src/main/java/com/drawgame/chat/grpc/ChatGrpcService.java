@@ -13,19 +13,23 @@ import com.drawgame.chat.grpc.generated.SendMessageRequest;
 import com.drawgame.chat.service.ChatManagementService;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.grpc.server.service.GrpcService;
 
 import java.util.List;
 
-@Slf4j
 @GrpcService
-@RequiredArgsConstructor
 public class ChatGrpcService extends ChatServiceGrpc.ChatServiceImplBase {
+    private static final Logger log = LoggerFactory.getLogger(ChatGrpcService.class);
 
     private final ChatManagementService chatService;
     private final ChatGrpcMapper mapper;
+
+    public ChatGrpcService(ChatManagementService chatService, ChatGrpcMapper mapper) {
+        this.chatService = chatService;
+        this.mapper = mapper;
+    }
 
     @Override
     public void sendMessage(
