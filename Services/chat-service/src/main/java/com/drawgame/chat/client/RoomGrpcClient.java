@@ -7,13 +7,14 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-@Slf4j
 @Component
 public class RoomGrpcClient {
+    private static final Logger log = LoggerFactory.getLogger(RoomGrpcClient.class);
 
     @Value("${grpc.client.room-service.host:localhost}")
     private String roomServiceHost;
