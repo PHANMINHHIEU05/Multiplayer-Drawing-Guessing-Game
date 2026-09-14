@@ -1,6 +1,6 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useGameStore, gameStore } from '../store/gameStore';
-import { usePlayerStore } from '../store/playerStore';
+import { usePlayerStore, playerStore } from '../store/playerStore';
 import { useRoomStore, roomStore } from '../store/roomStore';
 import { GameHeader } from '../features/game/GameHeader';
 import { DrawingCanvas, DrawingCanvasHandle } from '../features/drawing/DrawingCanvas';
@@ -9,6 +9,7 @@ import { Scoreboard } from '../components/Scoreboard';
 import { ChatPanel } from '../features/chat/ChatPanel';
 import { GuessInput } from '../features/game/GuessInput';
 import { ConnectionStatus } from '../components/ConnectionStatus';
+import { NetworkInspector } from '../components/NetworkInspector';
 import { wsClient } from '../websocket/WebSocketClient';
 import { MessageType, createWSRequest } from '../websocket/protocol';
 import { DrawPoint, RemoteStrokeState } from '../types/game';
@@ -41,6 +42,8 @@ export const GamePage: React.FC = () => {
   const roomId = room?.roomId || gameState?.roomId || '';
   const isDrawer = gameState?.drawerId === playerId;
   const currentRound = gameState?.currentRound || 1;
+  // C9: lock guess input after this player has guessed correctly in the current round
+  const hasGuessed = !!gameState?.scores?.find((s) => s.playerId === playerId)?.hasGuessed;
 
   useEffect(() => {
     // Poll game state periodically if needed to keep state sync when game is active
@@ -131,6 +134,20 @@ export const GamePage: React.FC = () => {
         remoteStrokeMapRef.current.clear();
         gameStore.clearDrawPoints();
         canvasHandleRef.current?.clear();
+      }
+      // TV5: GAME_STARTED no longer carries the secret word (privacy fix), so the
+      // drawer fetches fresh state immediately instead of waiting for the 5s poll.
+      if (msg.type === MessageType.GAME_STARTED) {
+        const rid =
+          roomStore.getState().room?.roomId ||
+          gameStore.getState().gameState?.roomId ||
+          '';
+        const pid = playerStore.getState().playerId;
+        if (rid) {
+          wsClient
+            .send(MessageType.GET_GAME_STATE, { roomId: rid, playerId: pid }, 5000)
+            .catch(() => {});
+        }
       }
     });
 
@@ -299,7 +316,9 @@ export const GamePage: React.FC = () => {
     );
   }
 
-  const isGameOver = gameState.status === 'GAME_OVER';
+  // TV5 regression fix: game-service reports "FINISHED" when the game ends
+  // (legacy "GAME_OVER" kept for compatibility with older payloads).
+  const isGameOver = gameState.status === 'GAME_OVER' || gameState.status === 'FINISHED';
 
   return (
     <div className="h-screen w-screen flex flex-col p-2 sm:p-3 md:p-4 gap-2 sm:gap-3 overflow-hidden text-slate-100 select-none">
@@ -358,13 +377,16 @@ export const GamePage: React.FC = () => {
               externalPoints={isDrawer ? undefined : drawPoints}
               hideInternalToolbar={true}
             />
+            {/* Floating NET chip / Network Inspector — anchored inside the canvas
+                area so it never covers the chat panel or the guess input. */}
+            <NetworkInspector />
           </div>
 
           {/* Bottom Dual Panels: Guessing Feed on Left, Social Chat on Right */}
           <div className="h-44 sm:h-48 grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 shrink-0">
             {/* Left: TRẢ LỜI / ĐOÁN TỪ */}
             <div className="h-full min-h-0">
-              <GuessInput roomId={roomId} disabled={isDrawer || isGameOver} />
+              <GuessInput roomId={roomId} disabled={isDrawer || isGameOver} hasGuessed={hasGuessed} />
             </div>
 
             {/* Right: TRÒ CHUYỆN */}

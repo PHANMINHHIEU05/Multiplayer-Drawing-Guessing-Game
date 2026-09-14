@@ -89,7 +89,7 @@ let state: MetricsState = {
   avgPointsPerBatch: 0,
   sequenceGapCount: 0,
 
-  isInspectorOpen: true,
+  isInspectorOpen: false,
 };
 
 const listeners = new Set<() => void>();

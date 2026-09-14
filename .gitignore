@@ -83,3 +83,18 @@ Thumbs.db
 *.tmp
 *.bak
 *.orig
+# Maven
+**/target/
+
+# Accidental generated descriptor / stray listing files
+shared/protocol/null
+null
+Services/room-service/null
+game_sources.txt
+shared_protocol_sources.txt
+sources.txt
+jars.txt
+
+# E2E test artifacts
+test-results/
+playwright-report/

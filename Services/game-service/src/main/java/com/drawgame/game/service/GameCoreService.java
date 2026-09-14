@@ -83,14 +83,21 @@ public class GameCoreService {
 
             String hint = hintGenerator.generateInitialHint(secretWord);
             long now = System.currentTimeMillis();
-            long endsAt = now + (ROUND_DURATION_SECONDS * 1000L);
+            // TV5 regression fix: honor the room's configured round duration (was hardcoded 60s)
+            int roundDurationSeconds = roomResponse.getRoundDuration() > 0
+                    ? roomResponse.getRoundDuration()
+                    : ROUND_DURATION_SECONDS;
+            long endsAt = now + (roundDurationSeconds * 1000L);
 
             for (String pId : playerOrder) {
                 redisGameRepository.setPlayerScore(roomId, pId, 0);
             }
             redisGameRepository.clearGuessed(roomId);
 
-            int totalRounds = roomResponse.getMaxPlayers() > 0 ? roomResponse.getMaxPlayers() : DEFAULT_TOTAL_ROUNDS;
+            // TV5 regression fix: honor the room's configured round count (was mistakenly using maxPlayers)
+            int totalRounds = roomResponse.getRoundCount() > 0
+                    ? roomResponse.getRoundCount()
+                    : DEFAULT_TOTAL_ROUNDS;
 
             GameStateData state = GameStateData.builder()
                     .roomId(roomId)
@@ -102,6 +109,7 @@ public class GameCoreService {
                     .hint(hint)
                     .roundStartedAt(now)
                     .roundEndsAt(endsAt)
+                    .roundDurationSeconds(roundDurationSeconds)
                     .playerOrder(playerOrder)
                     .scores(redisGameRepository.getScores(roomId))
                     .build();
@@ -109,7 +117,7 @@ public class GameCoreService {
             redisGameRepository.saveState(state);
 
             // Schedule server authoritative round timer
-            roundScheduler.scheduleRoundEnd(roomId, ROUND_DURATION_SECONDS * 1000L, () -> endRound(roomId));
+            roundScheduler.scheduleRoundEnd(roomId, roundDurationSeconds * 1000L, () -> endRound(roomId));
 
             log.info("GAME_STARTED: roomId={}, round=1, drawerId={}", roomId, drawerId);
             return state;
@@ -158,7 +166,10 @@ public class GameCoreService {
             long remainingSeconds = Math.max(0, (state.getRoundEndsAt() - now) / 1000);
             int guessOrder = (int) redisGameRepository.getGuessedCount(roomId) + 1;
 
-            int awardedScore = scoreCalculator.calculateGuesserScore(remainingSeconds, ROUND_DURATION_SECONDS, guessOrder);
+            int roundDurationSeconds = state.getRoundDurationSeconds() > 0
+                    ? state.getRoundDurationSeconds()
+                    : ROUND_DURATION_SECONDS;
+            int awardedScore = scoreCalculator.calculateGuesserScore(remainingSeconds, roundDurationSeconds, guessOrder);
             int drawerBonus = scoreCalculator.calculateDrawerBonus(state.getPlayerOrder().size());
 
             // Atomic Lua script execution to prevent duplicate scoring
@@ -235,7 +246,10 @@ public class GameCoreService {
         String hint = hintGenerator.generateInitialHint(secretWord);
 
         long now = System.currentTimeMillis();
-        long endsAt = now + (ROUND_DURATION_SECONDS * 1000L);
+        int roundDurationSeconds = state.getRoundDurationSeconds() > 0
+                ? state.getRoundDurationSeconds()
+                : ROUND_DURATION_SECONDS;
+        long endsAt = now + (roundDurationSeconds * 1000L);
 
         redisGameRepository.clearGuessed(roomId);
 
@@ -249,7 +263,7 @@ public class GameCoreService {
 
         redisGameRepository.saveState(state);
 
-        roundScheduler.scheduleRoundEnd(roomId, ROUND_DURATION_SECONDS * 1000L, () -> endRound(roomId));
+        roundScheduler.scheduleRoundEnd(roomId, roundDurationSeconds * 1000L, () -> endRound(roomId));
         log.info("ROUND_STARTED: roomId={}, round={}, drawerId={}", roomId, nextRoundNumber, nextDrawerId);
     }
 

@@ -22,6 +22,11 @@ public class GameGrpcService extends GameServiceGrpc.GameServiceImplBase {
         log.info("gRPC StartGame: roomId={}, requesterId={}", request.getRoomId(), request.getRequesterPlayerId());
         try {
             GameStateData state = gameCoreService.startGame(request.getRoomId(), request.getRequesterPlayerId());
+            // TV5 regression fix (CRITICAL): never include the secret word in the StartGame
+            // response. The gateway broadcasts GAME_STARTED to every player in the room, so the
+            // canonical answer would leak to all guessers. The drawer fetches it via
+            // GetGameState, which is already viewer-filtered (secret only for the drawer).
+            state.setSecretWord("");
             GameStateResponse response = mapToResponse(state);
             responseObserver.onNext(response);
             responseObserver.onCompleted();

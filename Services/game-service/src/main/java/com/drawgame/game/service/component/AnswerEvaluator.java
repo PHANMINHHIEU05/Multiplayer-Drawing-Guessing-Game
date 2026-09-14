@@ -10,8 +10,16 @@ import java.util.regex.Pattern;
 
 /**
  * TV4 Stabilization — AnswerEvaluator
- * Evaluates player guesses against canonical secret word and registered aliases.
- * Authoritative pipeline: Normalization -> Exact Match -> Alias Match -> Unaccented Match -> Fuzzy Match.
+ * Evaluates player guesses against the canonical secret word.
+ * Strict pipeline: Normalization -> Exact Canonical Match -> Diacritic-Only Guard -> Fuzzy Match -> Alias Match.
+ *
+ * <p>Current gameplay rules (Part D):
+ * <ul>
+ *   <li>CORRECT requires normalized exact canonical equality (diacritics preserved).</li>
+ *   <li>Guesses differing from the secret word only by Vietnamese diacritics ("ngoi nha", "ngói nhà") are WRONG.</li>
+ *   <li>Fuzzy matching on unaccented forms may return CLOSE, never CORRECT.</li>
+ *   <li>Aliases/synonyms never produce CORRECT; an exact alias match returns CLOSE.</li>
+ * </ul>
  */
 @Component
 public class AnswerEvaluator {
@@ -32,11 +40,11 @@ public class AnswerEvaluator {
     }
 
     /**
-     * Evaluates whether guess matches secret word or any of its registered aliases.
+     * Evaluates whether guess matches the canonical secret word under strict diacritic rules.
      *
      * @param guess raw guess text from player
      * @param secretWord canonical secret word for current round
-     * @param aliases list of accepted synonyms / alternative spellings
+     * @param aliases list of registered synonyms / alternative spellings (never CORRECT)
      * @return Result.CORRECT, Result.CLOSE, or Result.WRONG
      */
     public Result evaluate(String guess, String secretWord, List<String> aliases) {
@@ -55,47 +63,32 @@ public class AnswerEvaluator {
             aliases = Collections.emptyList();
         }
 
-        // 1. Exact Match on Canonical Word
+        // 1. Exact Match on Canonical Word (diacritics preserved) — the only path to CORRECT
         if (normalizedGuess.equals(normalizedSecret)) {
             return Result.CORRECT;
         }
 
-        // 2. Exact Match on Registered Aliases
-        for (String alias : aliases) {
-            if (alias == null || alias.trim().isEmpty()) continue;
-            String normalizedAlias = normalize(alias);
-            if (normalizedGuess.equals(normalizedAlias)) {
-                return Result.CORRECT;
-            }
-        }
-
-        // 3. Unaccented Match on Canonical Word (e.g. "may bay" -> "máy bay")
+        // 2. Diacritic-only difference guard: "ngoi nha" / "ngói nhà" vs "ngôi nhà" -> WRONG
         String unaccentedGuess = stripAccents(normalizedGuess);
         String unaccentedSecret = stripAccents(normalizedSecret);
         if (unaccentedGuess.equals(unaccentedSecret)) {
-            return Result.CORRECT;
+            return Result.WRONG;
         }
 
-        // 4. Unaccented Match on Registered Aliases (e.g. "phi co" -> "phi cơ")
-        for (String alias : aliases) {
-            if (alias == null || alias.trim().isEmpty()) continue;
-            String unaccentedAlias = stripAccents(normalize(alias));
-            if (unaccentedGuess.equals(unaccentedAlias)) {
-                return Result.CORRECT;
-            }
-        }
-
-        // 5. Fuzzy Check (Levenshtein distance) -> CLOSE (Does NOT award score)
+        // 3. Fuzzy Check on unaccented forms (Levenshtein distance) -> CLOSE (Does NOT award score)
         // Guard against false positives on short words (<= 3 chars, e.g. "ba" vs "ca")
-        if (isClose(unaccentedGuess, unaccentedSecret) || isClose(normalizedGuess, normalizedSecret)) {
+        if (isClose(unaccentedGuess, unaccentedSecret)) {
             return Result.CLOSE;
         }
 
+        // 4. Aliases never produce CORRECT: exact or unaccented alias match -> CLOSE, fuzzy alias match -> CLOSE
         for (String alias : aliases) {
             if (alias == null || alias.trim().isEmpty()) continue;
             String normalizedAlias = normalize(alias);
             String unaccentedAlias = stripAccents(normalizedAlias);
-            if (isClose(unaccentedGuess, unaccentedAlias) || isClose(normalizedGuess, normalizedAlias)) {
+            if (normalizedGuess.equals(normalizedAlias)
+                    || unaccentedGuess.equals(unaccentedAlias)
+                    || isClose(unaccentedGuess, unaccentedAlias)) {
                 return Result.CLOSE;
             }
         }

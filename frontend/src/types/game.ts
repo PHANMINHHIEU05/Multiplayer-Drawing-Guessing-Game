@@ -1,4 +1,4 @@
-export type GameStatus = 'WAITING' | 'STARTING' | 'IN_ROUND' | 'ROUND_ENDED' | 'GAME_OVER';
+export type GameStatus = 'WAITING' | 'STARTING' | 'IN_ROUND' | 'PLAYING' | 'ROUND_ENDED' | 'GAME_OVER' | 'FINISHED';
 
 export interface PlayerScore {
   playerId: string;

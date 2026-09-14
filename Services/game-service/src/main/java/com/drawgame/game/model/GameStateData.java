@@ -20,6 +20,10 @@ public class GameStateData {
     private long roundStartedAt;
     private long roundEndsAt;
 
+    /** Round length in seconds, sourced from the room configuration. */
+    @Builder.Default
+    private int roundDurationSeconds = 60;
+
     @Builder.Default
     private List<String> playerOrder = new ArrayList<>();
 

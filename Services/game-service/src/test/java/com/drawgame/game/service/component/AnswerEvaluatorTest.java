@@ -58,12 +58,20 @@ class AnswerEvaluatorTest {
         }
 
         @Test
-        @DisplayName("Unaccented Vietnamese canonical match -> CORRECT")
+        @DisplayName("Unaccented Vietnamese canonical match -> WRONG (strict diacritic rule)")
         void testUnaccentedCanonicalMatch() {
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("may bay", "máy bay"));
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("con meo", "con mèo"));
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("xe dap", "xe đạp"));
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("dong ho", "đồng hồ"));
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("may bay", "máy bay"));
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("con meo", "con mèo"));
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("xe dap", "xe đạp"));
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("dong ho", "đồng hồ"));
+        }
+
+        @Test
+        @DisplayName("Wrong diacritic on canonical word -> WRONG")
+        void testWrongDiacriticMatch() {
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("ngói nhà", "ngôi nhà"));
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("ngồi nhà", "ngôi nhà"));
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("căn nhà", "ngôi nhà"));
         }
     }
 
@@ -75,26 +83,27 @@ class AnswerEvaluatorTest {
         private final List<String> catAliases = Arrays.asList("mèo", "con miu", "bé mèo");
 
         @Test
-        @DisplayName("Case B: Exact alias match -> CORRECT")
+        @DisplayName("Case B: Exact alias match -> CLOSE (aliases never produce CORRECT)")
         void testExactAliasMatch() {
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("phi cơ", "máy bay", planeAliases));
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("con miu", "con mèo", catAliases));
+            assertEquals(AnswerEvaluator.Result.CLOSE, evaluator.evaluate("phi cơ", "máy bay", planeAliases));
+            assertEquals(AnswerEvaluator.Result.CLOSE, evaluator.evaluate("con miu", "con mèo", catAliases));
         }
 
         @Test
-        @DisplayName("Case B: Case-insensitive and unaccented alias match -> CORRECT")
+        @DisplayName("Case B: Unaccented alias match -> CLOSE")
         void testUnaccentedAliasMatch() {
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("PHI CO", "máy bay", planeAliases));
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("phi co", "máy bay", planeAliases));
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("  tau   bay  ", "máy bay", planeAliases));
+            assertEquals(AnswerEvaluator.Result.CLOSE, evaluator.evaluate("PHI CO", "máy bay", planeAliases));
+            assertEquals(AnswerEvaluator.Result.CLOSE, evaluator.evaluate("phi co", "máy bay", planeAliases));
+            assertEquals(AnswerEvaluator.Result.CLOSE, evaluator.evaluate("  tau   bay  ", "máy bay", planeAliases));
         }
 
         @Test
         @DisplayName("Alias list containing nulls, empty strings, or duplicates")
         void testMessyAliasList() {
             List<String> messyAliases = Arrays.asList(null, "", "   ", "phi cơ", "PHI CƠ", null);
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("phi cơ", "máy bay", messyAliases));
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("may bay", "máy bay", messyAliases));
+            assertEquals(AnswerEvaluator.Result.CLOSE, evaluator.evaluate("phi cơ", "máy bay", messyAliases));
+            // "may bay" differs from "máy bay" only by diacritics -> WRONG (not rescued by aliases)
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("may bay", "máy bay", messyAliases));
         }
     }
 
@@ -134,9 +143,9 @@ class AnswerEvaluatorTest {
             assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("ca", "ga"));
             assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("cho", "bo"));
 
-            // Exact match on short words still works
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("ca", "cá"));
+            // Exact match on short words still works; missing diacritic does not
             assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("bò", "bò"));
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("ca", "cá"));
         }
 
         @Test
@@ -168,8 +177,9 @@ class AnswerEvaluatorTest {
         @DisplayName("Vietnamese specific characters: đ and Đ")
         void testVietnameseDWithStroke() {
             assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("đồng hồ", "đồng hồ"));
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("dong ho", "đồng hồ"));
-            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("ĐỒNG HỒ", "dong ho"));
+            // Unaccented forms no longer match — strict diacritic rule
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("dong ho", "đồng hồ"));
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("ĐỒNG HỒ", "dong ho"));
         }
     }
 
