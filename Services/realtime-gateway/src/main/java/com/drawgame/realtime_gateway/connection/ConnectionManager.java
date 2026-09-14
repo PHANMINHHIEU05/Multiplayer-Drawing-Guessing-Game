@@ -107,6 +107,26 @@ public class ConnectionManager {
         log.info("Session unbound: session={} prevRoom={} prevPlayer={}", sessionId, roomId, playerId);
     }
 
+    /**
+     * TV7 (stale-session replacement): drop the LOCAL routing binding of a logical
+     * player in a room — used when that player resumed on a different Gateway.
+     * The WebSocket connection itself is left to close naturally; it simply stops
+     * receiving room broadcasts and fails drawing authorization.
+     *
+     * @return the evicted local sessionId, or null if this Gateway held no binding
+     */
+    public String evictPlayerBinding(String roomId, String playerId) {
+        String key = playerId + ":" + roomId;
+        String sessionId = playerRoomToSession.remove(key);
+        if (sessionId != null) {
+            sessionToRoom.remove(sessionId);
+            sessionToPlayer.remove(sessionId);
+            log.info("Stale session evicted (player resumed elsewhere): player={} room={} session={}",
+                    playerId, roomId, sessionId);
+        }
+        return sessionId;
+    }
+
     public String getRoomId(String sessionId) {
         return sessionToRoom.get(sessionId);
     }

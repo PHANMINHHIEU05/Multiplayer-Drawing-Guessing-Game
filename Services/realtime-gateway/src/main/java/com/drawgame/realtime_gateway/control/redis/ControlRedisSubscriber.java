@@ -102,6 +102,16 @@ public class ControlRedisSubscriber {
             return;
         }
 
+        // TV7: internal stale-session eviction — the player resumed on the origin
+        // Gateway; drop any local binding we still hold. NOT forwarded to clients.
+        if ("PLAYER_SESSION_REPLACED".equals(envelope.eventType())) {
+            ControlEventPayload evict = ControlEventCodec.readPayload(envelope.payload());
+            if (evict != null && evict.playerId() != null) {
+                connectionManager.evictPlayerBinding(envelope.targetRoomId(), evict.playerId());
+            }
+            return;
+        }
+
         // Keep the drawing authorization cache in sync with server-authoritative
         // round transitions (affects ALL Gateways, not just the one with the drawer).
         // TV7: also drive Canvas-recovery lifecycle (reset on new round, cleanup on finish).

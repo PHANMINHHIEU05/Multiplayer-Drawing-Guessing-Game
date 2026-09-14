@@ -10,6 +10,7 @@ public record ControlEventPayload(
         String roomId,
         Integer currentRound,
         String drawerId,
-        String status
+        String status,
+        String playerId
 ) {
 }

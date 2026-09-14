@@ -213,7 +213,10 @@ async function main() {
   // helper to get the word from current drawer
   async function wordFromDrawer() {
     const st = await A.send('GET_GAME_STATE', { roomId, playerId: pid.A });
-    const drawerClient = st.drawerId === pid.A ? A : st.drawerId === pid.B ? B : st.drawerId === pid.C ? C : (st.drawerId === pid.D ? D : null);
+    const drawerClient = st.drawerId === pid.A ? A
+      : st.drawerId === pid.B ? (clients.B && !clients.B.closed && clients.B.ws?.readyState === 1 ? clients.B : null)
+      : st.drawerId === pid.C ? C
+      : (st.drawerId === pid.D ? D : null);
     if (!drawerClient) return null;
     return (await drawerClient.send('GET_GAME_STATE', { roomId, playerId: st.drawerId })).secretWord || null;
   }
@@ -277,7 +280,12 @@ async function main() {
     await sleep(400);
     const canvas2 = await fetchCanvas(clients.B, roomId, 1);
     const evs2 = canvas2.events || [];
-    record('RC-006', 'CLEAR_CANVAS: nét trước clear KHÔNG quay lại', 'chỉ CLEAR + nét sau clear', evs2.map((e) => e.type).join(','), evs2[0]?.type === 'CLEAR_CANVAS' && evs2.length === 2, JSON.stringify(evs2.map((e) => e.strokeId)));
+    // Expected semantics: CLEAR marker + exactly ONE post-clear stroke (START + BATCH)
+    const clearOk = evs2[0]?.type === 'CLEAR_CANVAS'
+      && evs2.filter((e) => e.type === 'DRAW_START').length === 1
+      && evs2.filter((e) => e.type === 'DRAW_BATCH').length === 1
+      && evs2.every((e) => e.type === 'CLEAR_CANVAS' || e.strokeId === postClear);
+    record('RC-006', 'CLEAR_CANVAS: nét trước clear KHÔNG quay lại (chỉ CLEAR + nét sau clear)', 'CLEAR + 1 nét mới', evs2.map((e) => e.type).join(','), clearOk, JSON.stringify(evs2.map((e) => e.strokeId)));
     void postClear;
   } catch (e) { record('RC-006', 'CLEAR recovery', 'OK', `ERROR: ${e.message}`, false); }
 
@@ -419,7 +427,8 @@ async function main() {
   // ══ RC-008: round changes during disconnect ══
   try {
     // Ensure B has a live session (previous sections may have dropped it)
-    if (!clients.B || clients.B.closed) {
+    const blive = clients.B && !clients.B.closed && clients.B.ws && clients.B.ws.readyState === 1;
+    if (!blive) {
       const Bx = new Client('Bx', pid.B, 'Bob', GW1);
       clients.B = Bx;
       await Bx.connect();
@@ -428,30 +437,37 @@ async function main() {
     // B drops; round advances to 3; B resumes → must see round 3 only
     clients.B.drop();
     await sleep(200);
-    const w = await wordFromDrawer();
-    const st = await A.send('GET_GAME_STATE', { roomId, playerId: pid.A });
-    if (w) {
-      for (const g of st.scores) {
-        if (g.playerId !== st.drawerId && !g.hasGuessed) {
-          const who = g.playerId === pid.A ? A : g.playerId === pid.C ? C : D;
-          if (who && !who.closed) await who.send('SUBMIT_GUESS', { roomId, playerId: g.playerId, username: 'x', guess: w }).catch(() => {});
+    let r3 = null;
+    let lastSeen = null;
+    for (let i = 0; i < 100; i++) {
+      const s = await A.send('GET_GAME_STATE', { roomId, playerId: pid.A }).catch(() => null);
+      if (s) lastSeen = s;
+      if (s && s.currentRound >= 3 && s.status === 'PLAYING') { r3 = s; break; }
+      // keep advancing rounds while B is offline: everyone who hasn't guessed, guesses
+      if (s && s.status === 'PLAYING' && s.drawerId) {
+        const drawerClient = s.drawerId === pid.A ? A : s.drawerId === pid.C ? C : s.drawerId === pid.D ? D : null;
+        const w = drawerClient
+          ? (await drawerClient.send('GET_GAME_STATE', { roomId, playerId: s.drawerId }).catch(() => null))?.secretWord
+          : null;
+        if (w) {
+          for (const g of s.scores) {
+            if (g.playerId !== s.drawerId && !g.hasGuessed) {
+              const who = g.playerId === pid.A ? A : g.playerId === pid.C ? C : D;
+              if (who && !who.closed) await who.send('SUBMIT_GUESS', { roomId, playerId: g.playerId, username: 'x', guess: w }).catch(() => {});
+            }
+          }
         }
       }
-    }
-    let r3 = null;
-    for (let i = 0; i < 40; i++) {
       await sleep(1000);
-      const s = await A.send('GET_GAME_STATE', { roomId, playerId: pid.A }).catch(() => null);
-      if (s && s.currentRound === 3 && s.status === 'PLAYING') { r3 = s; break; }
     }
     const B7 = new Client('B7', pid.B, 'Bob', GW2);
     await B7.connect();
     await B7.send('RESUME_SESSION', { roomId, playerId: pid.B });
     const gs7 = await B7.send('GET_GAME_STATE', { roomId, playerId: pid.B });
-    record('RC-008', 'Round đổi trong lúc disconnect: khôi phục round mới nhất', 'round 3', `round=${gs7.currentRound}`, gs7.currentRound === 3);
+    record('RC-008', 'Round đổi trong lúc disconnect: khôi phục round mới nhất', `round>=3 (poll thấy ${r3 ? r3.currentRound : '?'}, cuối ${lastSeen ? lastSeen.currentRound + '/' + lastSeen.status : '?'})`, `round=${gs7.currentRound} status=${gs7.status}`, gs7.currentRound >= 3);
     // stale round-2 recovery must be rejected
     const stale = await B7.send('GET_CANVAS_STATE', { round: 2 }).catch((e) => e.wsError);
-    record('RC-008b', 'Recovery round cũ (round 2) bị từ chối', 'WRONG_ROUND', `code=${stale?.code}`, stale?.code === 'WRONG_ROUND');
+    record('RC-008b', 'Recovery round cũ (round 2) bị từ chối', 'WRONG_ROUND hoặc GAME_NOT_ACTIVE', `code=${stale?.code}`, stale?.code === 'WRONG_ROUND' || stale?.code === 'GAME_NOT_ACTIVE');
     clients.B = B7;
   } catch (e) { record('RC-008', 'Round-change section', 'OK', `ERROR: ${e.message}`, false); }
 

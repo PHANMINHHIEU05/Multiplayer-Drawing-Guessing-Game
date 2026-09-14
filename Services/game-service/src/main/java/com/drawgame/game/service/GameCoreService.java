@@ -72,9 +72,13 @@ public class GameCoreService {
 
             // Preserving deterministic join order
             List<String> playerOrder = new ArrayList<>();
+            Map<String, String> usernames = new HashMap<>();
             for (PlayerMessage p : players) {
                 playerOrder.add(p.getPlayerId());
+                usernames.put(p.getPlayerId(), p.getUsername());
             }
+            // TV7: persist display usernames so GET_GAME_STATE scores carry them
+            redisGameRepository.setUsernames(roomId, usernames);
 
             // Round 1 drawer
             String drawerId = playerOrder.get(0);

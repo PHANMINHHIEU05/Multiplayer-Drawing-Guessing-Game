@@ -222,6 +222,18 @@ public class GameCommandHandler {
 
                     connectionManager.bindSession(sessionId, roomId, playerId);
 
+                    // TV7 (stale-session replacement, spec §41): notify OTHER Gateways that
+                    // this player now lives HERE — they evict any old binding for the same
+                    // player+room so the old session stops receiving room broadcasts.
+                    // Local eviction already happened in bindSession (playerRoomToSession).
+                    if (controlEventRouter != null) {
+                        Map<String, Object> evict = new HashMap<>();
+                        evict.put("type", "PLAYER_SESSION_REPLACED");
+                        evict.put("roomId", roomId);
+                        evict.put("playerId", playerId);
+                        controlEventRouter.broadcastToRoom(roomId, "PLAYER_SESSION_REPLACED", toJson(evict));
+                    }
+
                     Map<String, Object> payload = new HashMap<>();
                     payload.put("playerId", playerId);
                     payload.put("roomId", roomId);

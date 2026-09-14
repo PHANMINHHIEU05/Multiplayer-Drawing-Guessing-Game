@@ -44,6 +44,10 @@ public class RedisGameRepository {
         return "game:" + roomId + ":guessed";
     }
 
+    private static String getNamesKey(String roomId) {
+        return "game:" + roomId + ":names";
+    }
+
     private static String getLockKey(String roomId) {
         return "game:" + roomId + ":start_lock";
     }
@@ -106,6 +110,22 @@ public class RedisGameRepository {
         redisTemplate.opsForHash().put(scoresKey, playerId, String.valueOf(score));
     }
 
+    /**
+     * TV7: persist display usernames (from Room Service membership at game start)
+     * so GET_GAME_STATE scores carry usernames for the scoreboard. Display data
+     * only — identity remains the playerId.
+     */
+    public void setUsernames(String roomId, Map<String, String> playerIdToUsername) {
+        String namesKey = getNamesKey(roomId);
+        Map<String, String> hash = new HashMap<>();
+        playerIdToUsername.forEach((pid, name) -> {
+            if (name != null && !name.isBlank()) hash.put(pid, name);
+        });
+        if (!hash.isEmpty()) {
+            redisTemplate.opsForHash().putAll(namesKey, hash);
+        }
+    }
+
     public boolean atomicSubmitGuess(String roomId, String playerId, int scoreAwarded, int drawerBonus, String drawerId) {
         String guessedKey = getGuessedKey(roomId);
         String scoresKey = getScoresKey(roomId);
@@ -126,6 +146,7 @@ public class RedisGameRepository {
         String scoresKey = getScoresKey(roomId);
         String guessedKey = getGuessedKey(roomId);
         Map<Object, Object> entries = redisTemplate.opsForHash().entries(scoresKey);
+        Map<Object, Object> usernames = redisTemplate.opsForHash().entries(getNamesKey(roomId));
         Set<String> guessedPlayers = redisTemplate.opsForSet().members(guessedKey);
         if (guessedPlayers == null) {
             guessedPlayers = Collections.emptySet();
@@ -138,6 +159,7 @@ public class RedisGameRepository {
                 int score = Integer.parseInt((String) entry.getValue());
                 list.add(PlayerScoreData.builder()
                         .playerId(pId)
+                        .username((String) usernames.get(pId))
                         .score(score)
                         .hasGuessed(guessedPlayers.contains(pId))
                         .build());
@@ -164,6 +186,6 @@ public class RedisGameRepository {
     }
 
     public void deleteGame(String roomId) {
-        redisTemplate.delete(Arrays.asList(getKey(roomId), getScoresKey(roomId), getGuessedKey(roomId), getLockKey(roomId)));
+        redisTemplate.delete(Arrays.asList(getKey(roomId), getScoresKey(roomId), getGuessedKey(roomId), getNamesKey(roomId), getLockKey(roomId)));
     }
 }
