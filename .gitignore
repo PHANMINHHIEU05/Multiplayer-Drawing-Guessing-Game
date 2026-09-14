@@ -98,3 +98,10 @@ jars.txt
 # E2E test artifacts
 test-results/
 playwright-report/
+
+# Benchmark raw outputs (keep summary CSV/JSON, ignore bulky per-run raw + logs)
+benchmark-results/raw/
+benchmark-results/raw-buggy/
+benchmark-results/raw-smoke/
+benchmark-results/raw-partial/
+benchmark-results/*.log

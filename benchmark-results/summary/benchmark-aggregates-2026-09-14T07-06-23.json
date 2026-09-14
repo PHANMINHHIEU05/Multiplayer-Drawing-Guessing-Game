@@ -1,0 +1,273 @@
+{
+  "environment": {
+    "os": "Linux 7.2.4-100.fc43.x86_64",
+    "cpu": "13th Gen Intel(R) Core(TM) i5-13420H",
+    "cpuCores": "12",
+    "ram": "15Gi",
+    "java": "openjdk version \"21.0.12.1\" 2026-08-18",
+    "node": "v22.22.2",
+    "docker": "Docker version 29.6.2, build 1.fc43",
+    "topology": "1 gateway(s)",
+    "date": "2026-09-14T07:04:51.528Z"
+  },
+  "generatedAt": "2026-09-14T07:06:23.770Z",
+  "aggregates": [
+    {
+      "configuration": {
+        "protocol": "BINARY_BATCH",
+        "players": 10,
+        "rooms": 1,
+        "gateways": 1,
+        "mixed": false
+      },
+      "aggregate": {
+        "runs": 3,
+        "rtt_avg_ms": {
+          "median": 0.31,
+          "min": 0.28,
+          "max": 0.45
+        },
+        "rtt_p50_ms": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "rtt_p95_ms": {
+          "median": 1,
+          "min": 1,
+          "max": 1
+        },
+        "rtt_p99_ms": {
+          "median": 1,
+          "min": 1,
+          "max": 1
+        },
+        "rtt_min_ms": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "rtt_max_ms": {
+          "median": 1,
+          "min": 1,
+          "max": 1
+        },
+        "jitter_ms": {
+          "median": 0.01,
+          "min": 0.01,
+          "max": 0.01
+        },
+        "rtt_samples": {
+          "median": 200,
+          "min": 200,
+          "max": 200
+        },
+        "tx_msg_total": {
+          "median": 1025,
+          "min": 1025,
+          "max": 1025
+        },
+        "rx_msg_total": {
+          "median": 7625,
+          "min": 7625,
+          "max": 7625
+        },
+        "tx_msg_per_sec": {
+          "median": 51.2,
+          "min": 51.2,
+          "max": 51.3
+        },
+        "rx_msg_per_sec": {
+          "median": 381.2,
+          "min": 381.2,
+          "max": 381.3
+        },
+        "tx_bytes_total": {
+          "median": 42400,
+          "min": 42400,
+          "max": 42400
+        },
+        "rx_bytes_total": {
+          "median": 324800,
+          "min": 324800,
+          "max": 324800
+        },
+        "tx_bytes_per_sec": {
+          "median": 2119.9,
+          "min": 2119.8,
+          "max": 2120
+        },
+        "rx_bytes_per_sec": {
+          "median": 16239.2,
+          "min": 16238.4,
+          "max": 16240
+        },
+        "points_per_sec": {
+          "median": 150,
+          "min": 150,
+          "max": 150
+        },
+        "batches_per_sec": {
+          "median": 41.2,
+          "min": 41.2,
+          "max": 41.3
+        },
+        "points_per_batch": {
+          "median": 3.64,
+          "min": 3.64,
+          "max": 3.64
+        },
+        "drawing_bytes_total": {
+          "median": 33400,
+          "min": 33400,
+          "max": 33400
+        },
+        "bytes_per_drawing_point": {
+          "median": 11.133333333333333,
+          "min": 11.133333333333333,
+          "max": 11.133333333333333
+        },
+        "sequence_gaps": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "duplicate_frames": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "error_count": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "rate_limit_hits": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "auth_failures": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "disconnects": {
+          "median": 10,
+          "min": 10,
+          "max": 10
+        },
+        "duration_sec": {
+          "median": 20,
+          "min": 20,
+          "max": 20
+        },
+        "gateway-1_cpu_avg": {
+          "median": 3.1,
+          "min": 2.8,
+          "max": 3.3
+        },
+        "gateway-1_cpu_peak": {
+          "median": 3.52,
+          "min": 3.05,
+          "max": 3.53
+        },
+        "gateway-1_mem_mb": {
+          "median": 245504,
+          "min": 245350,
+          "max": 245504
+        },
+        "gateway-2_cpu_avg": {
+          "median": 0.4,
+          "min": 0.4,
+          "max": 0.4
+        },
+        "gateway-2_cpu_peak": {
+          "median": 0.41,
+          "min": 0.41,
+          "max": 0.43
+        },
+        "gateway-2_mem_mb": {
+          "median": 243968,
+          "min": 243917,
+          "max": 244301
+        },
+        "redis_cpu_avg": {
+          "median": 1.1,
+          "min": 1,
+          "max": 1.2
+        },
+        "redis_cpu_peak": {
+          "median": 1.2,
+          "min": 1.07,
+          "max": 1.34
+        },
+        "redis_mem_mb": {
+          "median": 4899,
+          "min": 4866,
+          "max": 5420
+        },
+        "game-service_cpu_avg": {
+          "median": 0.1,
+          "min": 0.1,
+          "max": 0.1
+        },
+        "game-service_cpu_peak": {
+          "median": 0.13,
+          "min": 0.09,
+          "max": 0.14
+        },
+        "game-service_mem_mb": {
+          "median": 320410,
+          "min": 320410,
+          "max": 320410
+        },
+        "room-service_cpu_avg": {
+          "median": 0.1,
+          "min": 0.1,
+          "max": 0.1
+        },
+        "room-service_cpu_peak": {
+          "median": 0.11,
+          "min": 0.09,
+          "max": 0.14
+        },
+        "room-service_mem_mb": {
+          "median": 84070,
+          "min": 83569,
+          "max": 84408
+        },
+        "chat-service_cpu_avg": {
+          "median": 0.1,
+          "min": 0.1,
+          "max": 0.1
+        },
+        "chat-service_cpu_peak": {
+          "median": 0.13,
+          "min": 0.13,
+          "max": 0.14
+        },
+        "chat-service_mem_mb": {
+          "median": 72243,
+          "min": 72243,
+          "max": 72243
+        },
+        "postgres_cpu_avg": {
+          "median": 0,
+          "min": 0,
+          "max": 1
+        },
+        "postgres_cpu_peak": {
+          "median": 0.02,
+          "min": 0,
+          "max": 2.15
+        },
+        "postgres_mem_mb": {
+          "median": 36672,
+          "min": 36639,
+          "max": 38886
+        }
+      }
+    }
+  ]
+}

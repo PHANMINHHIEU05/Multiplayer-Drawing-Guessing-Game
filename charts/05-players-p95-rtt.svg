@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="420" font-family="system-ui,sans-serif">
+  <text x="380" y="40" text-anchor="middle" font-size="17" font-weight="bold" fill="#0f172a">Players vs p95 RTT — BINARY_BATCH, 1 room, 1 Gateway</text>
+  <rect x="70" y="10" width="12" height="12" fill="#8b5cf6" rx="3"/><text x="87" y="21" font-size="12" fill="#334155">p95 RTT</text>
+  <text x="16" y="203" text-anchor="middle" font-size="13" fill="#334155" transform="rotate(-90 16 203)">p95 RTT (ms)</text>
+  <line x1="70" y1="360" x2="740" y2="360" stroke="#94a3b8"/>
+  <line x1="70" y1="46" x2="70" y2="360" stroke="#94a3b8"/>
+  <text x="70" y="380" text-anchor="middle" font-size="12" fill="#334155">4</text><text x="321.25" y="380" text-anchor="middle" font-size="12" fill="#334155">10</text><text x="740" y="380" text-anchor="middle" font-size="12" fill="#334155">20</text><path d="M70,46L321.25,46" stroke="#8b5cf6" stroke-width="2.5" fill="none"/><circle cx="70" cy="46" r="4" fill="#8b5cf6"/><circle cx="321.25" cy="46" r="4" fill="#8b5cf6"/>
+</svg>

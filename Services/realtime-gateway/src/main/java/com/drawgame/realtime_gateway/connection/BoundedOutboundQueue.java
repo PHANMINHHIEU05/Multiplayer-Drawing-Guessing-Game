@@ -42,6 +42,17 @@ public class BoundedOutboundQueue {
         this.sink = Sinks.many().unicast().onBackpressureBuffer();
     }
 
+    /**
+     * TV9 BUGFIX (FAIL_NON_SERIALIZED): frames are enqueued from MULTIPLE threads
+     * (Netty event loops for local broadcast, boundedElastic for Redis Pub/Sub
+     * control fanout, game-service scheduler threads). A unicast sink treats
+     * CONCURRENT tryEmitNext as a protocol violation and cancels the sink —
+     * killing the WebSocket session and its room binding mid-game.
+     * Synchronizing the check-then-emit critical section makes emission
+     * serialized across producers; per-frame cost is negligible (no I/O inside).
+     */
+    private final Object emitLock = new Object();
+
     public Flux<OutboundFrame> asFlux() {
         return sink.asFlux()
                 .doOnNext(frame -> {
@@ -84,29 +95,32 @@ public class BoundedOutboundQueue {
             }
         }
 
-        Sinks.EmitResult result = sink.tryEmitNext(frame);
-        if (result.isSuccess()) {
-            currentQueueSize.incrementAndGet();
+        // TV9: serialized emission — see emitLock note above
+        Sinks.EmitResult result;
+        synchronized (emitLock) {
+            result = sink.tryEmitNext(frame);
+            if (result.isSuccess()) {
+                currentQueueSize.incrementAndGet();
+                if (metrics != null) {
+                    metrics.recordQueueSizeChange(1);
+                }
+                return EmitStatus.EMITTED;
+            }
+        }
+        if (frame.isDroppable()) {
+            droppedFramesCount.incrementAndGet();
             if (metrics != null) {
-                metrics.recordQueueSizeChange(1);
+                metrics.incrementDroppedDrawBatch();
             }
-            return EmitStatus.EMITTED;
+            log.debug("Sink emission failed ({}) for drawing frame on session {}, dropped", result, sessionId);
+            return EmitStatus.DROPPED;
         } else {
-            if (frame.isDroppable()) {
-                droppedFramesCount.incrementAndGet();
-                if (metrics != null) {
-                    metrics.incrementDroppedDrawBatch();
-                }
-                log.debug("Sink emission failed ({}) for drawing frame on session {}, dropped", result, sessionId);
-                return EmitStatus.DROPPED;
-            } else {
-                overflowCount.incrementAndGet();
-                if (metrics != null) {
-                    metrics.incrementQueueOverflow();
-                }
-                log.warn("Sink emission failed ({}) for control frame on session {}", result, sessionId);
-                return EmitStatus.OVERFLOW;
+            overflowCount.incrementAndGet();
+            if (metrics != null) {
+                metrics.incrementQueueOverflow();
             }
+            log.warn("Sink emission failed ({}) for control frame on session {}", result, sessionId);
+            return EmitStatus.OVERFLOW;
         }
     }
 
