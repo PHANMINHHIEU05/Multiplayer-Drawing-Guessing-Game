@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 const STORAGE_KEY_ID = 'app_player_id';
 const STORAGE_KEY_NAME = 'app_username';
+const STORAGE_KEY_TOKEN = 'app_game_session_token';
 
 function safeGetItem(key: string): string | null {
   if (typeof window !== 'undefined' && window.localStorage) {
@@ -76,6 +77,15 @@ export const playerStore = {
     state = { ...state, username: '' };
     notify();
   },
+  /**
+   * TV8: signed game-session credential issued by the Gateway after membership.
+   * This is the resume proof — the raw playerId alone is NO LONGER sufficient.
+   * localStorage trade-off acknowledged (XSS = token theft until expiry); narrow
+   * purpose (GAME_SESSION), server-rotated, membership-checked server-side.
+   */
+  getSessionToken: (): string | null => safeGetItem(STORAGE_KEY_TOKEN),
+  setSessionToken: (token: string) => safeSetItem(STORAGE_KEY_TOKEN, token),
+  clearSessionToken: () => safeRemoveItem(STORAGE_KEY_TOKEN),
   subscribe: (listener: () => void) => {
     listeners.add(listener);
     return () => listeners.delete(listener);

@@ -5,6 +5,7 @@ import { gameStore } from '../store/gameStore';
 import { chatStore } from '../store/chatStore';
 import { guessStore } from '../store/guessStore';
 import { connectionStore } from '../store/connectionStore';
+import { playerStore } from '../store/playerStore';
 import { Room, Player } from '../types/room';
 import { GameState, DrawPoint } from '../types/game';
 import { ChatMessage } from '../types/chat';
@@ -17,6 +18,12 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
       case MessageType.ROOM_CREATED:
       case MessageType.ROOM_JOINED:
       case MessageType.ROOM_INFO: {
+        // TV8: the Gateway issues a signed game-session credential on CREATE/JOIN —
+        // persist it; it is the only accepted resume proof from now on.
+        if (response.sessionToken && (response.type === MessageType.ROOM_CREATED || response.type === MessageType.ROOM_JOINED)) {
+          playerStore.setSessionToken(response.sessionToken);
+        }
+
         const players: Player[] = (response.players || []).map((p: any) => ({
           playerId: p.playerId,
           username: p.username,
@@ -84,6 +91,9 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
       }
 
       case MessageType.ROOM_LEFT: {
+        // TV8: explicit leave — clear the signed credential + resume metadata so an
+        // old token can never silently restore the player into this room.
+        playerStore.clearSessionToken();
         roomStore.clearRoom();
         gameStore.clearGame();
         chatStore.clearMessages();

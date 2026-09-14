@@ -100,6 +100,7 @@ class Client {
   constructor(name, playerId, username, url) {
     this.name = name; this.playerId = playerId; this.username = username; this.url = url;
     this.ws = null; this.reqId = 0; this.pending = new Map(); this.events = []; this.binEvents = []; this.closed = false;
+    this.sessionToken = null;
   }
   connect(timeout = 8000) {
     return new Promise((resolve, reject) => {
@@ -114,6 +115,8 @@ class Client {
         let msg;
         try { msg = JSON.parse(ev.data); } catch { return; }
         this.events.push(msg);
+        // TV8: capture the signed game-session credential
+        if (msg.sessionToken) this.sessionToken = msg.sessionToken;
         if (msg.requestId && this.pending.has(msg.requestId)) {
           const p = this.pending.get(msg.requestId);
           this.pending.delete(msg.requestId);
@@ -238,7 +241,7 @@ async function main() {
     const B2 = new Client('B2', pid.B, 'Bob', GW2);
     clients.B = B2;
     await B2.connect();
-    const resume = await B2.send('RESUME_SESSION', { roomId, playerId: pid.B });
+    const resume = await B2.send('RESUME_SESSION', { roomId, playerId: pid.B, token: B.sessionToken });
     record('RC-017a', 'B reconnect GW1→GW2: SESSION_RESUMED', 'SESSION_RESUMED', `type=${resume.type}`, resume.type === 'SESSION_RESUMED');
 
     // no duplicate player
@@ -300,7 +303,7 @@ async function main() {
     clients.B = B3;
     clients.previous = B3; // keep for the stale-session test (RC-013)
     await B3.connect();
-    await B3.send('RESUME_SESSION', { roomId, playerId: pid.B });
+    await B3.send('RESUME_SESSION', { roomId, playerId: pid.B, token: B.sessionToken });
     // Fire recovery, and WHILE it is in flight the drawer adds another stroke
     const recoveryPromise = fetchCanvas(B3, roomId, 1);
     await sleep(60); // let recovery request hit the gateway mid-flight
@@ -327,7 +330,7 @@ async function main() {
     const B4 = new Client('B4', pid.B, 'Bob', GW2);
     clients.B = B4;
     await B4.connect();
-    await B4.send('RESUME_SESSION', { roomId, playerId: pid.B });
+    await B4.send('RESUME_SESSION', { roomId, playerId: pid.B, token: B.sessionToken });
     // old B3 should no longer receive room broadcasts (evicted binding)
     const mark3 = clients.previous.events.length;
     await A.send('SEND_CHAT', { roomId, playerId: pid.A, username: 'Alice', content: 'rc-stale-session-probe' });
@@ -347,7 +350,7 @@ async function main() {
       await sleep(300);
       const B5 = new Client('B5', pid.B, 'Bob', GW1);
       await B5.connect();
-      await B5.send('RESUME_SESSION', { roomId, playerId: pid.B });
+      await B5.send('RESUME_SESSION', { roomId, playerId: pid.B, token: B.sessionToken });
       const gs5 = await B5.send('GET_GAME_STATE', { roomId, playerId: pid.B });
       const me = gs5.scores.find((s) => s.playerId === pid.B);
       record('RC-009', 'Reconnect sau khi đoán đúng: hasGuessed + score giữ nguyên', `hasGuessed=true, score=${scoreBefore}`, `hasGuessed=${me?.hasGuessed}, score=${me?.score}`, me?.hasGuessed === true && me?.score === scoreBefore);
@@ -359,7 +362,7 @@ async function main() {
       const B5b = new Client('B5b', pid.B, 'Bob', GW1);
       clients.B = B5b;
       await B5b.connect();
-      await B5b.send('RESUME_SESSION', { roomId, playerId: pid.B });
+      await B5b.send('RESUME_SESSION', { roomId, playerId: pid.B, token: B.sessionToken });
       B5.close();
     }
   } catch (e) { record('RC-009', 'Already-guessed section', 'OK', `ERROR: ${e.message}`, false); }
@@ -393,7 +396,7 @@ async function main() {
     const B6 = new Client('B6', pid.B, 'Bob', GW2);
     clients.B = B6;
     await B6.connect();
-    await B6.send('RESUME_SESSION', { roomId, playerId: pid.B });
+    await B6.send('RESUME_SESSION', { roomId, playerId: pid.B, token: B.sessionToken });
     const w2 = (await B6.send('GET_GAME_STATE', { roomId, playerId: pid.B })).secretWord;
     record('RC-010a', 'Drawer reconnect: vẫn được nhận diện là drawer', 'secretWord có (B là drawer)', w2 ? 'có' : 'KHÔNG (mất quyền drawer)', !!w2);
     // drawing authorization works after reconnect
@@ -419,7 +422,7 @@ async function main() {
     await sleep(200);
     const E2 = new Client('E2', pid.E, 'Eve', GW1);
     await E2.connect();
-    const resumeRes = await E2.send('RESUME_SESSION', { roomId: er.roomId, playerId: pid.E }).catch((e) => e.wsError);
+    const resumeRes = await E2.send('RESUME_SESSION', { roomId: er.roomId, playerId: pid.E, token: E1.sessionToken }).catch((e) => e.wsError);
     record('RC-011', 'Explicit LEAVE: reconnect KHÔNG auto-resume vào room', 'ERROR (không phải SESSION_RESUMED)', `type=${resumeRes?.type || resumeRes?.code}`, resumeRes?.type !== 'SESSION_RESUMED');
     E2.close();
   } catch (e) { record('RC-011', 'Explicit leave section', 'OK', `ERROR: ${e.message}`, false); }
@@ -432,7 +435,7 @@ async function main() {
       const Bx = new Client('Bx', pid.B, 'Bob', GW1);
       clients.B = Bx;
       await Bx.connect();
-      await Bx.send('RESUME_SESSION', { roomId, playerId: pid.B });
+      await Bx.send('RESUME_SESSION', { roomId, playerId: pid.B, token: B.sessionToken });
     }
     // B drops; round advances to 3; B resumes → must see round 3 only
     clients.B.drop();
@@ -462,7 +465,7 @@ async function main() {
     }
     const B7 = new Client('B7', pid.B, 'Bob', GW2);
     await B7.connect();
-    await B7.send('RESUME_SESSION', { roomId, playerId: pid.B });
+    await B7.send('RESUME_SESSION', { roomId, playerId: pid.B, token: B.sessionToken });
     const gs7 = await B7.send('GET_GAME_STATE', { roomId, playerId: pid.B });
     record('RC-008', 'Round đổi trong lúc disconnect: khôi phục round mới nhất', `round>=3 (poll thấy ${r3 ? r3.currentRound : '?'}, cuối ${lastSeen ? lastSeen.currentRound + '/' + lastSeen.status : '?'})`, `round=${gs7.currentRound} status=${gs7.status}`, gs7.currentRound >= 3);
     // stale round-2 recovery must be rejected
@@ -480,7 +483,7 @@ async function main() {
     await sleep(1000);
     const A2 = new Client('A2', pid.A, 'Alice', GW1);
     await A2.connect();
-    const aResume = await A2.send('RESUME_SESSION', { roomId, playerId: pid.A });
+    const aResume = await A2.send('RESUME_SESSION', { roomId, playerId: pid.A, token: A.sessionToken });
     record('RC-012', 'Grace/membership policy: reconnect sau disconnect dài vẫn resume được (membership Redis-backed)', 'SESSION_RESUMED', `type=${aResume.type}`, aResume.type === 'SESSION_RESUMED', 'chính sách hiện tại: membership tồn tại tới khi LEAVE_ROOM/room TTL (7200s) — không có grace-expiry eviction');
     // replace A for remaining sections
     A2.playerId = pid.A;
@@ -497,7 +500,7 @@ async function main() {
       await sleep(300);
       const cn = new Client(`Bc${i}`, pid.B, 'Bob', i % 2 === 0 ? GW1 : GW2);
       await cn.connect();
-      const r = await cn.send('RESUME_SESSION', { roomId, playerId: pid.B });
+      const r = await cn.send('RESUME_SESSION', { roomId, playerId: pid.B, token: B.sessionToken });
       if (r.type !== 'SESSION_RESUMED') ok = false;
       clients.B = cn;
     }
@@ -554,7 +557,7 @@ async function main() {
       // B reconnects after finish
       const B8 = new Client('B8', pid.B, 'Bob', GW2);
       await B8.connect();
-      const resumeF = await B8.send('RESUME_SESSION', { roomId, playerId: pid.B }).catch((e) => e.wsError);
+      const resumeF = await B8.send('RESUME_SESSION', { roomId, playerId: pid.B, token: B.sessionToken }).catch((e) => e.wsError);
       const gsF = await B8.send('GET_GAME_STATE', { roomId, playerId: pid.B }).catch((e) => e.wsError);
       const restored = gsF?.type === 'GAME_STATE' ? gsF.status : (gsF?.code || 'state-deleted');
       record('RC-015', 'Game FINISHED trong lúc disconnect: reconnect khôi phục trạng thái kết thúc', 'FINISHED hoặc state đã dọn (không phải round cũ)', `resume=${resumeF?.type || resumeF?.code}, state=${restored}`, restored === 'FINISHED' || restored === 'GET_GAME_STATE_FAILED' || gsF?.code === 'GET_GAME_STATE_FAILED');

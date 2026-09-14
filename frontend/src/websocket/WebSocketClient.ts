@@ -307,16 +307,24 @@ export class WebSocketClient {
     const currentRoom = roomStore.getState().room;
     // TV7: page refresh loses in-memory room — fall back to the persisted last room id
     const roomId = currentRoom?.roomId || roomStore.getLastRoomId() || null;
+    // TV8: signed game-session credential — the ONLY accepted resume proof.
+    // A raw playerId without a token is rejected server-side (no legacy fallback).
+    const token = playerStore.getSessionToken();
 
-    if (roomId && playerId) {
+    if (roomId && playerId && token) {
       console.log(`[WebSocket] Restoring session in room ${roomId}...`);
       // Re-bind the new WebSocket session without mutating room membership.
       this.send(MessageType.RESUME_SESSION, {
         roomId,
-        playerId,
+        playerId, // compatibility only — server verifies it matches the token subject
+        token,
       }, 5000)
         .then((resumeResponse) => {
           console.log('[WebSocket] Session resumed successfully');
+          // TV8: the server rotates the credential on every successful resume
+          if (resumeResponse.sessionToken) {
+            playerStore.setSessionToken(resumeResponse.sessionToken);
+          }
           return this.send(MessageType.GET_ROOM, {}, 5000)
             .then((roomResponse) => {
               const resumedStatus = resumeResponse.payload?.roomStatus;
@@ -339,17 +347,29 @@ export class WebSocketClient {
         })
         .catch((err: any) => {
           console.warn('[WebSocket] Failed to restore room/game state:', err);
-          // Only clear resume metadata for permanent failures (room gone / player
-          // removed) — transient infrastructure errors keep the room context so
-          // the next reconnect can retry.
           const code = err?.wsError?.code || '';
-          const permanent = [
+          // TV8: credential failures are terminal — stop retrying, clear resume
+          // metadata and surface "Phiên chơi đã hết hạn" instead of looping forever.
+          const authFailure = [
+            'SESSION_TOKEN_EXPIRED', 'INVALID_SESSION_TOKEN', 'AUTH_REQUIRED',
+            'ROOM_SCOPE_MISMATCH',
+          ].includes(code);
+          const permanent = authFailure || [
             'PLAYER_NOT_IN_ROOM', 'ROOM_NOT_FOUND', 'INVALID_SESSION', 'RESUME_RETRYABLE',
           ].includes(code) || /not a member|not found|resume/i.test(String(err.message || ''));
+          if (authFailure) {
+            playerStore.clearSessionToken();
+            connectionStore.setLastError('Phiên chơi đã hết hạn. Vui lòng vào lại phòng.');
+          }
           if (permanent) {
             roomStore.clearRoom();
           }
         });
+    } else if (roomId && playerId) {
+      // TV8 migration: persisted roomId but no signed token (legacy browser) —
+      // resume is impossible; clear stale metadata once and require a clean rejoin.
+      console.warn('[WebSocket] No game-session token — clearing stale resume metadata (rejoin required)');
+      roomStore.clearRoom();
     }
   }
 

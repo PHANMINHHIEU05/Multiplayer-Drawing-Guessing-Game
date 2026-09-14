@@ -66,7 +66,8 @@ class DrawingWebSocketTransportTest {
     void setUp() {
         decoder = new BinaryDrawingDecoder();
         encoder = new BinaryDrawingEncoder();
-        transport = new DrawingWebSocketTransport(decoder, messageHandler, connectionManager);
+        transport = new DrawingWebSocketTransport(decoder, messageHandler, connectionManager,
+                new com.drawgame.realtime_gateway.security.SessionRateLimiter(1000, 1000, 100000, 1000, 500), 2048);
 
         lenient().when(session.getId()).thenReturn("session-123");
         lenient().when(connectionManager.getRoomId("session-123")).thenReturn("room-456");

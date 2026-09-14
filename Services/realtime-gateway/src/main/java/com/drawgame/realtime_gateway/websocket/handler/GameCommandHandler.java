@@ -9,6 +9,9 @@ import com.drawgame.realtime_gateway.control.ControlEventRouter;
 import com.drawgame.realtime_gateway.drawing.recovery.DrawingRecoveryRepository;
 import com.drawgame.realtime_gateway.drawing.routing.DrawingRoomState;
 import com.drawgame.realtime_gateway.drawing.routing.DrawingRoomStateCache;
+import com.drawgame.realtime_gateway.security.GameSessionTokenService;
+import com.drawgame.realtime_gateway.security.InputValidator;
+import com.drawgame.realtime_gateway.security.SessionRateLimiter;
 import com.drawgame.realtime_gateway.grpc.ChatGrpcClient;
 import com.drawgame.realtime_gateway.grpc.GameGrpcClient;
 import com.drawgame.realtime_gateway.grpc.RoomGrpcClient;
@@ -42,6 +45,10 @@ public class GameCommandHandler {
     private final DrawingRecoveryRepository recoveryRepository;
     private final ObjectMapper objectMapper;
     private final String gatewayInstanceId;
+    /** TV8 security: signed game-session credentials, per-session rate limits, input bounds. */
+    private final GameSessionTokenService tokenService;
+    private final SessionRateLimiter rateLimiter;
+    private final InputValidator inputValidator;
 
     public GameCommandHandler(
             GameGrpcClient gameGrpcClient,
@@ -50,7 +57,8 @@ public class GameCommandHandler {
             ConnectionManager connectionManager,
             DrawingRoomStateCache drawingRoomStateCache
     ) {
-        this(gameGrpcClient, roomGrpcClient, chatGrpcClient, connectionManager, drawingRoomStateCache, null, null, "gateway-default");
+        this(gameGrpcClient, roomGrpcClient, chatGrpcClient, connectionManager, drawingRoomStateCache,
+                null, null, null, null, null, "gateway-default");
     }
 
     public GameCommandHandler(
@@ -61,7 +69,8 @@ public class GameCommandHandler {
             DrawingRoomStateCache drawingRoomStateCache,
             @org.springframework.beans.factory.annotation.Value("${gateway.instance-id:gateway-1}") String gatewayInstanceId
     ) {
-        this(gameGrpcClient, roomGrpcClient, chatGrpcClient, connectionManager, drawingRoomStateCache, null, null, gatewayInstanceId);
+        this(gameGrpcClient, roomGrpcClient, chatGrpcClient, connectionManager, drawingRoomStateCache,
+                null, null, null, null, null, gatewayInstanceId);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -73,6 +82,9 @@ public class GameCommandHandler {
             DrawingRoomStateCache drawingRoomStateCache,
             ControlEventRouter controlEventRouter,
             DrawingRecoveryRepository recoveryRepository,
+            GameSessionTokenService tokenService,
+            SessionRateLimiter rateLimiter,
+            InputValidator inputValidator,
             @org.springframework.beans.factory.annotation.Value("${gateway.instance-id:gateway-1}") String gatewayInstanceId
     ) {
         this.gameGrpcClient = gameGrpcClient;
@@ -82,6 +94,9 @@ public class GameCommandHandler {
         this.drawingRoomStateCache = drawingRoomStateCache;
         this.controlEventRouter = controlEventRouter;
         this.recoveryRepository = recoveryRepository;
+        this.tokenService = tokenService;
+        this.rateLimiter = rateLimiter;
+        this.inputValidator = inputValidator;
         this.objectMapper = new ObjectMapper();
         this.gatewayInstanceId = gatewayInstanceId;
     }
@@ -93,6 +108,20 @@ public class GameCommandHandler {
             log.trace("Handling heartbeat '{}' from session {}", type, sessionId);
         } else {
             log.info("Handling command type '{}' (reqId: {}) from session {}", type, requestId, sessionId);
+        }
+
+        // TV8: per-session abuse protection. Heartbeats are never limited (2s cadence,
+        // tiny payload). Drawing binary frames are limited in the binary transport path.
+        if (rateLimiter != null && !"PING".equalsIgnoreCase(type) && !"APP_PING".equalsIgnoreCase(type)) {
+            SessionRateLimiter.Bucket bucket = switch (type) {
+                case "SUBMIT_GUESS", "SEND_CHAT" -> SessionRateLimiter.Bucket.GUESS;
+                case "DRAW_POINT", "DRAW_BATCH", "CLEAR_CANVAS" -> SessionRateLimiter.Bucket.DRAW;
+                default -> SessionRateLimiter.Bucket.CONTROL;
+            };
+            String limited = rateLimiter.tryAcquire(sessionId, bucket, requestId);
+            if (limited != null) {
+                return Mono.just(limited);
+            }
         }
 
         return switch (type) {
@@ -153,22 +182,39 @@ public class GameCommandHandler {
 
     private Mono<String> handleCreateRoom(String sessionId, JsonNode json, String requestId) {
         JsonNode node = getPayloadOrRoot(json);
+        // TV8: CREATE/JOIN is the identity-establishing flow — the client still names
+        // itself here (MVP has no accounts), but the nickname is sanitized and the
+        // server immediately binds the session and issues a signed credential.
         String playerId = extractString(node, "playerId", sessionId);
-        String username = extractString(node, "username", "Player-" + sessionId.substring(0, Math.min(6, sessionId.length())));
-        String roomName = extractString(node, "roomName", extractString(node, "name", username + "'s Room"));
-        if (roomName == null || roomName.isBlank()) {
-            roomName = username + "'s Room";
-        }
+        String username = sanitizeOr(inputValidator, extractString(node, "username", ""),
+                "Player-" + sessionId.substring(0, Math.min(6, sessionId.length())));
+        String roomName = sanitizeOr(inputValidator, extractString(node, "roomName", extractString(node, "name", "")),
+                username + "'s Room");
         int maxPlayers = node.has("maxPlayers") ? node.get("maxPlayers").asInt() : (node.has("max_players") ? node.get("max_players").asInt() : 4);
         int totalRounds = node.has("totalRounds") ? node.get("totalRounds").asInt() : (node.has("roundCount") ? node.get("roundCount").asInt() : 5);
         int roundDuration = node.has("roundDuration") ? node.get("roundDuration").asInt() : (node.has("drawTime") ? node.get("drawTime").asInt() : 60);
+        // TV8: bound room configuration (2..12 players, 1..20 rounds, 15..300s rounds)
+        maxPlayers = Math.max(2, Math.min(12, maxPlayers));
+        totalRounds = Math.max(1, Math.min(20, totalRounds));
+        roundDuration = Math.max(15, Math.min(300, roundDuration));
 
         return roomGrpcClient.createRoom(playerId, username, roomName, maxPlayers, totalRounds, roundDuration)
                 .map(response -> {
                     connectionManager.bindSession(sessionId, response.getRoomId(), playerId);
-                    return createRoomSuccessJson("ROOM_CREATED", response, requestId);
+                    // TV8: issue signed game-session credential after membership is authoritative
+                    String json2 = createRoomSuccessJson("ROOM_CREATED", response, requestId);
+                    return withSessionToken(json2, playerId, response.getRoomId());
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "ROOM_CREATE_FAILED", e.getMessage())));
+    }
+
+    /** Null-safe sanitizer helper — falls back to the default when input is invalid. */
+    private String sanitizeOr(InputValidator validator, String raw, String fallback) {
+        if (validator == null) {
+            return (raw == null || raw.isBlank()) ? fallback : raw;
+        }
+        if (raw == null || raw.isBlank()) return fallback;
+        return validator.sanitizeNickname(raw) != null ? raw.strip() : fallback;
     }
 
     private Mono<String> handleJoinRoom(String sessionId, JsonNode json, String requestId) {
@@ -177,13 +223,29 @@ public class GameCommandHandler {
         String playerId = extractString(node, "playerId", sessionId);
         String username = extractString(node, "username", "Player-" + sessionId);
 
-        return roomGrpcClient.joinRoom(roomId, playerId, username)
+        // TV8: input validation before any gRPC call
+        if (inputValidator != null) {
+            if (!inputValidator.isValidRoomCode(roomId)) {
+                return Mono.just(createErrorJson(requestId, "INVALID_ROOM_CODE", "Room code must be 4-32 uppercase letters/digits"));
+            }
+            String sanitized = inputValidator.sanitizeNickname(username);
+            if (sanitized == null) {
+                return Mono.just(createErrorJson(requestId, "INVALID_NICKNAME",
+                        "Nickname must be 1-32 characters without control characters"));
+            }
+            username = sanitized;
+        }
+        final String validatedUsername = username;
+
+        return roomGrpcClient.joinRoom(roomId, playerId, validatedUsername)
                 .map(response -> {
                     connectionManager.bindSession(sessionId, response.getRoomId(), playerId);
                     String responseJson = createRoomSuccessJson("ROOM_JOINED", response, requestId);
+                    // TV8: issue signed game-session credential after membership succeeds
+                    responseJson = withSessionToken(responseJson, playerId, response.getRoomId());
                     // TV6: room-scoped control event — local broadcast + Redis fanout to other Gateways
                     controlBroadcast(response.getRoomId(), sessionId, "PLAYER_JOINED",
-                            createBroadcastJson("PLAYER_JOINED", response.getRoomId(), playerId, username));
+                            createBroadcastJson("PLAYER_JOINED", response.getRoomId(), playerId, validatedUsername));
                     return responseJson;
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "ROOM_JOIN_FAILED", e.getMessage())));
@@ -196,18 +258,41 @@ public class GameCommandHandler {
     private Mono<String> handleResumeSession(String sessionId, JsonNode json, String requestId) {
         JsonNode node = getPayloadOrRoot(json);
         String roomId = extractString(node, "roomId", "");
-        String playerId = extractString(node, "playerId", "");
+        String clientPlayerId = extractString(node, "playerId", "");
+        String token = extractString(node, "token", "");
 
-        if (roomId.isBlank() || playerId.isBlank()) {
-            return Mono.just(createErrorJson(
-                    requestId,
-                    "INVALID_SESSION",
-                    "roomId and playerId are required to resume a session"
-            ));
+        if (roomId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "roomId is required to resume a session"));
+        }
+
+        // TV8 SECURITY: the signed game-session token is the ONLY proof of identity.
+        // The client-supplied playerId field is compatibility-only: if present it must
+        // MATCH the verified subject, and it is never trusted on its own. A raw
+        // playerId without a valid token is rejected (no insecure legacy fallback).
+        if (tokenService == null) {
+            // Legacy unit-test constructor — cannot authenticate
+            return Mono.just(createErrorJson(requestId, "AUTH_REQUIRED", "Authentication unavailable"));
+        }
+        GameSessionTokenService.Verification verification = tokenService.verify(token, roomId);
+        if (!(verification instanceof GameSessionTokenService.Verification.Verified verified)) {
+            String code = ((GameSessionTokenService.Verification.Invalid) verification).code();
+            log.info("RESUME denied: session={} room={} code={}", sessionId, roomId, code);
+            return Mono.just(createErrorJson(requestId, code,
+                    ((GameSessionTokenService.Verification.Invalid) verification).detail()));
+        }
+        String playerId = verified.playerId(); // authoritative identity from verified claims
+        if (!clientPlayerId.isBlank() && !clientPlayerId.equals(playerId)) {
+            // Payload playerId conflicts with the credential — the credential wins.
+            log.warn("RESUME playerId mismatch rejected: session={} tokenSub={} payloadPlayerId={}",
+                    sessionId, playerId, clientPlayerId);
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION_TOKEN",
+                    "Credential subject does not match payload playerId"));
         }
 
         return roomGrpcClient.getRoom(roomId)
                 .map(room -> {
+                    // Authoritative membership check — a cryptographically valid old token
+                    // cannot resurrect deleted membership (explicit leave / room deleted).
                     boolean isMember = room.getPlayersList().stream()
                             .map(PlayerMessage::getPlayerId)
                             .anyMatch(playerId::equals);
@@ -225,7 +310,8 @@ public class GameCommandHandler {
                     // TV7 (stale-session replacement, spec §41): notify OTHER Gateways that
                     // this player now lives HERE — they evict any old binding for the same
                     // player+room so the old session stops receiving room broadcasts.
-                    // Local eviction already happened in bindSession (playerRoomToSession).
+                    // This only runs AFTER credential + membership validation succeeded,
+                    // so an attacker cannot evict a victim without the victim's token.
                     if (controlEventRouter != null) {
                         Map<String, Object> evict = new HashMap<>();
                         evict.put("type", "PLAYER_SESSION_REPLACED");
@@ -245,6 +331,8 @@ public class GameCommandHandler {
                         response.put("requestId", requestId);
                     }
                     response.put("payload", payload);
+                    // TV8: rotate the credential on successful resume (fresh expiry)
+                    response.put("sessionToken", tokenService.issue(playerId, roomId));
                     return toJson(response);
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(
@@ -254,9 +342,34 @@ public class GameCommandHandler {
                 )));
     }
 
+    /**
+     * TV8: attach a freshly issued signed game-session token to a CREATE/JOIN response.
+     * The token is the resume credential — claims sub=playerId, room=roomId, purpose=GAME_SESSION.
+     */
+    private String withSessionToken(String responseJson, String playerId, String roomId) {
+        if (tokenService == null) {
+            return responseJson; // legacy unit-test constructor
+        }
+        try {
+            JsonNode tree = objectMapper.readTree(responseJson);
+            if (tree.isObject()) {
+                ((com.fasterxml.jackson.databind.node.ObjectNode) tree)
+                        .put("sessionToken", tokenService.issue(playerId, roomId));
+                return objectMapper.writeValueAsString(tree);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to attach session token to response: {}", e.getMessage());
+        }
+        return responseJson;
+    }
+
     private Mono<String> handleGetRoom(String sessionId, JsonNode json, String requestId) {
-        JsonNode node = getPayloadOrRoot(json);
-        String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
+        // TV8: room comes from the bound session — a session cannot probe other rooms.
+        // (Unbound sessions get an explicit error rather than arbitrary room dumps.)
+        String roomId = connectionManager.getRoomId(sessionId);
+        if (roomId == null || roomId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
 
         return roomGrpcClient.getRoom(roomId)
                 .map(response -> createRoomSuccessJson("ROOM_INFO", response, requestId))
@@ -265,8 +378,12 @@ public class GameCommandHandler {
 
     private Mono<String> handleLeaveRoom(String sessionId, JsonNode json, String requestId) {
         JsonNode node = getPayloadOrRoot(json);
-        String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
-        String playerId = extractString(node, "playerId", connectionManager.getPlayerId(sessionId));
+        // TV8: bound room + AUTHENTICATED session identity — client playerId is ignored
+        String roomId = connectionManager.getRoomId(sessionId);
+        String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
 
         return roomGrpcClient.leaveRoom(roomId, playerId)
                 .map(response -> {
@@ -290,10 +407,13 @@ public class GameCommandHandler {
     }
 
     private Mono<String> handleStartGame(String sessionId, JsonNode json, String requestId) {
-        JsonNode node = getPayloadOrRoot(json);
-        final String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
-        final String rawPlayerId = extractString(node, "playerId", connectionManager.getPlayerId(sessionId));
-        final String playerId = (rawPlayerId != null && !rawPlayerId.isBlank()) ? rawPlayerId : sessionId;
+        // TV8: bound room + AUTHENTICATED session identity (host check happens in
+        // Room/Game Service against authoritative state — a non-host is rejected there)
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
 
         return gameGrpcClient.startGame(roomId, playerId)
                 .map(gameState -> {
@@ -310,10 +430,12 @@ public class GameCommandHandler {
     }
 
     private Mono<String> handleGetGameState(String sessionId, JsonNode json, String requestId) {
-        JsonNode node = getPayloadOrRoot(json);
-        final String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
-        final String rawPlayerId = extractString(node, "playerId", connectionManager.getPlayerId(sessionId));
-        final String playerId = (rawPlayerId != null && !rawPlayerId.isBlank()) ? rawPlayerId : sessionId;
+        // TV8: bound room + AUTHENTICATED session identity — viewer identity cannot be spoofed
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
 
         return gameGrpcClient.getGameState(roomId, playerId)
                 .map(gameState -> {
@@ -399,11 +521,26 @@ public class GameCommandHandler {
 
     private Mono<String> handleSubmitGuess(String sessionId, JsonNode json, String requestId) {
         JsonNode node = getPayloadOrRoot(json);
-        final String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
-        final String rawPlayerId = extractString(node, "playerId", connectionManager.getPlayerId(sessionId));
-        final String playerId = (rawPlayerId != null && !rawPlayerId.isBlank()) ? rawPlayerId : sessionId;
-        final String username = extractString(node, "username", "");
-        final String guess = extractString(node, "guess", extractString(node, "content", ""));
+        // TV8: AUTHENTICATED session identity — a payload playerId cannot submit on
+        // behalf of another player. Score/GUESS_RESULT always apply to this identity.
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+        final String username = extractString(node, "username", ""); // display only, never identity
+        String guess = extractString(node, "guess", extractString(node, "content", ""));
+
+        // TV8: guess input bounds (Vietnamese Unicode preserved; Game Service matching unchanged)
+        if (inputValidator != null) {
+            String sanitized = inputValidator.sanitizeGuess(guess);
+            if (sanitized == null) {
+                return Mono.just(createErrorJson(requestId, "INVALID_GUESS",
+                        "Guess must be 1-128 characters without control characters"));
+            }
+            guess = sanitized;
+        }
+        final String validatedGuess = guess;
 
         return gameGrpcClient.submitGuess(roomId, playerId, guess)
                 .flatMap(response -> {
@@ -439,8 +576,10 @@ public class GameCommandHandler {
                                 })
                                 .thenReturn(toJson(map));
                     } else if ("WRONG".equalsIgnoreCase(status)) {
-                        // Forward wrong guess to Chat Service to record & broadcast
-                        return chatGrpcClient.sendMessage(roomId, playerId, username, guess)
+                        // Forward wrong guess to Chat Service to record & broadcast.
+                        // TV8: no client-supplied username — Chat Service resolves the
+                        // authoritative display name from room membership.
+                        return chatGrpcClient.sendMessage(roomId, playerId, "", validatedGuess)
                                 .map(chatRes -> {
                                     String chatBroadcastJson = createChatMessageBroadcastJson(chatRes, null);
                                     // TV6: wrong-guess chat echo is room-scoped — local + Redis fanout
@@ -463,13 +602,17 @@ public class GameCommandHandler {
 
     private Mono<String> handleSendChat(String sessionId, JsonNode json, String requestId) {
         JsonNode node = getPayloadOrRoot(json);
-        final String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
-        final String rawPlayerId = extractString(node, "playerId", connectionManager.getPlayerId(sessionId));
-        final String playerId = (rawPlayerId != null && !rawPlayerId.isBlank()) ? rawPlayerId : sessionId;
-        final String username = extractString(node, "username", "");
+        // TV8: AUTHENTICATED session identity — chat sender cannot be spoofed.
+        // Chat Service resolves the authoritative username from room membership.
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
         final String content = extractString(node, "content", "");
+        // TV8: chat length is bounded server-side; Chat Service re-validates + rate-limits
 
-        return chatGrpcClient.sendMessage(roomId, playerId, username, content)
+        return chatGrpcClient.sendMessage(roomId, playerId, "", content)
                 .map(chatRes -> {
                     String chatBroadcastJson = createChatMessageBroadcastJson(chatRes, null);
                     // TV6: CHAT_MESSAGE is room-scoped — local broadcast + Redis fanout
@@ -481,10 +624,13 @@ public class GameCommandHandler {
 
     private Mono<String> handleGetRecentChat(String sessionId, JsonNode json, String requestId) {
         JsonNode node = getPayloadOrRoot(json);
-        final String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
-        final String rawPlayerId = extractString(node, "playerId", connectionManager.getPlayerId(sessionId));
-        final String playerId = (rawPlayerId != null && !rawPlayerId.isBlank()) ? rawPlayerId : sessionId;
-        final int limit = node.has("limit") ? node.get("limit").asInt() : 50;
+        // TV8: bound identity + bounded limit
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+        final int limit = Math.max(1, Math.min(100, node.has("limit") ? node.get("limit").asInt() : 50));
 
         return chatGrpcClient.getRecentMessages(roomId, playerId, limit)
                 .map(res -> {
@@ -735,17 +881,39 @@ public class GameCommandHandler {
         return toJson(map);
     }
 
+    /**
+     * TV8: strip internal details from exception messages before sending to the
+     * browser — keep a short safe line, drop everything after the first line and
+     * remove obvious internal signatures (class names, "because the return value…").
+     */
+    private static String sanitizeErrorMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return "Request failed";
+        }
+        String firstLine = message.split("\n", 2)[0].trim();
+        if (firstLine.isEmpty()) return "Request failed";
+        // Internal exception signatures (NPE/class references) → generic safe text
+        if (firstLine.contains("Cannot invoke") || firstLine.contains("Exception")
+                || firstLine.contains("java.") || firstLine.length() > 200) {
+            return "Request failed due to an internal error";
+        }
+        return firstLine;
+    }
+
     private String createErrorJson(String requestId, String errorCode, String message) {
+        // TV8 error sanitization: internal details (stack traces, NPE messages,
+        // class names, gRPC internals) must never reach the browser. Only the
+        // stable code plus a safe one-line message is exposed.
         Map<String, Object> map = new HashMap<>();
         map.put("type", "ERROR");
         if (requestId != null && !requestId.isBlank()) {
             map.put("requestId", requestId);
         }
         map.put("code", errorCode);
-        map.put("message", message);
+        map.put("message", sanitizeErrorMessage(message));
         Map<String, Object> errObj = new HashMap<>();
         errObj.put("code", errorCode);
-        errObj.put("message", message);
+        errObj.put("message", sanitizeErrorMessage(message));
         map.put("error", errObj);
         return toJson(map);
     }

@@ -42,7 +42,8 @@ class GameWebSocketHandlerDispatchTest {
 
     @BeforeEach
     void setUp() {
-        handler = new GameWebSocketHandler(connectionManager, commandHandler, drawingTransport);
+        handler = new GameWebSocketHandler(connectionManager, commandHandler, drawingTransport,
+                new com.drawgame.realtime_gateway.security.SessionRateLimiter(1000, 1000, 100000, 1000, 500), "", 65536);
 
         lenient().when(session.getId()).thenReturn("session-abc");
         lenient().when(connectionManager.register("session-abc")).thenReturn(Flux.never());
@@ -51,6 +52,13 @@ class GameWebSocketHandlerDispatchTest {
             String txt = inv.getArgument(0);
             return new WebSocketMessage(WebSocketMessage.Type.TEXT, bufferFactory.wrap(txt.getBytes()));
         });
+        // TV8: origin check reads handshake headers — provide an empty (non-browser) handshake
+        lenient().when(session.getHandshakeInfo()).thenReturn(
+                new org.springframework.web.reactive.socket.HandshakeInfo(
+                        java.net.URI.create("ws://localhost/ws"),
+                        new org.springframework.http.HttpHeaders(),
+                        reactor.core.publisher.Mono.empty(),
+                        "websocket"));
     }
 
     @Test

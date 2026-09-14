@@ -60,6 +60,10 @@ public class WebSocketConfig {
 
     @Bean
     public WebSocketHandlerAdapter webSocketHandlerAdapter() {
+        // TV8 note: Netty's default WebSocket frame ceiling is 64KB. The application-
+        // level limit (security.ws.max-text-frame-bytes, default 32KB) must stay BELOW
+        // it so oversized messages are rejected by the app with a clean
+        // MESSAGE_TOO_LARGE error response rather than the transport closing silently.
         return new WebSocketHandlerAdapter();
     }
 

@@ -124,6 +124,8 @@ class Client {
         let msg;
         try { msg = JSON.parse(ev.data); } catch { return; }
         this.events.push(msg);
+        // TV8: capture signed game-session credential
+        if (msg.sessionToken) this.sessionToken = msg.sessionToken;
         if (msg.requestId && this.pending.has(msg.requestId)) {
           const p = this.pending.get(msg.requestId);
           this.pending.delete(msg.requestId);
@@ -233,6 +235,13 @@ async function main() {
     const sameHost = [ga, gb, gc].every((r) => r.hostPlayerId === ga.hostPlayerId);
     record('R3c', 'GET_ROOM hội tụ trên 3 client / 2 gateway', 'cùng player list + host', `lists identical=${new Set(lists).size === 1}, host same=${sameHost}`, new Set(lists).size === 1 && sameHost, lists[0]);
   } catch (e) { record('R3', 'C join Gateway-2', 'OK', `ERROR: ${e.message}`, false); }
+
+  // D joins early (room-service only allows WAITING-state joins; before TV8 the
+  // mid-game join silently failed and guess-identity came from the payload).
+  const D = new Client('D', pid.D, 'Dave', GW1);
+  clients.D = D;
+  await D.connect();
+  await D.send('JOIN_ROOM', { roomId, playerId: pid.D, username: 'Dave' });
 
   // ============ SECTION 2: GAME START (G1–G3) ============
   let drawerId = null, secretWord = null;
@@ -360,11 +369,8 @@ async function main() {
     record('Q4', 'Đoán lại sau khi đã đúng (vòng còn hoạt động)', 'ALREADY_GUESSED, score không đổi', `status=${resDup.status} score=${scoreBefore}->${scoreAfter}`, resDup.status === 'ALREADY_GUESSED' && scoreBefore === scoreAfter);
     const resSpaced = await C.send('SUBMIT_GUESS', { roomId, playerId: pid.C, username: 'Carol', guess: spaced });
     record('Q1b', 'Đoán đúng với whitespace thừa', 'CORRECT', `status=${resSpaced.status}`, resSpaced.status === 'CORRECT');
-    // D joins (has not guessed yet — used for WRONG/CLOSE variants)
-    const D = new Client('D', pid.D, 'Dave', GW1);
-    clients.D = D;
-    await D.connect();
-    await D.send('JOIN_ROOM', { roomId, playerId: pid.D, username: 'Dave' }).catch(() => {});
+    // D joined BEFORE the game started (room-service only allows WAITING joins) and
+    // has not guessed yet — used for WRONG/CLOSE variants.
     // Q2 — wrong guess from an active (non-guessed) player, round still active
     const markB6 = B.events.length;
     const resWrong = await D.send('SUBMIT_GUESS', { roomId, playerId: pid.D, username: 'Dave', guess: 'hoàn toàn sai xyz' });
@@ -464,10 +470,15 @@ async function main() {
     }
     record('CG-007', `C (GW2) submit đáp án đúng vòng ${activeRound} — private GUESS_RESULT về đúng C`, 'CORRECT hoặc ALREADY_GUESSED', `status=${resC.status} score=${resC.scoreAwarded}`, resC.status === 'CORRECT' || resC.status === 'ALREADY_GUESSED', resC.status === 'ALREADY_GUESSED' ? 'C đã đúng vòng này trước đó' : '');
     await sleep(1200);
+    // If C's submit returned ALREADY_GUESSED (C guessed this round earlier in Q1b),
+    // no NEW broadcast is correct behavior — the earlier CORRECT broadcast still
+    // reached both gateways (verified by Q1rx). Otherwise exactly one new broadcast.
+    const cAlready = resC.status === 'ALREADY_GUESSED';
     const aPg = A.events.slice(markA0).filter((e) => e.type === 'PLAYER_GUESSED_CORRECTLY' && e.playerId === pid.C).length;
     const bPg = B.events.slice(markB0).filter((e) => e.type === 'PLAYER_GUESSED_CORRECTLY' && e.playerId === pid.C).length;
-    record('CG-007a', 'PLAYER_GUESSED_CORRECTLY từ C (GW2) → A (GW1)', 'nhận đúng 1 lần', `${aPg} lần`, aPg === 1);
-    record('CG-007b', 'PLAYER_GUESSED_CORRECTLY từ C (GW2) → B (GW1)', 'nhận đúng 1 lần', `${bPg} lần`, bPg === 1);
+    const totalPgForC = A.events.filter((e) => e.type === 'PLAYER_GUESSED_CORRECTLY' && e.playerId === pid.C).length;
+    record('CG-007a', 'PLAYER_GUESSED_CORRECTLY từ C (GW2) → A (GW1)', cAlready ? 'không lặp broadcast (đã đúng trước đó)' : 'đúng 1 lần', `${aPg} lần mới / ${totalPgForC} tổng`, cAlready ? aPg === 0 && totalPgForC >= 1 : aPg === 1);
+    record('CG-007b', 'PLAYER_GUESSED_CORRECTLY từ C (GW2) → B (GW1)', cAlready ? 'không lặp broadcast' : 'đúng 1 lần', `${bPg} lần mới`, cAlready ? bPg === 0 : bPg === 1);
 
     // Everyone else guesses to end the round early (fetch word via the current drawer)
     const st2 = await sendRetry(A, 'GET_GAME_STATE', { roomId, playerId: pid.A }, 2);
@@ -644,7 +655,7 @@ async function main() {
     // cleaned up — RESUME failing with a clean error is acceptable behavior here.
     const E2 = new Client('E2', E.playerId, 'Eve', GW1);
     await E2.connect();
-    const resume = await E2.send('RESUME_SESSION', { roomId, playerId: E.playerId }).catch((e2) => e2.wsError);
+    const resume = await E2.send('RESUME_SESSION', { roomId, playerId: E.playerId, token: E.sessionToken }).catch((e2) => e2.wsError);
     const resumeClean = resume?.type === 'SESSION_RESUMED' || !!resume?.code;
     record('C2', 'Reconnect + RESUME_SESSION (phòng đã FINISHED)', 'SESSION_RESUMED hoặc lỗi sạch', `type=${resume?.type || resume?.code}`, resumeClean);
     const gs = await E2.send('GET_GAME_STATE', { roomId, playerId: E.playerId }).catch((e2) => e2.wsError);

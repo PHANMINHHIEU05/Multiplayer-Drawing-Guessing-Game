@@ -121,6 +121,10 @@ services:
       CHAT_SERVICE_HOST: chat-service
       CHAT_SERVICE_PORT: 9093
       GATEWAY_INSTANCE_ID: gateway-1
+      # TV8 security: both Gateways MUST share the same signing secret
+      GAME_SESSION_JWT_SECRET: ${GAME_SESSION_JWT_SECRET:-dev-only-insecure-game-session-secret-do-not-use-in-prod-0123456789}
+      GAME_SESSION_TOKEN_TTL_MINUTES: ${GAME_SESSION_TOKEN_TTL_MINUTES:-720}
+      WS_ALLOWED_ORIGINS: ${WS_ALLOWED_ORIGINS:-}
     ports:
       - "8080:8080"
     depends_on:
@@ -154,6 +158,10 @@ services:
       CHAT_SERVICE_HOST: chat-service
       CHAT_SERVICE_PORT: 9093
       GATEWAY_INSTANCE_ID: gateway-2
+      # TV8 security: same shared secret as gateway-1 (cross-Gateway resume)
+      GAME_SESSION_JWT_SECRET: ${GAME_SESSION_JWT_SECRET:-dev-only-insecure-game-session-secret-do-not-use-in-prod-0123456789}
+      GAME_SESSION_TOKEN_TTL_MINUTES: ${GAME_SESSION_TOKEN_TTL_MINUTES:-720}
+      WS_ALLOWED_ORIGINS: ${WS_ALLOWED_ORIGINS:-}
     ports:
       - "8090:8080"
     depends_on:

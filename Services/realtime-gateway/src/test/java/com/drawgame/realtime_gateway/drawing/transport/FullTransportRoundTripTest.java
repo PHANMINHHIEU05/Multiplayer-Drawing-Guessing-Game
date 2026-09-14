@@ -44,7 +44,8 @@ class FullTransportRoundTripTest {
         decoder = new BinaryDrawingDecoder();
         binaryEncoder = new BinaryDrawingEncoder();
         transportEncoder = new DrawingWebSocketEncoder(binaryEncoder);
-        transport = new DrawingWebSocketTransport(decoder, messageHandler, connectionManager);
+        transport = new DrawingWebSocketTransport(decoder, messageHandler, connectionManager,
+                new com.drawgame.realtime_gateway.security.SessionRateLimiter(1000, 1000, 100000, 1000, 500), 2048);
 
         org.mockito.Mockito.lenient().when(session.getId()).thenReturn("session-roundtrip");
         org.mockito.Mockito.lenient().when(connectionManager.getRoomId("session-roundtrip")).thenReturn("room-roundtrip");
