@@ -218,16 +218,63 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
       }
 
       case MessageType.SYNC_CANVAS_STATE: {
+        // TV7: event-replay recovery response. Server sends semantic events
+        // (DRAW_START / DRAW_BATCH / DRAW_END / CLEAR_CANVAS) with streamId ordering.
         const payload = response.payload || response;
-        const points: DrawPoint[] = (payload.points || []).map((p: any) => ({
-          x: p.x ?? 0,
-          y: p.y ?? 0,
-          color: p.color ?? '#f8fafc',
-          size: p.size ?? 4,
-          isNewPath: p.isNewPath ?? false,
-          timestamp: p.timestamp,
-        }));
-        gameStore.setDrawPoints(points);
+        const events: any[] = payload.events || [];
+        const recovered: DrawPoint[] = [];
+        // strokeId -> style from DRAW_START (color/width live in the START frame)
+        const strokeStyles = new Map<string, { color: string; size: number }>();
+
+        for (const ev of events) {
+          switch (ev.type) {
+            case 'DRAW_START': {
+              const colorHex =
+                '#' + [ev.r, ev.g, ev.b].map((c: number) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0')).join('');
+              const isEraser = ev.r === 255 && ev.g === 255 && ev.b === 255;
+              const style = { color: colorHex, size: ev.width ?? 4 };
+              strokeStyles.set(ev.strokeId, style);
+              recovered.push({
+                x: Number(ev.x),
+                y: Number(ev.y),
+                color: colorHex,
+                size: ev.width ?? 4,
+                tool: isEraser ? 'ERASER' : 'BRUSH',
+                strokeId: ev.strokeId,
+                isNewPath: true,
+              });
+              break;
+            }
+            case 'DRAW_BATCH': {
+              const style = strokeStyles.get(ev.strokeId) ?? { color: '#000000', size: 4 };
+              const pts = String(ev.points || '').split(' ').filter(Boolean);
+              for (const p of pts) {
+                const [x, y] = p.split(',').map(Number);
+                recovered.push({
+                  x,
+                  y,
+                  color: style.color,
+                  size: style.size,
+                  tool: style.color.toUpperCase() === '#FFFFFF' ? 'ERASER' : 'BRUSH',
+                  strokeId: ev.strokeId,
+                  isNewPath: false,
+                });
+              }
+              break;
+            }
+            case 'DRAW_END':
+              // nothing to render
+              break;
+            case 'CLEAR_CANVAS':
+              // Replay boundary: everything before the clear is compacted away server-side,
+              // but be defensive — clear anything accumulated before this marker.
+              recovered.length = 0;
+              strokeStyles.clear();
+              break;
+          }
+        }
+
+        gameStore.setDrawPoints(recovered);
         break;
       }
 

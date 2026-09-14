@@ -38,4 +38,18 @@ final class ControlEventCodec {
             return null;
         }
     }
+
+    /**
+     * Parses the (already client-facing) payload JSON of an envelope into the
+     * well-known round lifecycle fields. Returns null on malformed payloads —
+     * callers treat that as "no cache action".
+     */
+    static ControlEventPayload readPayload(String payloadJson) {
+        try {
+            return MAPPER.readValue(payloadJson, ControlEventPayload.class);
+        } catch (Exception e) {
+            log.warn("Failed to deserialize control event payload: {}", e.getMessage());
+            return null;
+        }
+    }
 }

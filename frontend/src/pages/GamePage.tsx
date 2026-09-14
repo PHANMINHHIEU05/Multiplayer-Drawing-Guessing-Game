@@ -14,6 +14,8 @@ import { wsClient } from '../websocket/WebSocketClient';
 import { MessageType, createWSRequest } from '../websocket/protocol';
 import { DrawPoint, RemoteStrokeState } from '../types/game';
 import { metricsStore } from '../store/metricsStore';
+import { recoveryStore, useRecoveryStore } from '../store/recoveryStore';
+import { useConnectionStore } from '../store/connectionStore';
 import {
   encodeDrawStart,
   encodeDrawBatch,
@@ -44,6 +46,12 @@ export const GamePage: React.FC = () => {
   const currentRound = gameState?.currentRound || 1;
   // C9: lock guess input after this player has guessed correctly in the current round
   const hasGuessed = !!gameState?.scores?.find((s) => s.playerId === playerId)?.hasGuessed;
+  // TV7: reconnect/recovery UX states (small banner, game stays visible)
+  const canvasMode = useRecoveryStore((s) => s.mode);
+  const connStatus = useConnectionStore((s) => s.status);
+  const showRecoveryBanner = canvasMode === 'RECOVERING';
+  const showReconnectBanner =
+    connStatus === 'DISCONNECTED' || connStatus === 'RECONNECTING' || connStatus === 'CONNECTING';
 
   useEffect(() => {
     // Poll game state periodically if needed to keep state sync when game is active
@@ -63,6 +71,53 @@ export const GamePage: React.FC = () => {
     const unsubscribeBinary = wsClient.addBinaryListener((buffer) => {
       const decoded = decodeDrawingFrame(buffer);
       if (!decoded) return;
+
+      // TV7 recovery/live race: while canvas recovery is in flight, buffer live
+      // frames instead of applying them. They are flushed (in arrival order)
+      // right after the recovered history is applied — no missing/duplicate stroke.
+      if (recoveryStore.getState().mode === 'RECOVERING') {
+        if (decoded.type === 'CLEAR_CANVAS') {
+          recoveryStore.clearBuffer();
+          return;
+        }
+        if (decoded.type === 'DRAW_START') {
+          const isEraser = decoded.data.tool === 'ERASER' || decoded.data.colorHex.toUpperCase() === '#FFFFFF';
+          recoveryStore.buffer([{
+            x: decoded.data.x,
+            y: decoded.data.y,
+            color: decoded.data.colorHex,
+            size: decoded.data.width,
+            tool: isEraser ? 'ERASER' : 'BRUSH',
+            strokeId: decoded.data.strokeId,
+            isNewPath: true,
+          }]);
+          // remember stroke style for buffered batches of the same stroke
+          remoteStrokeMapRef.current.set(decoded.data.strokeId, {
+            strokeId: decoded.data.strokeId,
+            tool: isEraser ? 'ERASER' : 'BRUSH',
+            color: decoded.data.colorHex,
+            width: decoded.data.width,
+            round: decoded.data.round,
+            lastX: decoded.data.x,
+            lastY: decoded.data.y,
+          });
+        } else if (decoded.type === 'DRAW_BATCH') {
+          const strokeState = remoteStrokeMapRef.current.get(decoded.data.strokeId);
+          const color = strokeState?.color ?? '#000000';
+          const size = strokeState?.width ?? 4;
+          const tool = strokeState?.tool ?? 'BRUSH';
+          recoveryStore.buffer(decoded.data.points.map((p) => ({
+            x: p.x,
+            y: p.y,
+            color,
+            size,
+            tool,
+            strokeId: decoded.data.strokeId,
+            isNewPath: false,
+          })));
+        }
+        return;
+      }
 
       switch (decoded.type) {
         case 'DRAW_START': {
@@ -322,6 +377,19 @@ export const GamePage: React.FC = () => {
 
   return (
     <div className="h-screen w-screen flex flex-col p-2 sm:p-3 md:p-4 gap-2 sm:gap-3 overflow-hidden text-slate-100 select-none">
+      {/* TV7: reconnect / recovery banners — small, non-blocking */}
+      {showReconnectBanner && (
+        <div className="shrink-0 px-4 py-2 rounded-2xl bg-rose-500/25 border border-rose-300/50 backdrop-blur-md text-rose-100 text-xs font-bold flex items-center gap-2 animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-rose-400" />
+          {connStatus === 'DISCONNECTED' ? 'Mất kết nối...' : 'Đang kết nối lại...'}
+        </div>
+      )}
+      {showRecoveryBanner && (
+        <div className="shrink-0 px-4 py-2 rounded-2xl bg-amber-400/25 border border-amber-300/50 backdrop-blur-md text-amber-100 text-xs font-bold flex items-center gap-2 animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+          Đang khôi phục ván chơi...
+        </div>
+      )}
       {/* Top Bar Header */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <div className="flex-1 min-w-0">

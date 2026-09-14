@@ -1,9 +1,11 @@
 import { WSRequest, WSResponse, MessageHandler } from './messageTypes';
 import { createWSRequest, MessageType } from './protocol';
 import { connectionStore } from '../store/connectionStore';
+import { gameStore } from '../store/gameStore';
 import { metricsStore } from '../store/metricsStore';
 import { roomStore } from '../store/roomStore';
 import { playerStore } from '../store/playerStore';
+import { recoveryStore } from '../store/recoveryStore';
 
 interface PendingRequest {
   resolve: (value: WSResponse | PromiseLike<WSResponse>) => void;
@@ -64,6 +66,14 @@ export class WebSocketClient {
 
         if (wasReconnecting) {
           this.restoreStateAfterReconnect();
+        } else {
+          // TV7 (RC-003): fresh page load — if the player was in a room (persisted
+          // roomId + playerId), resume instead of dropping them back to Home.
+          const persistedRoomId = roomStore.getLastRoomId();
+          const { playerId } = playerStore.getState();
+          if (persistedRoomId && playerId) {
+            this.restoreStateAfterReconnect();
+          }
         }
       };
 
@@ -295,12 +305,14 @@ export class WebSocketClient {
   private restoreStateAfterReconnect(): void {
     const { playerId } = playerStore.getState();
     const currentRoom = roomStore.getState().room;
+    // TV7: page refresh loses in-memory room — fall back to the persisted last room id
+    const roomId = currentRoom?.roomId || roomStore.getLastRoomId() || null;
 
-    if (currentRoom && currentRoom.roomId && playerId) {
-      console.log(`[WebSocket] Restoring session in room ${currentRoom.roomId}...`);
+    if (roomId && playerId) {
+      console.log(`[WebSocket] Restoring session in room ${roomId}...`);
       // Re-bind the new WebSocket session without mutating room membership.
       this.send(MessageType.RESUME_SESSION, {
-        roomId: currentRoom.roomId,
+        roomId,
         playerId,
       }, 5000)
         .then((resumeResponse) => {
@@ -312,16 +324,59 @@ export class WebSocketClient {
 
               // Room Service uses PLAYING; the frontend may still have the legacy IN_GAME value.
               if (roomStatus === 'PLAYING' || roomStatus === 'IN_GAME') {
-                return this.send(MessageType.GET_GAME_STATE, {}, 5000);
+                return this.send(MessageType.GET_GAME_STATE, {}, 5000)
+                  .then((gameResponse) => {
+                    // TV7: current-round canvas recovery after game state is known
+                    if (gameResponse.status === 'PLAYING' && gameResponse.currentRound) {
+                      this.recoverCanvas(gameResponse.currentRound);
+                    }
+                    return gameResponse;
+                  });
               }
 
               return roomResponse;
             });
         })
-        .catch((err) => {
+        .catch((err: any) => {
           console.warn('[WebSocket] Failed to restore room/game state:', err);
+          // Only clear resume metadata for permanent failures (room gone / player
+          // removed) — transient infrastructure errors keep the room context so
+          // the next reconnect can retry.
+          const code = err?.wsError?.code || '';
+          const permanent = [
+            'PLAYER_NOT_IN_ROOM', 'ROOM_NOT_FOUND', 'INVALID_SESSION', 'RESUME_RETRYABLE',
+          ].includes(code) || /not a member|not found|resume/i.test(String(err.message || ''));
+          if (permanent) {
+            roomStore.clearRoom();
+          }
         });
     }
+  }
+
+  /**
+   * TV7 — current-round Canvas recovery: RECOVERING mode → buffer live drawing →
+   * GET_CANVAS_STATE → SYNC_CANVAS_STATE applies history (messageHandlers, synchronous
+   * before this microtask) → flush buffered live events → LIVE mode.
+   * The requestId correlation in this.send() guarantees an outdated response is
+   * routed to the (already-rejected) older attempt and never applied.
+   */
+  private recoverCanvas(round: number): void {
+    recoveryStore.begin(round);
+    this.send(MessageType.GET_CANVAS_STATE, { round }, 8000)
+      .then(() => {
+        // History is already applied to gameStore by the SYNC_CANVAS_STATE handler
+        // (listener dispatch is synchronous, promise .then is a later microtask).
+        const buffered = recoveryStore.complete();
+        if (buffered.length > 0) {
+          gameStore.addDrawPoints(buffered);
+        }
+        console.log(`[WebSocket] Canvas recovery complete: round=${round}, ${buffered.length} buffered live events flushed`);
+      })
+      .catch((err) => {
+        // Partial recovery UX: game state restored, canvas unavailable — keep playing live
+        recoveryStore.abort();
+        console.warn('[WebSocket] Canvas recovery unavailable (continuing live):', err.message);
+      });
   }
 
   private rejectAllPending(reason: string): void {

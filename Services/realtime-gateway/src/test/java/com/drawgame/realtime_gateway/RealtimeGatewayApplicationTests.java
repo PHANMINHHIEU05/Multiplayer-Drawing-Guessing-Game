@@ -29,6 +29,9 @@ class RealtimeGatewayApplicationTests {
 	private com.drawgame.realtime_gateway.drawing.redis.DrawingRedisSubscriber drawingRedisSubscriber;
 
 	@MockBean
+	private com.drawgame.realtime_gateway.control.redis.ControlRedisSubscriber controlRedisSubscriber;
+
+	@MockBean
 	private RoomGrpcClient roomGrpcClient;
 
 	@MockBean

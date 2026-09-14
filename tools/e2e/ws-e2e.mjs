@@ -212,11 +212,19 @@ async function main() {
     const markA = A.events.length, markB = B.events.length;
     const res = await C.send('JOIN_ROOM', { roomId, playerId: pid.C, username: 'Carol' });
     const stateOk = res.players?.length === 3;
+    // Redis Pub/Sub is async — wait for the fanned-out PLAYER_JOINED (no instant check race)
+    await A.waitFor('PLAYER_JOINED', { filter: (e) => e.playerId === pid.C, timeout: 4000 }).catch(() => null);
+    await B.waitFor('PLAYER_JOINED', { filter: (e) => e.playerId === pid.C, timeout: 4000 }).catch(() => null);
     const aSees = A.received('PLAYER_JOINED', (e) => e.playerId === pid.C, markA);
     const bSees = B.received('PLAYER_JOINED', (e) => e.playerId === pid.C, markB);
     record('R3', 'C join qua Gateway-2 — state hội tụ', '3 players trên mọi client', `ROOM_JOINED players=${res.players?.length}`, !!stateOk);
-    record('R3a', 'PLAYER_JOINED fanout A (GW1) khi C join từ GW2', 'A nhận broadcast', `received=${aSees}`, aSees ? true : false, aSees ? '' : 'ConnectionManager.broadcastToRoom chỉ local — kiểm tra thiết kế đa gateway');
+    record('R3a', 'PLAYER_JOINED fanout A (GW1) khi C join từ GW2', 'A nhận broadcast', `received=${aSees}`, aSees ? true : false);
     record('R3b', 'PLAYER_JOINED fanout B (GW1) khi C join từ GW2', 'B nhận broadcast', `received=${bSees}`, bSees ? true : false);
+    // CG-012: no self-echo — exactly ONE PLAYER_JOINED for C per client (no duplicates)
+    const aDup = A.events.slice(markA).filter((e) => e.type === 'PLAYER_JOINED' && e.playerId === pid.C).length;
+    const bDup = B.events.slice(markB).filter((e) => e.type === 'PLAYER_JOINED' && e.playerId === pid.C).length;
+    record('CG-012a', 'Không self-echo/duplicate PLAYER_JOINED (A)', 'đúng 1 lần', `${aDup} lần`, aDup === 1);
+    record('CG-012b', 'Không self-echo/duplicate PLAYER_JOINED (B)', 'đúng 1 lần', `${bDup} lần`, bDup === 1);
     // Convergence via GET_ROOM from all three
     const [ga, gb, gc] = await Promise.all([
       A.send('GET_ROOM', { roomId }), B.send('GET_ROOM', { roomId }), C.send('GET_ROOM', { roomId }),
@@ -262,7 +270,8 @@ async function main() {
     record('G3', 'Drawer thấy secretWord', 'có', secretWord ? 'có' : 'KHÔNG', !!secretWord);
     record('G3a', 'Guesser không nhận secretWord (GET_GAME_STATE)', 'không có', guesserSeesWord ? `LỘ: ${guesserSeesWord}` : 'không có', !guesserSeesWord);
     record('G3b', 'GAME_STARTED broadcast tới B (GW1) không chứa secretWord', 'không có', startToB ? (startToB.secretWord ? `LỘ: ${startToB.secretWord}` : 'không có') : 'không nhận được broadcast', !!startToB && !startToB.secretWord);
-    record('G3c', 'GAME_STARTED broadcast tới C (GW2)', 'nhận được', startToC ? 'nhận được' : 'KHÔNG nhận', !!startToC, startToC ? '' : 'ConnectionManager broadcast local-only — control event không cross-gateway');
+    record('G3c', 'GAME_STARTED broadcast tới C (GW2) [CG-004]', 'nhận được', startToC ? 'nhận được' : 'KHÔNG nhận', !!startToC);
+    if (startToC && startToC.secretWord) record('G3d', 'GAME_STARTED tới C chứa secretWord', 'không có', `LỘ: ${startToC.secretWord}`, false);
     if (startToC && startToC.secretWord) record('G3d', 'GAME_STARTED tới C chứa secretWord', 'không có', `LỘ: ${startToC.secretWord}`, false);
   } catch (e) { record('G1', 'Start game', 'OK', `ERROR: ${e.message}`, false); }
 
@@ -389,7 +398,7 @@ async function main() {
     const pgC = C.events.filter((e) => e.type === 'PLAYER_GUESSED_CORRECTLY');
     const leakCheck = (e) => JSON.stringify(e).includes(word);
     record('Q1r', 'PLAYER_GUESSED_CORRECTLY broadcast tới người khác (GW1)', 'nhận, KHÔNG chứa đáp án', `count=${pgA.length}, leak=${pgA.some(leakCheck)}`, pgA.length > 0 && !pgA.some(leakCheck));
-    record('Q1rx', 'PLAYER_GUESSED_CORRECTLY tới C (GW2)', 'nhận', `count=${pgC.length}`, pgC.length > 0, pgC.length === 0 ? 'cross-gateway control broadcast không có' : '');
+    record('Q1rx', 'PLAYER_GUESSED_CORRECTLY tới C (GW2) [CG-006]', 'nhận', `count=${pgC.length}`, pgC.length > 0);
     // B's own guess result was private — B must NOT receive other players' GUESS_RESULT
     const bGotOthers = B.events.filter((e) => e.type === 'GUESS_RESULT' && e.playerId && e.playerId !== pid.B);
     record('Q5', 'Không cross-delivery GUESS_RESULT', 'B chỉ nhận result của mình', `nhận result người khác: ${bGotOthers.length}`, bGotOthers.length === 0);
@@ -407,26 +416,86 @@ async function main() {
     const bChat = B.events.slice(markB).find((e) => e.type === 'CHAT_MESSAGE' && (e.payload?.content || '').includes('e2e-chat-hello'));
     const cChat = C.events.slice(markC).find((e) => e.type === 'CHAT_MESSAGE' && (e.payload?.content || '').includes('e2e-chat-hello'));
     record('CH1', 'Chat realtime A→B (cùng gateway)', 'nhận', bChat ? 'nhận' : 'KHÔNG nhận', !!bChat);
-    record('CH1x', 'Chat A→C (cross-gateway)', 'nhận', cChat ? 'nhận' : 'KHÔNG nhận', !!cChat, cChat ? '' : 'chat broadcast local-only');
+    record('CH1x', 'Chat A→C cross-gateway [CG-008]', 'nhận', cChat ? 'nhận' : 'KHÔNG nhận', !!cChat);
   } catch (e) { record('CH1', 'Chat', 'OK', `ERROR: ${e.message}`, false); }
 
   // ============ SECTION 6: ROUND TRANSITION + GAME FINISH ============
   try {
+    // Mark BEFORE any waiting: ROUND_STARTED for the NEXT round may fire at any
+    // moment (round-1 timer can expire during this section). Events before the
+    // round actually advanced are excluded via currentRound comparison below.
+    const markA1 = A.events.length, markC1 = C.events.length;
+    const roundAtStart = (await sendRetry(A, 'GET_GAME_STATE', { roomId, playerId: pid.A }, 2).catch(() => null))?.currentRound || 1;
     // All guessers guess correctly → early round end → next rounds → finish
     // Current round: B, C guessed; D not. Guessers: B, C, D (drawer A).
-    const st = await A.send('GET_GAME_STATE', { roomId, playerId: pid.A });
-    const word2 = st.secretWord;
-    await B.send('SUBMIT_GUESS', { roomId, playerId: pid.B, username: 'Bob', guess: word2 });
-    await C.send('SUBMIT_GUESS', { roomId, playerId: pid.C, username: 'Carol', guess: word2 });
-    const D = clients.D || null; // may exist from section 4
-    if (D && !D.closed) await D.send('SUBMIT_GUESS', { roomId, playerId: pid.D, username: 'Dave', guess: word2 });
-    let r2 = null;
+    // NOTE: round 1 may have timed out during earlier sections (ROUND_ENDED
+    // intermission). Wait until a round is PLAYING — using the NEW pushed
+    // ROUND_STARTED event when available, falling back to polling.
+    async function waitRoundPlaying() {
+      for (let i = 0; i < 90; i++) {
+        const s = await sendRetry(A, 'GET_GAME_STATE', { roomId, playerId: pid.A }, 2).catch(() => null);
+        if (s && (s.status === 'PLAYING' || s.status === 'IN_ROUND')) return s;
+        await sleep(1000);
+      }
+      return null;
+    }
+    const st = await waitRoundPlaying();
+    if (!st) throw new Error('không có vòng PLAYING nào để đoán');
+    const activeRound = st.currentRound;
+    // secretWord is only visible to the CURRENT drawer — ask the drawer's client
+    const drawerPid = st.drawerId;
+    const drawerClient = drawerPid === pid.A ? A : drawerPid === pid.B ? B : drawerPid === pid.C ? C : (clients.D || null);
+    let word2 = null;
+    if (drawerClient && !drawerClient.closed) {
+      word2 = (await sendRetry(drawerClient, 'GET_GAME_STATE', { roomId, playerId: drawerPid }, 2)).secretWord || null;
+    }
+    if (!word2) throw new Error('không lấy được secretWord từ drawer cho CG-007');
+    // CG-007: correct guess submitted from GATEWAY-2 (C) — private result to C,
+    // PLAYER_GUESSED_CORRECTLY room broadcast to both gateways.
+    // C already guessed in round 1; on a fresh round C is eligible again.
+    const cEligible = !st.scores.find((g) => g.playerId === pid.C)?.hasGuessed;
+    const markA0 = A.events.length, markB0 = B.events.length;
+    let resC = null;
+    if (cEligible) {
+      resC = await C.send('SUBMIT_GUESS', { roomId, playerId: pid.C, username: 'Carol', guess: word2 });
+    } else {
+      // C already guessed this round — the private ALREADY_GUESSED result still proves routing
+      resC = await C.send('SUBMIT_GUESS', { roomId, playerId: pid.C, username: 'Carol', guess: word2 });
+    }
+    record('CG-007', `C (GW2) submit đáp án đúng vòng ${activeRound} — private GUESS_RESULT về đúng C`, 'CORRECT hoặc ALREADY_GUESSED', `status=${resC.status} score=${resC.scoreAwarded}`, resC.status === 'CORRECT' || resC.status === 'ALREADY_GUESSED', resC.status === 'ALREADY_GUESSED' ? 'C đã đúng vòng này trước đó' : '');
+    await sleep(1200);
+    const aPg = A.events.slice(markA0).filter((e) => e.type === 'PLAYER_GUESSED_CORRECTLY' && e.playerId === pid.C).length;
+    const bPg = B.events.slice(markB0).filter((e) => e.type === 'PLAYER_GUESSED_CORRECTLY' && e.playerId === pid.C).length;
+    record('CG-007a', 'PLAYER_GUESSED_CORRECTLY từ C (GW2) → A (GW1)', 'nhận đúng 1 lần', `${aPg} lần`, aPg === 1);
+    record('CG-007b', 'PLAYER_GUESSED_CORRECTLY từ C (GW2) → B (GW1)', 'nhận đúng 1 lần', `${bPg} lần`, bPg === 1);
+
+    // Everyone else guesses to end the round early (fetch word via the current drawer)
+    const st2 = await sendRetry(A, 'GET_GAME_STATE', { roomId, playerId: pid.A }, 2);
+    const wNow = st2.drawerId === pid.A ? st2.secretWord : word2;
+    for (const g of st2.scores) {
+      if (g.playerId !== st2.drawerId && !g.hasGuessed) {
+        const who = g.playerId === pid.A ? A : g.playerId === pid.B ? B : g.playerId === pid.C ? C : (clients.D || null);
+        if (who && !who.closed) {
+          await who.send('SUBMIT_GUESS', { roomId, playerId: g.playerId, username: 'x', guess: wNow }).catch(() => {});
+        }
+      }
+    }
+    // CG-005: ROUND_STARTED must be PUSHED by game-service via Redis to all gateways.
+    // The next round (roundAtStart + 1 or later) fires after everyone guessed.
+    let r2 = null, roundStartedA = null, roundStartedC = null;
     for (let i = 0; i < 40; i++) {
       await sleep(1000);
       const s = await sendRetry(A, 'GET_GAME_STATE', { roomId, playerId: pid.A }, 2);
-      if (s.currentRound === 2) { r2 = s; break; }
+      if (s.currentRound > roundAtStart) { r2 = s; break; }
     }
-    record('RT1', 'Chuyển vòng 1→2 (early end khi tất cả đoán đúng)', 'round=2', r2 ? `round=2, drawer=${r2.drawerId === pid.B ? 'B (xoay vòng)' : r2.drawerId}` : 'không chuyển', !!r2);
+    roundStartedA = A.events.slice(markA1).find((e) => e.type === 'ROUND_STARTED' && (e.currentRound || 0) > roundAtStart) || null;
+    roundStartedC = C.events.slice(markC1).find((e) => e.type === 'ROUND_STARTED' && (e.currentRound || 0) > roundAtStart) || null;
+    record('RT1', `Chuyển vòng ${roundAtStart}→${roundAtStart + 1}`, `round=${roundAtStart + 1}`, r2 ? `round=${r2.currentRound}, drawer=${r2.drawerId}` : 'không chuyển', !!r2);
+    record('CG-005a', 'ROUND_STARTED push tới A (GW1) — không cần poll', 'nhận', roundStartedA ? `round=${roundStartedA.currentRound} drawer=${roundStartedA.drawerId}` : 'KHÔNG nhận', !!roundStartedA);
+    record('CG-005b', 'ROUND_STARTED push tới C (GW2)', 'nhận', roundStartedC ? 'nhận' : 'KHÔNG nhận', !!roundStartedC);
+    if (roundStartedC && roundStartedC.drawerId) {
+      record('CG-005c', 'ROUND_STARTED đồng bộ drawer/round giữa 2 gateway', 'khớp state', `event drawer=${roundStartedC.drawerId === (r2?.drawerId || '') ? 'khớp' : roundStartedC.drawerId}`, roundStartedC.drawerId === (r2?.drawerId || ''));
+    }
     if (r2) {
       // D8 — canvas clean state per round is client-side; verify sequence reset via metrics not possible here — check drawer rotated & new word
       record('RT2', 'Drawer xoay vòng', 'playerOrder[1]', r2.drawerId, r2.drawerId === pid.B ? 'đúng (B)' : String(r2.drawerId));
@@ -435,17 +504,33 @@ async function main() {
       A.sendBinary(encodeDrawBatch({ round: 1, strokeId: crypto.randomUUID(), seqStart: 0, points: [{ x: 0.1, y: 0.1 }] }));
       await sleep(1500);
       const staleLeaked = B.binEvents.slice(markB).length > 0;
-      record('D10', 'Frame vẽ stale round=1 khi round=2', 'bị chặn', staleLeaked ? 'BROADCAST (LỖ HỔNG)' : 'bị chặn', !staleLeaked);
-      // New drawer B draws; A is now guesser — drawing flows
+      record('D10', 'Frame vẽ stale round=1 khi round mới', 'bị chặn', staleLeaked ? 'BROADCAST (LỖ HỔNG)' : 'bị chặn', !staleLeaked);
+      // New drawer draws; A is now guesser — drawing flows
       const s2stroke = crypto.randomUUID();
-      B.sendBinary(encodeDrawStart({ round: 2, strokeId: s2stroke, x: 0.6, y: 0.6, colorHex: '#22D3EE', width: 8 }));
-      const fa = await A.waitForBinary({ filter: (f) => f.type === 'DRAW_START' && f.strokeId === s2stroke, timeout: 4000 }).catch(() => null);
-      record('RT3', 'Drawer mới (B) vẽ round 2 tới A', 'nhận', fa ? 'nhận' : 'KHÔNG nhận', !!fa);
-      // Round 2: all guess (A, C, D)
-      const wordR2 = (await B.send('GET_GAME_STATE', { roomId, playerId: pid.B })).secretWord;
-      await A.send('SUBMIT_GUESS', { roomId, playerId: pid.A, username: 'Alice', guess: wordR2 });
-      await C.send('SUBMIT_GUESS', { roomId, playerId: pid.C, username: 'Carol', guess: wordR2 });
-      if (D && !D.closed) await D.send('SUBMIT_GUESS', { roomId, playerId: pid.D, username: 'Dave', guess: wordR2 });
+      const newDrawer = r2.drawerId === pid.A ? A : r2.drawerId === pid.B ? B : (clients.D || null);
+      if (newDrawer && !newDrawer.closed) {
+        newDrawer.sendBinary(encodeDrawStart({ round: r2.currentRound, strokeId: s2stroke, x: 0.6, y: 0.6, colorHex: '#22D3EE', width: 8 }));
+        const fa = await A.waitForBinary({ filter: (f) => f.type === 'DRAW_START' && f.strokeId === s2stroke, timeout: 4000 }).catch(() => null);
+        record('RT3', 'Drawer mới vẽ round mới tới A', 'nhận', fa ? 'nhận' : 'KHÔNG nhận', !!fa);
+      }
+      // Everyone else guesses to finish the game
+      const D = clients.D || null;
+      const drawerNow = r2.drawerId;
+      const drawerClientNow = drawerNow === pid.A ? A : drawerNow === pid.B ? B : drawerNow === pid.C ? C : D;
+      let wordR2 = null;
+      if (drawerClientNow && !drawerClientNow.closed) {
+        wordR2 = (await sendRetry(drawerClientNow, 'GET_GAME_STATE', { roomId, playerId: drawerNow }, 2).catch(() => null))?.secretWord || null;
+      }
+      if (wordR2) {
+        for (const g of r2.scores) {
+          if (g.playerId !== drawerNow && !g.hasGuessed) {
+            const who = g.playerId === pid.A ? A : g.playerId === pid.B ? B : g.playerId === pid.C ? C : D;
+            if (who && !who.closed) {
+              await who.send('SUBMIT_GUESS', { roomId, playerId: g.playerId, username: 'x', guess: wordR2 }).catch(() => {});
+            }
+          }
+        }
+      }
     }
     // totalRounds = 2 (sau fix) → 2 vòng
     let finished = null;
@@ -465,12 +550,17 @@ async function main() {
       if (s.status === 'FINISHED' || s.status === 'GAME_OVER') { finished = s; break; }
       // speed up remaining rounds
       if (s.status === 'PLAYING' && s.drawerId) {
-        const w = s.secretWord || null;
         const g1 = s;
+        // secretWord only visible to the drawer — fetch via the drawer's client
+        const drawerWho = g1.drawerId === pid.A ? A : g1.drawerId === pid.B ? B : g1.drawerId === pid.C ? C : (clients.D || null);
+        let w = null;
+        if (drawerWho && !drawerWho.closed) {
+          w = (await sendRetry(drawerWho, 'GET_GAME_STATE', { roomId, playerId: g1.drawerId }, 2).catch(() => null))?.secretWord || null;
+        }
         // everyone who hasn't guessed, guesses
         for (const g of g1.scores) {
           if (g.playerId !== g1.drawerId && !g.hasGuessed) {
-            const who = g.playerId === pid.A ? A : g.playerId === pid.B ? B : g.playerId === pid.C ? C : D;
+            const who = g.playerId === pid.A ? A : g.playerId === pid.B ? B : g.playerId === pid.C ? C : (clients.D || null);
             if (who && !who.closed && w) {
               await who.send('SUBMIT_GUESS', { roomId, playerId: g.playerId, username: 'x', guess: w }).catch(() => {});
             }
@@ -494,8 +584,48 @@ async function main() {
       record('GF5', 'Game state Redis bị dọn sau khi kết thúc (persist xong)', 'NOT_FOUND/GET_GAME_STATE_FAILED', String(gsGone), gsGone !== 'still-exists');
       // Frontend expects GAME_OVER — check value
       record('GF4', 'Giá trị status khi kết thúc vs frontend mong đợi GAME_OVER', 'FINISHED (frontend đã xử lý cả hai)', finished.status, finished.status === 'GAME_OVER' || finished.status === 'FINISHED', finished.status !== 'FINISHED' && finished.status !== 'GAME_OVER' ? 'BUG: frontend không nhận diện' : '');
+      // CG-010: GAME_FINISHED pushed by game-service to BOTH gateways
+      const gfA = A.events.filter((e) => e.type === 'GAME_FINISHED' && e.roomId === roomId).length;
+      const gfC = C.events.filter((e) => e.type === 'GAME_FINISHED' && e.roomId === roomId).length;
+      record('CG-010a', 'GAME_FINISHED push tới A (GW1)', 'nhận', `${gfA} lần`, gfA >= 1);
+      record('CG-010b', 'GAME_FINISHED push tới C (GW2)', 'nhận', `${gfC} lần`, gfC >= 1);
     }
   } catch (e) { record('GF1', 'Game finish section', 'OK', `ERROR: ${e.message}`, false); }
+
+  // ============ SECTION 6b: CG-009 (chat GW2→GW1) + CG-011 (room isolation) ============
+  try {
+    // CG-009: chat in the OPPOSITE direction — C (GW2) → A/B (GW1)
+    const markA = A.events.length, markB2 = B.events.length;
+    const canChat = await C.send('SEND_CHAT', { roomId, playerId: pid.C, username: 'Carol', content: 'e2e-chat-reverse' }).catch((e) => e.wsError);
+    await sleep(1200);
+    const aRev = A.events.slice(markA).find((e) => e.type === 'CHAT_MESSAGE' && (e.payload?.content || '').includes('e2e-chat-reverse'));
+    const bRev = B.events.slice(markB2).find((e) => e.type === 'CHAT_MESSAGE' && (e.payload?.content || '').includes('e2e-chat-reverse'));
+    record('CG-009', 'Chat C (GW2) → A (GW1) [chiều ngược]', 'nhận', aRev ? 'nhận' : `KHÔNG nhận (send=${canChat?.type || canChat?.code})`, !!aRev);
+    record('CG-009b', 'Chat C (GW2) → B (GW1)', 'nhận', bRev ? 'nhận' : 'KHÔNG nhận', !!bRev);
+
+    // CG-011: room isolation — a second room on both gateways must NOT receive room-1 events
+    const X = new Client('X', `e2eX${t()}`, 'Xena', GW1);
+    const Y = new Client('Y', `e2eY${t()}`, 'Yuri', GW2);
+    await X.connect(); await Y.connect();
+    const rx = await X.send('CREATE_ROOM', { playerId: X.playerId, username: 'Xena', roomName: 'Isolation Room', maxPlayers: 4, totalRounds: 2 });
+    const room2Id = rx.roomId;
+    await Y.send('JOIN_ROOM', { roomId: room2Id, playerId: Y.playerId, username: 'Yuri' });
+    await sleep(800);
+    // Generate noise in room 1 (chat from A) and watch X/Y (room 2) for leakage
+    const markX = X.events.length, markY = Y.events.length, markA2 = A.events.length;
+    await A.send('SEND_CHAT', { roomId, playerId: pid.A, username: 'Alice', content: 'e2e-isolation-probe' }).catch(() => {});
+    await sleep(1200);
+    const xLeak = X.events.slice(markX).filter((e) => JSON.stringify(e).includes('e2e-isolation-probe') || (e.roomId && e.roomId === roomId)).length;
+    const yLeak = Y.events.slice(markY).filter((e) => JSON.stringify(e).includes('e2e-isolation-probe') || (e.roomId && e.roomId === roomId)).length;
+    const aGot = A.events.slice(markA2).filter((e) => e.type === 'CHAT_MESSAGE' && (e.payload?.content || '').includes('e2e-isolation-probe')).length;
+    record('CG-011a', 'Room isolation: chat Room1 KHÔNG leak tới Room2 (GW1)', '0 event lạ', `${xLeak} event lạ`, xLeak === 0);
+    record('CG-011b', 'Room isolation: chat Room1 KHÔNG leak tới Room2 (GW2)', '0 event lạ', `${yLeak} event lạ`, yLeak === 0);
+    record('CG-011c', 'Chat probe Room1 vẫn tới người Room1 (chứng minh event đã phát)', 'A nhận', `${aGot} lần`, aGot >= 1);
+    // X and Y must see each other (room 2 itself works cross-gateway)
+    const yJoinSeen = X.events.some((e) => e.type === 'PLAYER_JOINED' && e.playerId === Y.playerId);
+    record('CG-011d', 'Room 2 hoạt động bình thường cross-gateway (X thấy Y join)', 'nhận', yJoinSeen ? 'nhận' : 'KHÔNG nhận', yJoinSeen);
+    X.close(); Y.close();
+  } catch (e) { record('CG-009', 'Chat reverse + isolation', 'OK', `ERROR: ${e.message}`, false); }
 
   // ============ SECTION 7: CONNECTION CLEANUP (C1, C2, C3) ============
   try {

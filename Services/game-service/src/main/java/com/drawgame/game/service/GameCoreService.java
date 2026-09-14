@@ -10,6 +10,7 @@ import com.drawgame.game.repository.GameResultRepository;
 import com.drawgame.game.repository.RedisGameRepository;
 import com.drawgame.game.repository.WordRepository;
 import com.drawgame.game.service.component.AnswerEvaluator;
+import com.drawgame.game.service.component.GameControlEventPublisher;
 import com.drawgame.game.service.component.HintGenerator;
 import com.drawgame.game.service.component.RoundScheduler;
 import com.drawgame.game.service.component.ScoreCalculator;
@@ -36,6 +37,7 @@ public class GameCoreService {
     private final ScoreCalculator scoreCalculator;
     private final AnswerEvaluator answerEvaluator;
     private final RoundScheduler roundScheduler;
+    private final GameControlEventPublisher controlEventPublisher;
 
     private static final int ROUND_DURATION_SECONDS = 60;
     private static final int INTERMISSION_SECONDS = 5;
@@ -213,6 +215,10 @@ public class GameCoreService {
         state.setStatus("ROUND_ENDED");
         redisGameRepository.saveState(state);
 
+        // TV6: cross-Gateway control fanout — every Gateway's clients AND drawing
+        // authorization caches learn the round ended immediately.
+        controlEventPublisher.publishRoundEnded(roomId, state.getCurrentRound());
+
         // Schedule next round after intermission
         roundScheduler.scheduleRoundEnd(roomId, INTERMISSION_SECONDS * 1000L, () -> nextRound(roomId));
     }
@@ -264,6 +270,9 @@ public class GameCoreService {
         redisGameRepository.saveState(state);
 
         roundScheduler.scheduleRoundEnd(roomId, roundDurationSeconds * 1000L, () -> endRound(roomId));
+        // TV6: cross-Gateway control fanout — clients clear canvas, Gateways refresh
+        // DrawingRoomStateCache with the new drawer/round immediately.
+        controlEventPublisher.publishRoundStarted(roomId, nextRoundNumber, nextDrawerId);
         log.info("ROUND_STARTED: roomId={}, round={}, drawerId={}", roomId, nextRoundNumber, nextDrawerId);
     }
 
@@ -326,6 +335,8 @@ public class GameCoreService {
 
         // Delete Redis ephemeral game state ONLY after DB persistence succeeds
         redisGameRepository.deleteGame(roomId);
+        // TV6: cross-Gateway control fanout — clients on every Gateway enter finished state.
+        controlEventPublisher.publishGameFinished(roomId);
         log.info("GAME_FINISHED_SUCCESSFULLY: roomId={}", roomId);
 
         return state;
