@@ -143,6 +143,53 @@ public class RoomGrpcService extends RoomServiceGrpc.RoomServiceImplBase {
     }
 
     @Override
+    public void setReady(com.drawgame.room.grpc.generated.SetReadyRequest request,
+                         StreamObserver<RoomResponse> responseObserver) {
+        try {
+            Room room = roomService.setReady(
+                    request.getRoomId(),
+                    request.getPlayerId(),
+                    request.getReady()
+            );
+            responseObserver.onNext(mapper.toResponse(room));
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            handleException(e, responseObserver);
+        }
+    }
+
+    @Override
+    public void resetRoom(com.drawgame.room.grpc.generated.ResetRoomRequest request,
+                          StreamObserver<RoomResponse> responseObserver) {
+        try {
+            Room room = roomService.resetRoom(
+                    request.getRoomId(),
+                    request.getRequesterPlayerId()
+            );
+            responseObserver.onNext(mapper.toResponse(room));
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            handleException(e, responseObserver);
+        }
+    }
+
+    @Override
+    public void kickPlayer(com.drawgame.room.grpc.generated.KickPlayerRequest request,
+                           StreamObserver<RoomResponse> responseObserver) {
+        try {
+            Room room = roomService.kickPlayer(
+                    request.getRoomId(),
+                    request.getRequesterPlayerId(),
+                    request.getTargetPlayerId()
+            );
+            responseObserver.onNext(mapper.toResponse(room));
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            handleException(e, responseObserver);
+        }
+    }
+
+    @Override
     public void finishGame(
             com.drawgame.room.grpc.generated.FinishGameRequest request,
             StreamObserver<RoomResponse> responseObserver

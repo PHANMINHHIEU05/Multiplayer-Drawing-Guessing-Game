@@ -135,6 +135,10 @@ public class GameCommandHandler {
             case "GET_GAME_STATE" -> handleGetGameState(sessionId, json, requestId);
             case "SUBMIT_GUESS" -> handleSubmitGuess(sessionId, json, requestId);
             case "GET_CANVAS_STATE" -> handleGetCanvasState(sessionId, json, requestId);
+            // TV10: lobby/product features — all derive identity from the bound session
+            case "SET_READY" -> handleSetReady(sessionId, json, requestId);
+            case "REMATCH" -> handleRematch(sessionId, json, requestId);
+            case "KICK_PLAYER" -> handleKickPlayer(sessionId, json, requestId);
             case "SEND_CHAT" -> handleSendChat(sessionId, json, requestId);
             case "GET_RECENT_CHAT" -> handleGetRecentChat(sessionId, json, requestId);
             case "DRAW_POINT" -> handleDrawPoint(sessionId, json);
@@ -361,6 +365,99 @@ public class GameCommandHandler {
             log.warn("Failed to attach session token to response: {}", e.getMessage());
         }
         return responseJson;
+    }
+
+    /**
+     * TV10 READY: lobby readiness toggle. Bound-session identity only — a payload
+     * playerId can never toggle someone else's readiness. Broadcasts
+     * PLAYER_READY_CHANGED to the whole room (cross-Gateway via control fanout).
+     */
+    private Mono<String> handleSetReady(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+        final boolean ready = node.has("ready") && node.get("ready").asBoolean(false);
+
+        return roomGrpcClient.setReady(roomId, playerId, ready)
+                .map(room -> {
+                    // room-wide readiness update (includes full player list with ready flags)
+                    controlBroadcast(roomId, null, "PLAYER_READY_CHANGED",
+                            createRoomSuccessJson("PLAYER_READY_CHANGED", room, null));
+                    return createRoomSuccessJson("ROOM_INFO", room, requestId);
+                })
+                .onErrorResume(e -> Mono.just(createErrorJson(requestId, "SET_READY_FAILED", e.getMessage())));
+    }
+
+    /**
+     * TV10 REMATCH: host-only FINISHED -> WAITING. Room/members/config preserved;
+     * ready state cleared. Old match result already persisted by Game Service.
+     * Also defensively clears drawing auth cache + canvas recovery state on every
+     * Gateway (cross-Gateway control event does the same on remote gateways).
+     */
+    private Mono<String> handleRematch(String sessionId, JsonNode json, String requestId) {
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+
+        return roomGrpcClient.resetRoom(roomId, playerId)
+                .map(room -> {
+                    // local defensive cleanup (remote gateways get it via the control event below)
+                    drawingRoomStateCache.remove(roomId);
+                    if (recoveryRepository != null) {
+                        recoveryRepository.removeAll(roomId).subscribe();
+                    }
+                    // room-wide reset: every client on every Gateway returns to Lobby
+                    controlBroadcast(roomId, null, "ROOM_RESET",
+                            createRoomSuccessJson("ROOM_RESET", room, null));
+                    return createRoomSuccessJson("ROOM_INFO", room, requestId);
+                })
+                .onErrorResume(e -> Mono.just(createErrorJson(requestId, "REMATCH_FAILED", e.getMessage())));
+    }
+
+    /**
+     * TV10 KICK: host-only (WAITING-only) removal of another member. The kicked
+     * player may be connected to ANOTHER Gateway — the room-wide PLAYER_KICKED
+     * control event reaches them there; the frontend detects it targets them and
+     * exits to Home. Stale JWT resume afterwards fails via membership check.
+     */
+    private Mono<String> handleKickPlayer(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String requesterId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || requesterId == null || requesterId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+        final String targetPlayerId = extractString(node, "targetPlayerId", "");
+        if (targetPlayerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_KICK", "targetPlayerId is required"));
+        }
+        if (targetPlayerId.equals(requesterId)) {
+            return Mono.just(createErrorJson(requestId, "CANNOT_KICK_SELF", "Host cannot kick themselves — use Leave"));
+        }
+
+        return roomGrpcClient.kickPlayer(roomId, requesterId, targetPlayerId)
+                .map(room -> {
+                    // room-wide event carries the target; the target's client reacts and exits
+                    Map<String, Object> kickEvent = new HashMap<>();
+                    kickEvent.put("type", "PLAYER_KICKED");
+                    kickEvent.put("roomId", roomId);
+                    kickEvent.put("targetPlayerId", targetPlayerId);
+                    kickEvent.put("byHost", requesterId);
+                    kickEvent.put("players", room.getPlayersList().stream()
+                            .map(p -> Map.of("playerId", p.getPlayerId(), "username", p.getUsername(), "ready", p.getReady()))
+                            .collect(java.util.stream.Collectors.toList()));
+                    controlBroadcast(roomId, null, "PLAYER_KICKED", toJson(kickEvent));
+                    // updated room state for remaining members
+                    controlBroadcast(roomId, null, "PLAYER_LEFT",
+                            createBroadcastJson("PLAYER_LEFT", roomId, targetPlayerId, ""));
+                    return toJson(Map.of("type", "KICK_OK", "requestId", requestId == null ? "" : requestId));
+                })
+                .onErrorResume(e -> Mono.just(createErrorJson(requestId, "KICK_FAILED", e.getMessage())));
     }
 
     private Mono<String> handleGetRoom(String sessionId, JsonNode json, String requestId) {
@@ -824,6 +921,7 @@ public class GameCommandHandler {
             Map<String, Object> pm = new HashMap<>();
             pm.put("playerId", p.getPlayerId());
             pm.put("username", p.getUsername());
+            pm.put("ready", p.getReady()); // TV10: authoritative lobby readiness
             players.add(pm);
         }
         map.put("players", players);

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING';
+export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING' | 'FAILING_OVER';
 
 interface ConnectionState {
   status: ConnectionStatus;

@@ -180,6 +180,8 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8080/ws}
+        # TV10: endpoint pool for browser Gateway failover demo (comma-separated)
+        VITE_WS_URLS: ${VITE_WS_URLS:-ws://localhost:8080/ws,ws://localhost:8090/ws}
     container_name: drawgame-frontend
     restart: unless-stopped
     ports:

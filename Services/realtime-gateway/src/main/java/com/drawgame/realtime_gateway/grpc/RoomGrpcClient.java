@@ -91,4 +91,42 @@ public class RoomGrpcClient {
             return blockingStub.leaveRoom(request);
         }).subscribeOn(Schedulers.boundedElastic());
     }
+
+    /** TV10: lobby readiness toggle (WAITING-only, membership-verified server-side). */
+    public Mono<RoomResponse> setReady(String roomId, String playerId, boolean ready) {
+        return Mono.fromCallable(() -> {
+            com.drawgame.room.grpc.generated.SetReadyRequest request =
+                    com.drawgame.room.grpc.generated.SetReadyRequest.newBuilder()
+                            .setRoomId(roomId)
+                            .setPlayerId(playerId)
+                            .setReady(ready)
+                            .build();
+            return blockingStub.setReady(request);
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /** TV10 REMATCH: host-only FINISHED -> WAITING. */
+    public Mono<RoomResponse> resetRoom(String roomId, String requesterPlayerId) {
+        return Mono.fromCallable(() -> {
+            com.drawgame.room.grpc.generated.ResetRoomRequest request =
+                    com.drawgame.room.grpc.generated.ResetRoomRequest.newBuilder()
+                            .setRoomId(roomId)
+                            .setRequesterPlayerId(requesterPlayerId)
+                            .build();
+            return blockingStub.resetRoom(request);
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /** TV10 KICK: host-only removal of another member (WAITING-only). */
+    public Mono<RoomResponse> kickPlayer(String roomId, String requesterPlayerId, String targetPlayerId) {
+        return Mono.fromCallable(() -> {
+            com.drawgame.room.grpc.generated.KickPlayerRequest request =
+                    com.drawgame.room.grpc.generated.KickPlayerRequest.newBuilder()
+                            .setRoomId(roomId)
+                            .setRequesterPlayerId(requesterPlayerId)
+                            .setTargetPlayerId(targetPlayerId)
+                            .build();
+            return blockingStub.kickPlayer(request);
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
 }

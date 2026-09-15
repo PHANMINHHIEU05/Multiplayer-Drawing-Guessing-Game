@@ -132,6 +132,12 @@ public class ControlRedisSubscriber {
                 recoveryRepository.removeAll(envelope.targetRoomId()).subscribe();
                 log.info("DrawingRoomStateCache evicted via GAME_FINISHED: room={}", envelope.targetRoomId());
             }
+            // TV10 REMATCH: old-match state must never leak into the new match
+            case "ROOM_RESET" -> {
+                drawingRoomStateCache.remove(envelope.targetRoomId());
+                recoveryRepository.removeAll(envelope.targetRoomId()).subscribe();
+                log.info("DrawingRoomStateCache evicted via ROOM_RESET: room={}", envelope.targetRoomId());
+            }
             default -> { /* no cache action needed for other control events */ }
         }
 

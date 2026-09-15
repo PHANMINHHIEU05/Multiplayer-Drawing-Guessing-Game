@@ -62,6 +62,13 @@ const GuessFeedback: React.FC<{ entry: GuessEntry }> = ({ entry }) => {
           <span>Vòng chơi hiện không còn hoạt động.</span>
         </div>
       );
+    case 'RATE_LIMITED':
+      return (
+        <div className="p-1.5 rounded-xl bg-amber-500/15 border border-amber-400/40 text-amber-200 text-xs font-bold flex items-center gap-1.5">
+          <span>⏳</span>
+          <span>Bạn thao tác quá nhanh, vui lòng thử lại.</span>
+        </div>
+      );
     case 'ERROR':
       return (
         <div className="p-1.5 rounded-xl bg-rose-500/15 border border-rose-400/40 text-rose-200 text-xs font-bold flex items-center gap-1.5">
@@ -128,7 +135,10 @@ export const GuessInput: React.FC<GuessInputProps> = ({ roomId, disabled, hasGue
       });
     } catch (err: any) {
       console.error('Submit guess error:', err);
-      guessStore.updateGuess(entryId, { result: 'ERROR' });
+      // TV10: friendly copy for the common rate-limit case
+      guessStore.updateGuess(entryId, {
+        result: err?.wsError?.code === 'RATE_LIMITED' ? 'RATE_LIMITED' : 'ERROR',
+      });
     } finally {
       setSubmitting(false);
     }

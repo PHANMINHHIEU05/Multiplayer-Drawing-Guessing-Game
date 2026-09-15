@@ -24,6 +24,15 @@ service RoomService {
 
   rpc FinishGame(FinishGameRequest)
       returns (RoomResponse);
+
+  rpc SetReady(SetReadyRequest)
+      returns (RoomResponse);
+
+  rpc ResetRoom(ResetRoomRequest)
+      returns (RoomResponse);
+
+  rpc KickPlayer(KickPlayerRequest)
+      returns (RoomResponse);
 }
 
 message BeginGameRequest {
@@ -59,9 +68,28 @@ message LeaveRoomRequest {
   string player_id = 2;
 }
 
+
+message SetReadyRequest {
+  string room_id = 1;
+  string player_id = 2;
+  bool ready = 3;
+}
+
+message ResetRoomRequest {
+  string room_id = 1;
+  string requester_player_id = 2;
+}
+
+message KickPlayerRequest {
+  string room_id = 1;
+  string requester_player_id = 2;
+  string target_player_id = 3;
+}
+
 message PlayerMessage {
   string player_id = 1;
   string username = 2;
+  bool ready = 3;
 }
 
 message RoomResponse {

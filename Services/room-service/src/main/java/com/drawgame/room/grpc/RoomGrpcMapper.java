@@ -39,5 +39,11 @@ public interface RoomGrpcMapper {
     @Mapping(target = "playersList", ignore = true)
     void mapRoom(Room room, @MappingTarget RoomResponse.Builder builder);
 
-    PlayerMessage toPlayerMessage(RoomPlayer player);
+    default PlayerMessage toPlayerMessage(RoomPlayer player) {
+        return PlayerMessage.newBuilder()
+                .setPlayerId(player.playerId())
+                .setUsername(player.username())
+                .setReady(player.ready())
+                .build();
+    }
 }

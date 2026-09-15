@@ -51,7 +51,16 @@ export const GamePage: React.FC = () => {
   const connStatus = useConnectionStore((s) => s.status);
   const showRecoveryBanner = canvasMode === 'RECOVERING';
   const showReconnectBanner =
-    connStatus === 'DISCONNECTED' || connStatus === 'RECONNECTING' || connStatus === 'CONNECTING';
+    connStatus === 'DISCONNECTED' || connStatus === 'RECONNECTING' || connStatus === 'CONNECTING' || connStatus === 'FAILING_OVER';
+  // TV10: rematch is host-only; room.status WAITING (after ROOM_RESET) exits game screen via App routing
+  const isHost = room?.hostPlayerId === playerId;
+  const handleRematch = async () => {
+    try {
+      await wsClient.send('REMATCH', {});
+    } catch (err: any) {
+      console.error('Rematch failed:', err);
+    }
+  };
 
   useEffect(() => {
     // Poll game state periodically if needed to keep state sync when game is active
@@ -381,7 +390,11 @@ export const GamePage: React.FC = () => {
       {showReconnectBanner && (
         <div className="shrink-0 px-4 py-2 rounded-2xl bg-rose-500/25 border border-rose-300/50 backdrop-blur-md text-rose-100 text-xs font-bold flex items-center gap-2 animate-pulse">
           <span className="w-2 h-2 rounded-full bg-rose-400" />
-          {connStatus === 'DISCONNECTED' ? 'Mất kết nối...' : 'Đang kết nối lại...'}
+          {connStatus === 'DISCONNECTED'
+            ? 'Mất kết nối...'
+            : connStatus === 'FAILING_OVER'
+              ? 'Đang chuyển máy chủ...'
+              : 'Đang kết nối lại...'}
         </div>
       )}
       {showRecoveryBanner && (
@@ -485,15 +498,40 @@ export const GamePage: React.FC = () => {
               />
             </div>
 
+            {/* TV10: winner callout */}
+            {(() => {
+              const sorted = [...(gameState.scores || [])].sort((a, b) => b.score - a.score);
+              const winner = sorted[0];
+              return winner ? (
+                <p className="text-sm font-black text-white">
+                  🥇 Người thắng: <span className="text-amber-300">{winner.username || 'Người chơi'}</span> ({winner.score} điểm)
+                </p>
+              ) : null;
+            })()}
+
+            {isHost ? (
+              <button
+                onClick={handleRematch}
+                className="bouncy-btn w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#059669] transition-all"
+              >
+                CHƠI LẠI 🔁
+              </button>
+            ) : (
+              <p className="text-xs font-bold text-slate-300 animate-pulse">
+                Đang chờ chủ phòng bắt đầu ván mới...
+              </p>
+            )}
+
             <button
               onClick={() => {
-                if (room) {
-                  roomStore.setRoom({ ...room, status: 'LOBBY' });
-                }
+                wsClient.send('LEAVE_ROOM', {}).catch(() => {});
+                playerStore.clearSessionToken();
+                roomStore.clearRoom();
+                gameStore.clearGame();
               }}
-              className="bouncy-btn w-full py-3.5 bg-primary hover:bg-primary-dark text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#1565C0] transition-all"
+              className="bouncy-btn w-full py-3 bg-white/15 hover:bg-white/25 text-white font-black text-sm rounded-2xl border border-white/25 transition-all"
             >
-              TRỞ VỀ PHÒNG CHỜ 🚪
+              RỜI PHÒNG 🚪
             </button>
           </div>
         </div>

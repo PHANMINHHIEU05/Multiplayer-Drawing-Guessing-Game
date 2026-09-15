@@ -117,6 +117,45 @@ public class RoomManagementService {
         return room;
     }
 
+    /** TV10: player readiness toggle (WAITING-only, membership-verified). */
+    public Room setReady(String roomId, String playerId, boolean ready) {
+        if (roomId == null || roomId.isBlank()) {
+            throw new IllegalArgumentException("Room ID cannot be blank");
+        }
+        if (playerId == null || playerId.isBlank()) {
+            throw new IllegalArgumentException("Player ID cannot be blank");
+        }
+        Room room = repository.setReady(roomId, playerId, ready);
+        log.info("PLAYER_READY_CHANGED roomId={} playerId={} ready={}", roomId, playerId, ready);
+        return room;
+    }
+
+    /** TV10 REMATCH: host-only FINISHED -> WAITING; preserves membership/config. */
+    public Room resetRoom(String roomId, String requesterId) {
+        if (roomId == null || roomId.isBlank()) {
+            throw new IllegalArgumentException("Room ID cannot be blank");
+        }
+        if (requesterId == null || requesterId.isBlank()) {
+            throw new IllegalArgumentException("Requester ID cannot be blank");
+        }
+        Room room = repository.resetRoom(roomId, requesterId);
+        log.info("ROOM_RESET roomId={} hostId={}", roomId, requesterId);
+        return room;
+    }
+
+    /** TV10 KICK: host-only, WAITING-only removal of another member. */
+    public Room kickPlayer(String roomId, String requesterId, String targetPlayerId) {
+        if (roomId == null || roomId.isBlank()) {
+            throw new IllegalArgumentException("Room ID cannot be blank");
+        }
+        if (requesterId == null || requesterId.isBlank() || targetPlayerId == null || targetPlayerId.isBlank()) {
+            throw new IllegalArgumentException("Requester and target IDs cannot be blank");
+        }
+        Room room = repository.kickPlayer(roomId, requesterId, targetPlayerId);
+        log.info("PLAYER_KICKED roomId={} hostId={} target={}", roomId, requesterId, targetPlayerId);
+        return room;
+    }
+
     public Room finishGame(String roomId) {
         if (roomId == null || roomId.isBlank()) {
             throw new IllegalArgumentException("Room ID cannot be blank");

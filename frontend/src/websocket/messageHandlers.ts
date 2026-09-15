@@ -28,6 +28,8 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
           playerId: p.playerId,
           username: p.username,
           isHost: p.playerId === response.hostPlayerId,
+          // TV10: authoritative server-side readiness (host implicitly ready)
+          ready: !!p.ready || p.playerId === response.hostPlayerId,
         }));
 
         const room: Room = {
@@ -99,6 +101,75 @@ export function setupMessageHandlers(onResponse?: (response: WSResponse) => void
         chatStore.clearMessages();
         guessStore.clearGuesses();
         metricsStore.resetStrokeSequence();
+        break;
+      }
+
+      // TV10: lobby readiness update (cross-Gateway control event)
+      case MessageType.PLAYER_READY_CHANGED: {
+        const players: Player[] = (response.players || []).map((p: any) => ({
+          playerId: p.playerId,
+          username: p.username,
+          isHost: p.playerId === response.hostPlayerId,
+          ready: !!p.ready || p.playerId === response.hostPlayerId,
+        }));
+        if (players.length > 0) {
+          roomStore.updatePlayers(players);
+        }
+        break;
+      }
+
+      // TV10 REMATCH: room reset to WAITING — everyone returns to the Lobby
+      case MessageType.ROOM_RESET: {
+        const players: Player[] = (response.players || []).map((p: any) => ({
+          playerId: p.playerId,
+          username: p.username,
+          isHost: p.playerId === response.hostPlayerId,
+          ready: !!p.ready || p.playerId === response.hostPlayerId,
+        }));
+        const currentRoom = roomStore.getState().room;
+        roomStore.setRoom({
+          roomId: response.roomId || currentRoom?.roomId || '',
+          name: response.name || currentRoom?.name || '',
+          status: 'WAITING',
+          hostPlayerId: response.hostPlayerId || currentRoom?.hostPlayerId || '',
+          players,
+          maxPlayers: response.maxPlayers || currentRoom?.maxPlayers || 4,
+          roundCount: response.roundCount || currentRoom?.roundCount || 5,
+          roundDuration: response.roundDuration || currentRoom?.roundDuration || 60,
+          playerCount: response.playerCount || players.length,
+        });
+        // reset ALL match-specific frontend state
+        gameStore.clearGame();
+        guessStore.clearGuesses();
+        chatStore.clearMessages();
+        metricsStore.resetStrokeSequence();
+        break;
+      }
+
+      // TV10 KICK: the target exits to Home; others update their player list
+      case MessageType.PLAYER_KICKED: {
+        const myId = playerStore.getState().playerId;
+        if (response.targetPlayerId === myId) {
+          // You were kicked — clear everything and surface a clear message
+          playerStore.clearSessionToken();
+          roomStore.clearRoom();
+          gameStore.clearGame();
+          chatStore.clearMessages();
+          guessStore.clearGuesses();
+          connectionStore.setLastError('Bạn đã bị chủ phòng mời khỏi phòng.');
+          break;
+        }
+        const currentRoom = roomStore.getState().room;
+        if (currentRoom) {
+          const updated = (response.players || currentRoom.players.filter((p: any) => p.playerId !== response.targetPlayerId))
+            .map((p: any) => ({
+              playerId: p.playerId,
+              username: p.username,
+              isHost: p.playerId === currentRoom.hostPlayerId,
+              ready: !!p.ready || p.playerId === currentRoom.hostPlayerId,
+            }));
+          roomStore.updatePlayers(updated);
+        }
         break;
       }
 

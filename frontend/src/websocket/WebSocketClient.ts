@@ -35,9 +35,46 @@ export class WebSocketClient {
   private missedPongsCount = 0;
   private maxMissedPongs = 3;
 
+  /**
+   * TV10 FAILOVER: optional endpoint pool (VITE_WS_URLS, comma-separated).
+   * Single-URL mode (VITE_WS_URL) keeps the exact previous behavior — this also
+   * stays compatible with a future reverse-proxy/WSS single-domain deployment.
+   * On repeated connection failures the client rotates to the next endpoint
+   * (bounded exponential backoff is reused) so a dead Gateway is bypassed.
+   */
+  private endpoints: string[];
+  private endpointIndex = 0;
+  /** consecutive failed attempts on the CURRENT endpoint before rotating */
+  private failoverAfterAttempts = 2;
+
   constructor(url?: string) {
-    this.url = url || (import.meta as any).env?.VITE_WS_URL || 'ws://localhost:8080/ws';
+    const env = (import.meta as any).env || {};
+    const poolRaw: string = url || env.VITE_WS_URLS || env.VITE_WS_URL || 'ws://localhost:8080/ws';
+    this.endpoints = String(poolRaw)
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (this.endpoints.length === 0) {
+      this.endpoints = ['ws://localhost:8080/ws'];
+    }
+    this.url = this.endpoints[0];
+    console.log(`[WebSocket] Endpoint pool (${this.endpoints.length}):`, this.endpoints.join(', '));
     this.startRateTicker();
+  }
+
+  /** Current gateway endpoint (the Network Inspector shows gatewayId from APP_PONG). */
+  get currentEndpoint(): string {
+    return this.url;
+  }
+
+  /** TV10: rotate to the next configured endpoint; returns true when it changed. */
+  private rotateEndpoint(): boolean {
+    if (this.endpoints.length < 2) return false;
+    this.endpointIndex = (this.endpointIndex + 1) % this.endpoints.length;
+    this.url = this.endpoints[this.endpointIndex];
+    connectionStore.setStatus('FAILING_OVER');
+    console.warn(`[WebSocket] FAILOVER: switching to ${this.url}`);
+    return true;
   }
 
   public connect(): void {
@@ -47,7 +84,13 @@ export class WebSocketClient {
 
     this.isIntentionallyClosed = false;
     const isReconnecting = this.reconnectAttempts > 0;
-    connectionStore.setStatus(isReconnecting ? 'RECONNECTING' : 'CONNECTING');
+    // TV10 FAILOVER: after enough consecutive failures on this endpoint, rotate.
+    // (JWT/RESUME already handles identity restoration on the new Gateway.)
+    let failedOver = false;
+    if (isReconnecting && this.reconnectAttempts % this.failoverAfterAttempts === 0) {
+      failedOver = this.rotateEndpoint();
+    }
+    connectionStore.setStatus(failedOver ? 'FAILING_OVER' : isReconnecting ? 'RECONNECTING' : 'CONNECTING');
     metricsStore.setStatus(isReconnecting ? 'RECONNECTING' : 'CONNECTING');
 
     try {
@@ -89,7 +132,7 @@ export class WebSocketClient {
 
       this.ws.onerror = (error) => {
         console.error('[WebSocket] Error:', error);
-        connectionStore.setLastError('Connection error encountered');
+        connectionStore.setLastError('Lỗi kết nối, đang thử lại...');
       };
 
       this.ws.onclose = (event) => {
@@ -109,7 +152,7 @@ export class WebSocketClient {
       };
     } catch (err: any) {
       console.error('[WebSocket] Connect exception:', err);
-      connectionStore.setLastError(err.message || 'Failed to connect');
+      connectionStore.setLastError('Không kết nối được máy chủ');
       this.scheduleReconnect();
     }
   }

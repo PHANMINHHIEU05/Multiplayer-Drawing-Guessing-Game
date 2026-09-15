@@ -2,6 +2,8 @@ export interface Player {
   playerId: string;
   username: string;
   isHost?: boolean;
+  /** TV10: authoritative server-side lobby readiness. */
+  ready?: boolean;
 }
 
 export type RoomStatus = 'WAITING' | 'IN_GAME' | 'FINISHED' | 'LOBBY';

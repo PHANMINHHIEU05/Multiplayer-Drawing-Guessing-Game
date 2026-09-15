@@ -21,5 +21,11 @@ public interface RoomRepository {
 
     Room finishGame(String roomId);
 
+    Room setReady(String roomId, String playerId, boolean ready);
+
+    Room resetRoom(String roomId, String requesterId);
+
+    Room kickPlayer(String roomId, String requesterId, String targetPlayerId);
+
     void delete(String roomId);
 }

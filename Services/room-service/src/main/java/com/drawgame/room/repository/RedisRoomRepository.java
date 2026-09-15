@@ -19,6 +19,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Collections;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Repository
@@ -127,6 +129,16 @@ public class RedisRoomRepository implements RoomRepository {
         return "room:" + roomId + ":players";
     }
 
+    /** TV10: ready players set — lobby state, authoritative server-side. */
+    private String roomReadyKey(String roomId) {
+        return "room:" + roomId + ":ready";
+    }
+
+    private Set<String> readyPlayers(String roomId) {
+        Set<String> members = redis.opsForSet().members(roomReadyKey(roomId));
+        return members != null ? members : Collections.emptySet();
+    }
+
     private String roomOrderKey(String roomId) {
         return "room:" + roomId + ":player-order";
     }
@@ -179,18 +191,23 @@ public class RedisRoomRepository implements RoomRepository {
         Map<Object, Object> playersMap = new HashMap<>(redis.opsForHash().entries(playersKey));
         List<String> orderList = redis.opsForList().range(orderKey, 0, -1);
 
+        Set<String> readySet = readyPlayers(roomId);
+
         List<RoomPlayer> roomPlayers = new ArrayList<>();
         if (orderList != null) {
             for (String pid : orderList) {
                 Object usernameObj = playersMap.remove(pid);
                 if (usernameObj != null) {
-                    roomPlayers.add(new RoomPlayer(pid, usernameObj.toString()));
+                    // TV10: join with authoritative ready state (host is implicitly ready)
+                    String hostId = values.get("hostId").toString();
+                    roomPlayers.add(new RoomPlayer(pid, usernameObj.toString(), readySet.contains(pid) || pid.equals(hostId)));
                 }
             }
         }
 
         for (Map.Entry<Object, Object> entry : playersMap.entrySet()) {
-            roomPlayers.add(new RoomPlayer(entry.getKey().toString(), entry.getValue().toString()));
+            roomPlayers.add(new RoomPlayer(entry.getKey().toString(), entry.getValue().toString(),
+                    readySet.contains(entry.getKey().toString())));
         }
 
         Room room = new Room(
@@ -295,10 +312,95 @@ public class RedisRoomRepository implements RoomRepository {
         if (room.status() != RoomStatus.WAITING) {
             throw new InvalidRoomStateException("Room is not in WAITING state: " + roomId);
         }
+        // TV10: server-side readiness gate — every non-host member must be ready
+        Set<String> ready = readyPlayers(roomId);
+        for (RoomPlayer p : room.players()) {
+            if (!p.playerId().equals(room.hostId()) && !ready.contains(p.playerId())) {
+                throw new InvalidRoomStateException(
+                        "Player " + p.username() + " is not ready");
+            }
+        }
 
         redis.opsForHash().put(roomKey(roomId), "status", RoomStatus.PLAYING.name());
+        // ready state consumed by the match start
+        redis.delete(roomReadyKey(roomId));
         return findById(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("Room not found after status update: " + roomId));
+    }
+
+    @Override
+    public Room setReady(String roomId, String playerId, boolean ready) {
+        Room room = findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found: " + roomId));
+        boolean isMember = room.players().stream().anyMatch(p -> p.playerId().equals(playerId));
+        if (!isMember) {
+            throw new IllegalArgumentException("Player " + playerId + " is not a member of room " + roomId);
+        }
+        if (room.status() != RoomStatus.WAITING) {
+            throw new InvalidRoomStateException("Room is not in WAITING state: " + roomId);
+        }
+
+        if (ready) {
+            redis.opsForSet().add(roomReadyKey(roomId), playerId);
+        } else {
+            redis.opsForSet().remove(roomReadyKey(roomId), playerId);
+        }
+        if (roomTtlSeconds > 0) {
+            redis.expire(roomReadyKey(roomId), roomTtlSeconds, TimeUnit.SECONDS);
+        }
+        return findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found after ready update: " + roomId));
+    }
+
+    /**
+     * TV10 REMATCH: FINISHED -> WAITING. Host-only. Preserves room code, name,
+     * membership, host, and configuration; clears ready state so the lobby
+     * starts fresh. Old match result is already persisted separately by
+     * Game Service finishGame (never mutated here).
+     */
+    @Override
+    public Room resetRoom(String roomId, String requesterId) {
+        Room room = findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found: " + roomId));
+        if (!room.hostId().equals(requesterId)) {
+            throw new IllegalArgumentException("Requester is not host of room " + roomId);
+        }
+        if (room.status() != RoomStatus.FINISHED) {
+            throw new InvalidRoomStateException("Room is not in FINISHED state: " + roomId);
+        }
+
+        redis.opsForHash().put(roomKey(roomId), "status", RoomStatus.WAITING.name());
+        redis.delete(roomReadyKey(roomId));
+        return findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found after reset: " + roomId));
+    }
+
+    /**
+     * TV10 KICK: host removes another member (WAITING-only by design — mid-round
+     * kick would entangle score/scheduler consistency). Host cannot kick self.
+     */
+    @Override
+    public Room kickPlayer(String roomId, String requesterId, String targetPlayerId) {
+        Room room = findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found: " + roomId));
+        if (!room.hostId().equals(requesterId)) {
+            throw new IllegalArgumentException("Requester is not host of room " + roomId);
+        }
+        if (requesterId.equals(targetPlayerId)) {
+            throw new IllegalArgumentException("Host cannot kick themselves — use Leave");
+        }
+        if (room.status() != RoomStatus.WAITING) {
+            throw new InvalidRoomStateException("Kicking is only allowed while the room is waiting: " + roomId);
+        }
+        boolean isMember = room.players().stream().anyMatch(p -> p.playerId().equals(targetPlayerId));
+        if (!isMember) {
+            throw new IllegalArgumentException("Target " + targetPlayerId + " is not a member of room " + roomId);
+        }
+
+        removePlayer(roomId, targetPlayerId);
+        redis.opsForSet().remove(roomReadyKey(roomId), targetPlayerId);
+        return findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found after kick: " + roomId));
     }
 
     @Override

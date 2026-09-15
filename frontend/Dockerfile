@@ -13,6 +13,9 @@ COPY . .
 # Build argument for WebSocket Gateway URL (defaults to ws://localhost:8080/ws)
 ARG VITE_WS_URL=ws://localhost:8080/ws
 ENV VITE_WS_URL=$VITE_WS_URL
+# TV10 failover: optional comma-separated endpoint pool (defaults to both local gateways)
+ARG VITE_WS_URLS=ws://localhost:8080/ws,ws://localhost:8090/ws
+ENV VITE_WS_URLS=$VITE_WS_URLS
 
 # Build production bundle
 RUN npm run build

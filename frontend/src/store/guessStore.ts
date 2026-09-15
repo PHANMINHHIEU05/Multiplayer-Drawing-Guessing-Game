@@ -11,6 +11,7 @@ export type GuessResultStatus =
   | 'ALREADY_GUESSED'
   | 'TIME_EXPIRED'
   | 'ROUND_NOT_ACTIVE'
+  | 'RATE_LIMITED'
   | 'ERROR';
 
 export interface GuessEntry {
