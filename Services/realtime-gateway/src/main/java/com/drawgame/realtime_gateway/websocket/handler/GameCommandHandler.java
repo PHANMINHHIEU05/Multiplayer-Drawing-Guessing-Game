@@ -204,7 +204,7 @@ public class GameCommandHandler {
 
         return roomGrpcClient.createRoom(playerId, username, roomName, maxPlayers, totalRounds, roundDuration)
                 .map(response -> {
-                    connectionManager.bindSession(sessionId, response.getRoomId(), playerId);
+                    connectionManager.bindSession(sessionId, response.getRoomId(), playerId, username);
                     // TV8: issue signed game-session credential after membership is authoritative
                     String json2 = createRoomSuccessJson("ROOM_CREATED", response, requestId);
                     return withSessionToken(json2, playerId, response.getRoomId());
@@ -243,7 +243,7 @@ public class GameCommandHandler {
 
         return roomGrpcClient.joinRoom(roomId, playerId, validatedUsername)
                 .map(response -> {
-                    connectionManager.bindSession(sessionId, response.getRoomId(), playerId);
+                    connectionManager.bindSession(sessionId, response.getRoomId(), playerId, validatedUsername);
                     String responseJson = createRoomSuccessJson("ROOM_JOINED", response, requestId);
                     // TV8: issue signed game-session credential after membership succeeds
                     responseJson = withSessionToken(responseJson, playerId, response.getRoomId());
@@ -309,7 +309,13 @@ public class GameCommandHandler {
                         );
                     }
 
-                    connectionManager.bindSession(sessionId, roomId, playerId);
+                    String resumedUsername = room.getPlayersList().stream()
+                            .filter(p -> playerId.equals(p.getPlayerId()))
+                            .findFirst()
+                            .map(PlayerMessage::getUsername)
+                            .orElse("Người chơi");
+
+                    connectionManager.bindSession(sessionId, roomId, playerId, resumedUsername);
 
                     // TV7 (stale-session replacement, spec §41): notify OTHER Gateways that
                     // this player now lives HERE — they evict any old binding for the same
@@ -322,6 +328,13 @@ public class GameCommandHandler {
                         evict.put("roomId", roomId);
                         evict.put("playerId", playerId);
                         controlEventRouter.broadcastToRoom(roomId, "PLAYER_SESSION_REPLACED", toJson(evict));
+
+                        Map<String, Object> reconnected = new HashMap<>();
+                        reconnected.put("type", "PLAYER_RECONNECTED");
+                        reconnected.put("roomId", roomId);
+                        reconnected.put("playerId", playerId);
+                        reconnected.put("username", resumedUsername);
+                        controlEventRouter.broadcastToRoom(roomId, "PLAYER_RECONNECTED", toJson(reconnected));
                     }
 
                     Map<String, Object> payload = new HashMap<>();
@@ -482,13 +495,34 @@ public class GameCommandHandler {
             return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
         }
 
+        final String leavingUsername = extractString(node, "username", "");
+        final String storedUsername = connectionManager.getUsername(sessionId);
+        final String resolvedLeavingUsername = !leavingUsername.isBlank() ? leavingUsername
+                : (storedUsername != null && !storedUsername.isBlank() ? storedUsername : "Người chơi");
+
         return roomGrpcClient.leaveRoom(roomId, playerId)
                 .map(response -> {
                     String responseJson = createRoomSuccessJson("ROOM_LEFT", response, requestId);
-                    // TV6: PLAYER_LEFT control event — broadcast BEFORE unbinding so other local
-                    // room members still receive it, and fan out to remote Gateways.
-                    controlBroadcast(roomId, sessionId, "PLAYER_LEFT",
-                            createBroadcastJson("PLAYER_LEFT", roomId, playerId, ""));
+
+                    // TV6 + QA fix: PLAYER_LEFT control event — broadcast BEFORE unbinding
+                    // so other local room members still receive it, and fan out to remote Gateways.
+                    // Payload carries leaving username, updated hostPlayerId, and remaining players list.
+                    Map<String, Object> leftPayload = new HashMap<>();
+                    leftPayload.put("type", "PLAYER_LEFT");
+                    leftPayload.put("roomId", roomId);
+                    leftPayload.put("playerId", playerId);
+                    leftPayload.put("username", resolvedLeavingUsername);
+                    leftPayload.put("hostPlayerId", response.getHostId());
+                    leftPayload.put("players", response.getPlayersList().stream()
+                            .map(p -> Map.of(
+                                    "playerId", p.getPlayerId(),
+                                    "username", p.getUsername(),
+                                    "ready", p.getReady()
+                            ))
+                            .collect(java.util.stream.Collectors.toList()));
+                    String leftBroadcastJson = toJson(leftPayload);
+                    controlBroadcast(roomId, sessionId, "PLAYER_LEFT", leftBroadcastJson);
+
                     // TV3 Stabilization (GW-07): unbind session from room routing so this session
                     // no longer receives drawing events or passes drawing authorization checks.
                     connectionManager.unbindSession(sessionId);
@@ -672,24 +706,10 @@ public class GameCommandHandler {
                                     return reactor.core.publisher.Mono.empty();
                                 })
                                 .thenReturn(toJson(map));
-                    } else if ("WRONG".equalsIgnoreCase(status)) {
-                        // Forward wrong guess to Chat Service to record & broadcast.
-                        // TV8: no client-supplied username — Chat Service resolves the
-                        // authoritative display name from room membership.
-                        return chatGrpcClient.sendMessage(roomId, playerId, "", validatedGuess)
-                                .map(chatRes -> {
-                                    String chatBroadcastJson = createChatMessageBroadcastJson(chatRes, null);
-                                    // TV6: wrong-guess chat echo is room-scoped — local + Redis fanout
-                                    controlBroadcast(roomId, null, "CHAT_MESSAGE", chatBroadcastJson);
-
-                                    Map<String, Object> map = createGuessResultMap(roomId, playerId, status, response.getScoreAwarded(), requestId);
-                                    return toJson(map);
-                                })
-                                .onErrorResume(e -> {
-                                    Map<String, Object> map = createGuessResultMap(roomId, playerId, status, response.getScoreAwarded(), requestId);
-                                    return Mono.just(toJson(map));
-                                });
                     } else {
+                        // BUG-1 fix: Guess input and Chat must remain completely separate.
+                        // Non-CORRECT guesses (WRONG, CLOSE, etc.) are private feedback to the submitter
+                        // and MUST NOT be forwarded to Chat Service or broadcast as CHAT_MESSAGE.
                         Map<String, Object> map = createGuessResultMap(roomId, playerId, status, response.getScoreAwarded(), requestId);
                         return Mono.just(toJson(map));
                     }
@@ -854,6 +874,15 @@ public class GameCommandHandler {
         }
     }
 
+    public void broadcastDisconnect(String roomId, String sessionId, String playerId, String username) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("type", "PLAYER_DISCONNECTED");
+        payload.put("roomId", roomId);
+        payload.put("playerId", playerId);
+        payload.put("username", username != null && !username.isBlank() ? username : "Người chơi");
+        controlBroadcast(roomId, sessionId, "PLAYER_DISCONNECTED", toJson(payload));
+    }
+
     private String extractRequestId(JsonNode json) {
         if (json.has("requestId") && !json.get("requestId").isNull()) {
             return json.get("requestId").asText();
@@ -878,6 +907,7 @@ public class GameCommandHandler {
         map.put("roomId", roomId);
         map.put("playerId", playerId);
         map.put("status", status);
+        map.put("isCorrect", "CORRECT".equalsIgnoreCase(status));
         map.put("scoreAwarded", scoreAwarded);
         return map;
     }

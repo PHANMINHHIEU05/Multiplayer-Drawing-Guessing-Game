@@ -121,6 +121,12 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 })
                 .doOnError(error -> log.error("WebSocket error on session {}", sessionId, error))
                 .doFinally(signalType -> {
+                    String boundRoomId = connectionManager.getRoomId(sessionId);
+                    String boundPlayerId = connectionManager.getPlayerId(sessionId);
+                    String boundUsername = connectionManager.getUsername(sessionId);
+                    if (boundRoomId != null && boundPlayerId != null) {
+                        commandHandler.broadcastDisconnect(boundRoomId, sessionId, boundPlayerId, boundUsername);
+                    }
                     connectionManager.remove(sessionId);
                     rateLimiter.removeSession(sessionId); // TV8: drop limiter buckets
                 })

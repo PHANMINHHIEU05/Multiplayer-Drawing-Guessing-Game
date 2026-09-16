@@ -1,11 +1,14 @@
-import { WSRequest, WSResponse, MessageHandler } from './messageTypes';
-import { createWSRequest, MessageType } from './protocol';
-import { connectionStore } from '../store/connectionStore';
-import { gameStore } from '../store/gameStore';
-import { metricsStore } from '../store/metricsStore';
-import { roomStore } from '../store/roomStore';
-import { playerStore } from '../store/playerStore';
-import { recoveryStore } from '../store/recoveryStore';
+import { WSRequest, WSResponse, MessageHandler } from "./messageTypes";
+import { createWSRequest, MessageType } from "./protocol";
+import { connectionStore } from "../store/connectionStore";
+import { gameStore } from "../store/gameStore";
+import { metricsStore } from "../store/metricsStore";
+import { roomStore } from "../store/roomStore";
+import { playerStore } from "../store/playerStore";
+import { recoveryStore } from "../store/recoveryStore";
+import { noticeStore } from "../store/noticeStore";
+import { chatStore } from "../store/chatStore";
+import { guessStore } from "../store/guessStore";
 
 interface PendingRequest {
   resolve: (value: WSResponse | PromiseLike<WSResponse>) => void;
@@ -49,16 +52,20 @@ export class WebSocketClient {
 
   constructor(url?: string) {
     const env = (import.meta as any).env || {};
-    const poolRaw: string = url || env.VITE_WS_URLS || env.VITE_WS_URL || 'ws://localhost:8080/ws';
+    const poolRaw: string =
+      url || env.VITE_WS_URLS || env.VITE_WS_URL || "ws://localhost:8080/ws";
     this.endpoints = String(poolRaw)
-      .split(',')
+      .split(",")
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
     if (this.endpoints.length === 0) {
-      this.endpoints = ['ws://localhost:8080/ws'];
+      this.endpoints = ["ws://localhost:8080/ws"];
     }
     this.url = this.endpoints[0];
-    console.log(`[WebSocket] Endpoint pool (${this.endpoints.length}):`, this.endpoints.join(', '));
+    console.log(
+      `[WebSocket] Endpoint pool (${this.endpoints.length}):`,
+      this.endpoints.join(", "),
+    );
     this.startRateTicker();
   }
 
@@ -72,13 +79,17 @@ export class WebSocketClient {
     if (this.endpoints.length < 2) return false;
     this.endpointIndex = (this.endpointIndex + 1) % this.endpoints.length;
     this.url = this.endpoints[this.endpointIndex];
-    connectionStore.setStatus('FAILING_OVER');
+    connectionStore.setStatus("FAILING_OVER");
     console.warn(`[WebSocket] FAILOVER: switching to ${this.url}`);
     return true;
   }
 
   public connect(): void {
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN ||
+        this.ws.readyState === WebSocket.CONNECTING)
+    ) {
       return;
     }
 
@@ -87,27 +98,47 @@ export class WebSocketClient {
     // TV10 FAILOVER: after enough consecutive failures on this endpoint, rotate.
     // (JWT/RESUME already handles identity restoration on the new Gateway.)
     let failedOver = false;
-    if (isReconnecting && this.reconnectAttempts % this.failoverAfterAttempts === 0) {
+    if (
+      isReconnecting &&
+      this.reconnectAttempts % this.failoverAfterAttempts === 0
+    ) {
       failedOver = this.rotateEndpoint();
     }
-    connectionStore.setStatus(failedOver ? 'FAILING_OVER' : isReconnecting ? 'RECONNECTING' : 'CONNECTING');
-    metricsStore.setStatus(isReconnecting ? 'RECONNECTING' : 'CONNECTING');
+    connectionStore.setStatus(
+      failedOver
+        ? "FAILING_OVER"
+        : isReconnecting
+          ? "RECONNECTING"
+          : "CONNECTING",
+    );
+    metricsStore.setStatus(isReconnecting ? "RECONNECTING" : "CONNECTING");
 
     try {
       this.ws = new WebSocket(this.url);
-      this.ws.binaryType = 'arraybuffer';
+      this.ws.binaryType = "arraybuffer";
 
       this.ws.onopen = () => {
         const wasReconnecting = this.reconnectAttempts > 0;
-        console.log('[WebSocket] Connected to', this.url, wasReconnecting ? '(Reconnected)' : '');
+        console.log(
+          "[WebSocket] Connected to",
+          this.url,
+          wasReconnecting ? "(Reconnected)" : "",
+        );
         this.reconnectAttempts = 0;
         this.missedPongsCount = 0;
-        connectionStore.setStatus('CONNECTED');
-        metricsStore.setStatus('CONNECTED');
+        connectionStore.setStatus("CONNECTED");
+        metricsStore.setStatus("CONNECTED");
 
         this.startHeartbeat();
+        noticeStore.removeNotice("connection_reconnecting");
 
         if (wasReconnecting) {
+          noticeStore.pushNotice({
+            id: "connection_reconnected",
+            type: "SUCCESS",
+            message: "Đã kết nối lại.",
+            durationMs: 3000,
+          });
           this.restoreStateAfterReconnect();
         } else {
           // TV7 (RC-003): fresh page load — if the player was in a room (persisted
@@ -124,59 +155,74 @@ export class WebSocketClient {
         const data = event.data;
         if (data instanceof ArrayBuffer) {
           metricsStore.recordRx(data.byteLength);
-        } else if (typeof data === 'string') {
+        } else if (typeof data === "string") {
           metricsStore.recordRx(data.length);
         }
         this.handleIncomingMessage(data);
       };
 
       this.ws.onerror = (error) => {
-        console.error('[WebSocket] Error:', error);
-        connectionStore.setLastError('Lỗi kết nối, đang thử lại...');
+        console.error("[WebSocket] Error:", error);
+        connectionStore.setLastError("Lỗi kết nối, đang thử lại...");
       };
 
       this.ws.onclose = (event) => {
-        console.log('[WebSocket] Disconnected code:', event.code, 'reason:', event.reason);
+        console.log(
+          "[WebSocket] Disconnected code:",
+          event.code,
+          "reason:",
+          event.reason,
+        );
         this.ws = null;
         this.stopHeartbeat();
-        this.rejectAllPending('WebSocket connection closed');
+        this.rejectAllPending("WebSocket connection closed");
 
         if (!this.isIntentionallyClosed) {
-          connectionStore.setStatus('DISCONNECTED');
-          metricsStore.setStatus('DISCONNECTED');
+          connectionStore.setStatus("DISCONNECTED");
+          metricsStore.setStatus("DISCONNECTED");
           this.scheduleReconnect();
         } else {
-          connectionStore.setStatus('DISCONNECTED');
-          metricsStore.setStatus('DISCONNECTED');
+          connectionStore.setStatus("DISCONNECTED");
+          metricsStore.setStatus("DISCONNECTED");
         }
       };
     } catch (err: any) {
-      console.error('[WebSocket] Connect exception:', err);
-      connectionStore.setLastError('Không kết nối được máy chủ');
+      console.error("[WebSocket] Connect exception:", err);
+      connectionStore.setLastError("Không kết nối được máy chủ");
       this.scheduleReconnect();
     }
+  }
+
+  public cancelReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectAttempts = 0;
+    noticeStore.removeNotice("connection_reconnecting");
   }
 
   public disconnect(): void {
     this.isIntentionallyClosed = true;
     this.stopHeartbeat();
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    this.cancelReconnect();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
-    this.rejectAllPending('Client disconnected');
-    connectionStore.setStatus('DISCONNECTED');
-    metricsStore.setStatus('DISCONNECTED');
+    this.rejectAllPending("Client disconnected");
+    connectionStore.setStatus("DISCONNECTED");
+    metricsStore.setStatus("DISCONNECTED");
   }
 
-  public send<T = any>(type: string, payload: T, timeoutMs: number = 10000): Promise<WSResponse> {
+  public send<T = any>(
+    type: string,
+    payload: T,
+    timeoutMs: number = 10000,
+  ): Promise<WSResponse> {
     return new Promise((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        return reject(new Error('WebSocket is not connected'));
+        return reject(new Error("WebSocket is not connected"));
       }
 
       const req: WSRequest<T> = createWSRequest(type, payload);
@@ -185,7 +231,11 @@ export class WebSocketClient {
       const timer = setTimeout(() => {
         if (this.pendingRequests.has(req.requestId)) {
           this.pendingRequests.delete(req.requestId);
-          reject(new Error(`Request timeout for '${type}' (reqId: ${req.requestId})`));
+          reject(
+            new Error(
+              `Request timeout for '${type}' (reqId: ${req.requestId})`,
+            ),
+          );
         }
       }, timeoutMs);
 
@@ -216,7 +266,8 @@ export class WebSocketClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
     }
-    const byteLength = 'byteLength' in data ? data.byteLength : (data as ArrayBuffer).byteLength;
+    const byteLength =
+      "byteLength" in data ? data.byteLength : (data as ArrayBuffer).byteLength;
     metricsStore.recordTx(byteLength);
     this.ws.send(data);
   }
@@ -237,7 +288,7 @@ export class WebSocketClient {
         try {
           listener(raw);
         } catch (err) {
-          console.error('[WebSocket] Binary listener error:', err);
+          console.error("[WebSocket] Binary listener error:", err);
         }
       });
       return;
@@ -247,13 +298,19 @@ export class WebSocketClient {
       const response: WSResponse = JSON.parse(raw);
 
       // Heartbeat PONG interceptor (TV4)
-      if (response.type === 'APP_PONG' || response.type === 'PONG') {
-        const clientTimestamp = response.clientTimestamp || response.sentAt || this.lastPingSentAt;
+      if (response.type === "APP_PONG" || response.type === "PONG") {
+        const clientTimestamp =
+          response.clientTimestamp || response.sentAt || this.lastPingSentAt;
         const serverTimestamp = response.serverTimestamp;
         const queueSize = response.queueSize;
         const gatewayId = response.gatewayId;
         this.missedPongsCount = 0;
-        metricsStore.recordHeartbeatPong(clientTimestamp, serverTimestamp, queueSize, gatewayId);
+        metricsStore.recordHeartbeatPong(
+          clientTimestamp,
+          serverTimestamp,
+          queueSize,
+          gatewayId,
+        );
         return;
       }
 
@@ -263,8 +320,9 @@ export class WebSocketClient {
         clearTimeout(pending.timer);
         this.pendingRequests.delete(response.requestId);
 
-        if (response.type === 'ERROR') {
-          const errMsg = response.message || response.error?.message || 'Gateway error';
+        if (response.type === "ERROR") {
+          const errMsg =
+            response.message || response.error?.message || "Gateway error";
           pending.reject(new Error(errMsg));
         } else {
           pending.resolve(response);
@@ -276,11 +334,11 @@ export class WebSocketClient {
         try {
           listener(response);
         } catch (err) {
-          console.error('[WebSocket] Listener error:', err);
+          console.error("[WebSocket] Listener error:", err);
         }
       });
     } catch (err) {
-      console.error('[WebSocket] Failed to parse message:', raw, err);
+      console.error("[WebSocket] Failed to parse message:", raw, err);
     }
   }
 
@@ -291,7 +349,9 @@ export class WebSocketClient {
 
       this.missedPongsCount++;
       if (this.missedPongsCount > this.maxMissedPongs) {
-        console.warn(`[WebSocket] Heartbeat timeout (${this.missedPongsCount} missed pongs). Reconnecting...`);
+        console.warn(
+          `[WebSocket] Heartbeat timeout (${this.missedPongsCount} missed pongs). Reconnecting...`,
+        );
         metricsStore.incrementHeartbeatTimeout();
         this.ws.close();
         return;
@@ -299,7 +359,7 @@ export class WebSocketClient {
 
       this.lastPingSentAt = Date.now();
       const pingMsg = JSON.stringify({
-        type: 'APP_PING',
+        type: "APP_PING",
         timestamp: this.lastPingSentAt,
       });
       this.sendRaw(pingMsg);
@@ -329,14 +389,23 @@ export class WebSocketClient {
     // Exponential backoff with ±20% jitter
     const backoff = Math.min(
       this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
-      this.maxReconnectDelay
+      this.maxReconnectDelay,
     );
     const jitter = 0.8 + Math.random() * 0.4;
     const delay = Math.round(backoff * jitter);
 
-    console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt #${this.reconnectAttempts})...`);
-    connectionStore.setStatus('RECONNECTING');
-    metricsStore.setStatus('RECONNECTING');
+    console.log(
+      `[WebSocket] Reconnecting in ${delay}ms (attempt #${this.reconnectAttempts})...`,
+    );
+    connectionStore.setStatus("RECONNECTING");
+    metricsStore.setStatus("RECONNECTING");
+
+    noticeStore.pushNotice({
+      id: "connection_reconnecting",
+      type: "WARNING",
+      message: `Mất kết nối. Đang thử kết nối lại... (lần ${this.reconnectAttempts})`,
+      durationMs: 0,
+    });
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -357,52 +426,71 @@ export class WebSocketClient {
     if (roomId && playerId && token) {
       console.log(`[WebSocket] Restoring session in room ${roomId}...`);
       // Re-bind the new WebSocket session without mutating room membership.
-      this.send(MessageType.RESUME_SESSION, {
-        roomId,
-        playerId, // compatibility only — server verifies it matches the token subject
-        token,
-      }, 5000)
+      this.send(
+        MessageType.RESUME_SESSION,
+        {
+          roomId,
+          playerId, // compatibility only — server verifies it matches the token subject
+          token,
+        },
+        5000,
+      )
         .then((resumeResponse) => {
-          console.log('[WebSocket] Session resumed successfully');
+          console.log("[WebSocket] Session resumed successfully");
           // TV8: the server rotates the credential on every successful resume
           if (resumeResponse.sessionToken) {
             playerStore.setSessionToken(resumeResponse.sessionToken);
           }
-          return this.send(MessageType.GET_ROOM, {}, 5000)
-            .then((roomResponse) => {
+          return this.send(MessageType.GET_ROOM, {}, 5000).then(
+            (roomResponse) => {
               const resumedStatus = resumeResponse.payload?.roomStatus;
               const roomStatus = roomResponse.status || resumedStatus;
 
               // Room Service uses PLAYING; the frontend may still have the legacy IN_GAME value.
-              if (roomStatus === 'PLAYING' || roomStatus === 'IN_GAME') {
-                return this.send(MessageType.GET_GAME_STATE, {}, 5000)
-                  .then((gameResponse) => {
+              if (roomStatus === "PLAYING" || roomStatus === "IN_GAME") {
+                return this.send(MessageType.GET_GAME_STATE, {}, 5000).then(
+                  (gameResponse) => {
                     // TV7: current-round canvas recovery after game state is known
-                    if (gameResponse.status === 'PLAYING' && gameResponse.currentRound) {
+                    if (
+                      gameResponse.status === "PLAYING" &&
+                      gameResponse.currentRound
+                    ) {
                       this.recoverCanvas(gameResponse.currentRound);
                     }
                     return gameResponse;
-                  });
+                  },
+                );
               }
 
               return roomResponse;
-            });
+            },
+          );
         })
         .catch((err: any) => {
-          console.warn('[WebSocket] Failed to restore room/game state:', err);
-          const code = err?.wsError?.code || '';
+          console.warn("[WebSocket] Failed to restore room/game state:", err);
+          const code = err?.wsError?.code || "";
           // TV8: credential failures are terminal — stop retrying, clear resume
           // metadata and surface "Phiên chơi đã hết hạn" instead of looping forever.
           const authFailure = [
-            'SESSION_TOKEN_EXPIRED', 'INVALID_SESSION_TOKEN', 'AUTH_REQUIRED',
-            'ROOM_SCOPE_MISMATCH',
+            "SESSION_TOKEN_EXPIRED",
+            "INVALID_SESSION_TOKEN",
+            "AUTH_REQUIRED",
+            "ROOM_SCOPE_MISMATCH",
           ].includes(code);
-          const permanent = authFailure || [
-            'PLAYER_NOT_IN_ROOM', 'ROOM_NOT_FOUND', 'INVALID_SESSION', 'RESUME_RETRYABLE',
-          ].includes(code) || /not a member|not found|resume/i.test(String(err.message || ''));
+          const permanent =
+            authFailure ||
+            [
+              "PLAYER_NOT_IN_ROOM",
+              "ROOM_NOT_FOUND",
+              "INVALID_SESSION",
+              "RESUME_RETRYABLE",
+            ].includes(code) ||
+            /not a member|not found|resume/i.test(String(err.message || ""));
           if (authFailure) {
             playerStore.clearSessionToken();
-            connectionStore.setLastError('Phiên chơi đã hết hạn. Vui lòng vào lại phòng.');
+            connectionStore.setLastError(
+              "Phiên chơi đã hết hạn. Vui lòng vào lại phòng.",
+            );
           }
           if (permanent) {
             roomStore.clearRoom();
@@ -411,7 +499,9 @@ export class WebSocketClient {
     } else if (roomId && playerId) {
       // TV8 migration: persisted roomId but no signed token (legacy browser) —
       // resume is impossible; clear stale metadata once and require a clean rejoin.
-      console.warn('[WebSocket] No game-session token — clearing stale resume metadata (rejoin required)');
+      console.warn(
+        "[WebSocket] No game-session token — clearing stale resume metadata (rejoin required)",
+      );
       roomStore.clearRoom();
     }
   }
@@ -433,12 +523,17 @@ export class WebSocketClient {
         if (buffered.length > 0) {
           gameStore.addDrawPoints(buffered);
         }
-        console.log(`[WebSocket] Canvas recovery complete: round=${round}, ${buffered.length} buffered live events flushed`);
+        console.log(
+          `[WebSocket] Canvas recovery complete: round=${round}, ${buffered.length} buffered live events flushed`,
+        );
       })
       .catch((err) => {
         // Partial recovery UX: game state restored, canvas unavailable — keep playing live
         recoveryStore.abort();
-        console.warn('[WebSocket] Canvas recovery unavailable (continuing live):', err.message);
+        console.warn(
+          "[WebSocket] Canvas recovery unavailable (continuing live):",
+          err.message,
+        );
       });
   }
 
@@ -452,3 +547,15 @@ export class WebSocketClient {
 }
 
 export const wsClient = new WebSocketClient();
+
+export function resetAllSessionState(): void {
+  wsClient.cancelReconnect();
+  playerStore.clearSessionToken();
+  roomStore.clearRoom();
+  gameStore.clearGame();
+  chatStore.clearMessages();
+  guessStore.clearGuesses();
+  metricsStore.resetStrokeSequence();
+  recoveryStore.abort();
+  noticeStore.clearAll();
+}

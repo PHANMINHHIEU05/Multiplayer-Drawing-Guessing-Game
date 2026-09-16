@@ -296,9 +296,11 @@ public class RedisRoomRepository implements RoomRepository {
         } else if (result == -2) {
             throw new IllegalArgumentException("Player " + playerId + " is not in room " + roomId);
         } else if (result == 1) {
+            redis.opsForSet().remove(roomReadyKey(roomId), playerId);
             return Optional.empty();
         }
 
+        redis.opsForSet().remove(roomReadyKey(roomId), playerId);
         return findById(roomId);
     }
 

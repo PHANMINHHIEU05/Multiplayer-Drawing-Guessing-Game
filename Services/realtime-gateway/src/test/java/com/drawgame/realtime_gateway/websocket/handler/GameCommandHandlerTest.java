@@ -262,7 +262,7 @@ class GameCommandHandlerTest {
     }
 
     @Test
-    void handleSubmitGuess_WrongGuess_ForwardsToChatServiceAndBroadcasts() throws Exception {
+    void handleSubmitGuess_WrongGuess_DoesNotForwardToChatService() throws Exception {
         String jsonStr = """
             {
                 "type": "SUBMIT_GUESS",
@@ -283,20 +283,8 @@ class GameCommandHandlerTest {
                 .setScoreAwarded(0)
                 .build();
 
-        ChatMessageResponse chatRes = ChatMessageResponse.newBuilder()
-                .setMessageId("m-wrong")
-                .setRoomId("room-1")
-                .setPlayerId("player-1")
-                .setUsername("Minh")
-                .setContent("con thỏ")
-                .setType("USER")
-                .setCreatedAtEpochMs(1000L)
-                .build();
-
         when(gameGrpcClient.submitGuess("room-1", "player-1", "con thỏ"))
                 .thenReturn(Mono.just(guessRes));
-        when(chatGrpcClient.sendMessage("room-1", "player-1", "", "con thỏ"))
-                .thenReturn(Mono.just(chatRes));
 
         Mono<String> resultMono = handler.handleCommand("session-1", json);
 
@@ -307,9 +295,9 @@ class GameCommandHandlerTest {
                 })
                 .verifyComplete();
 
-        // Chat message broadcasted for wrong guess
-        verify(chatGrpcClient).sendMessage("room-1", "player-1", "", "con thỏ");
-        verify(connectionManager).broadcastToRoom(eq("room-1"), contains("CHAT_MESSAGE"));
+        // Chat message must NEVER be sent or broadcasted for wrong guesses
+        verify(chatGrpcClient, never()).sendMessage(anyString(), anyString(), anyString(), anyString());
+        verify(connectionManager, never()).broadcastToRoom(eq("room-1"), contains("CHAT_MESSAGE"));
     }
 
     @Test
@@ -512,11 +500,6 @@ class GameCommandHandlerTest {
                         .setScoreAwarded(0)
                         .build();
         when(gameGrpcClient.submitGuess("room-1", "player-1", "guess")).thenReturn(Mono.just(guessResponse));
-        // WRONG guesses are echoed through Chat Service — stub the forward
-        when(chatGrpcClient.sendMessage(eq("room-1"), eq("player-1"), anyString(), eq("guess")))
-                .thenReturn(Mono.just(com.drawgame.chat.grpc.generated.ChatMessageResponse.newBuilder()
-                        .setMessageId("m1").setRoomId("room-1").setPlayerId("player-1")
-                        .setUsername("Minh").setContent("guess").setType("USER").build()));
 
         String jsonStr = """
             {

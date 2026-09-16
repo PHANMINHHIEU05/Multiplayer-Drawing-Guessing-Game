@@ -5,9 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Publishes game-lifecycle CONTROL events to Redis Pub/Sub so that EVERY Realtime
@@ -64,20 +62,42 @@ public class GameControlEventPublisher {
 
     /** Broadcast ROOM-scoped event: the current round ended (intermission). */
     public void publishRoundEnded(String roomId, int round) {
+        publishRoundEnded(roomId, round, null);
+    }
+
+    /** Broadcast ROOM-scoped event: the current round ended with revealed answer. */
+    public void publishRoundEnded(String roomId, int round, String revealedWord) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "ROUND_ENDED");
         payload.put("roomId", roomId);
         payload.put("currentRound", round);
         payload.put("status", "ROUND_ENDED");
+        if (revealedWord != null && !revealedWord.isBlank()) {
+            payload.put("word", revealedWord);
+            payload.put("revealedWord", revealedWord);
+        }
         publish(roomId, "ROUND_ENDED", payload);
     }
 
     /** Broadcast ROOM-scoped event: the game finished — no more drawing/guessing. */
     public void publishGameFinished(String roomId) {
+        publishGameFinished(roomId, Collections.emptyList());
+    }
+
+    public void publishGameFinished(String roomId, List<com.drawgame.game.model.PlayerScoreData> scores) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "GAME_FINISHED");
         payload.put("roomId", roomId);
         payload.put("status", "FINISHED");
+        if (scores != null && !scores.isEmpty()) {
+            payload.put("scores", scores.stream()
+                    .map(s -> Map.of(
+                            "playerId", s.getPlayerId(),
+                            "username", s.getUsername() != null ? s.getUsername() : s.getPlayerId(),
+                            "score", s.getScore()
+                    ))
+                    .collect(java.util.stream.Collectors.toList()));
+        }
         publish(roomId, "GAME_FINISHED", payload);
     }
 

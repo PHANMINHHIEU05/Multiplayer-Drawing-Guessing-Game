@@ -34,6 +34,9 @@ public class ConnectionManager {
     private final Map<String, String> sessionToPlayer =
             new ConcurrentHashMap<>();
 
+    private final Map<String, String> sessionToUsername =
+            new ConcurrentHashMap<>();
+
     /** TV3: "{playerId}:{roomId}" -> sessionId. Prevents duplicate logical player on reconnect (GW-10). */
     private final Map<String, String> playerRoomToSession =
             new ConcurrentHashMap<>();
@@ -75,11 +78,18 @@ public class ConnectionManager {
      * The old WebSocket connection is NOT closed here — it cleans itself up via doFinally.
      */
     public void bindSession(String sessionId, String roomId, String playerId) {
+        bindSession(sessionId, roomId, playerId, null);
+    }
+
+    public void bindSession(String sessionId, String roomId, String playerId, String username) {
         if (roomId != null) {
             sessionToRoom.put(sessionId, roomId);
         }
         if (playerId != null) {
             sessionToPlayer.put(sessionId, playerId);
+        }
+        if (username != null && !username.isBlank()) {
+            sessionToUsername.put(sessionId, username);
         }
 
         if (playerId != null && roomId != null) {
@@ -90,6 +100,7 @@ public class ConnectionManager {
                         playerId, roomId, prev, sessionId);
                 sessionToRoom.remove(prev);
                 sessionToPlayer.remove(prev);
+                sessionToUsername.remove(prev);
             }
         }
     }
@@ -101,10 +112,12 @@ public class ConnectionManager {
     public void unbindSession(String sessionId) {
         String roomId = sessionToRoom.remove(sessionId);
         String playerId = sessionToPlayer.remove(sessionId);
+        String username = sessionToUsername.remove(sessionId);
         if (playerId != null && roomId != null) {
             playerRoomToSession.remove(playerId + ":" + roomId, sessionId);
         }
-        log.info("Session unbound: session={} prevRoom={} prevPlayer={}", sessionId, roomId, playerId);
+        log.info("Session unbound: session={} prevRoom={} prevPlayer={} prevUsername={}",
+                sessionId, roomId, playerId, username);
     }
 
     /**
@@ -121,6 +134,7 @@ public class ConnectionManager {
         if (sessionId != null) {
             sessionToRoom.remove(sessionId);
             sessionToPlayer.remove(sessionId);
+            sessionToUsername.remove(sessionId);
             log.info("Stale session evicted (player resumed elsewhere): player={} room={} session={}",
                     playerId, roomId, sessionId);
         }
@@ -133,6 +147,10 @@ public class ConnectionManager {
 
     public String getPlayerId(String sessionId) {
         return sessionToPlayer.get(sessionId);
+    }
+
+    public String getUsername(String sessionId) {
+        return sessionToUsername.get(sessionId);
     }
 
     public void sendToSession(String sessionId, String message) {
@@ -208,6 +226,7 @@ public class ConnectionManager {
     public void remove(String sessionId) {
         String roomId = sessionToRoom.remove(sessionId);
         String playerId = sessionToPlayer.remove(sessionId);
+        String username = sessionToUsername.remove(sessionId);
         BoundedOutboundQueue queue = clients.remove(sessionId);
         if (playerId != null && roomId != null) {
             playerRoomToSession.remove(playerId + ":" + roomId, sessionId);

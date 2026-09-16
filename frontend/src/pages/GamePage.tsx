@@ -1,28 +1,31 @@
-import React, { useEffect, useCallback, useState, useRef } from 'react';
-import { useGameStore, gameStore } from '../store/gameStore';
-import { usePlayerStore, playerStore } from '../store/playerStore';
-import { useRoomStore, roomStore } from '../store/roomStore';
-import { GameHeader } from '../features/game/GameHeader';
-import { DrawingCanvas, DrawingCanvasHandle } from '../features/drawing/DrawingCanvas';
-import { DrawingToolbar } from '../features/drawing/DrawingToolbar';
-import { Scoreboard } from '../components/Scoreboard';
-import { ChatPanel } from '../features/chat/ChatPanel';
-import { GuessInput } from '../features/game/GuessInput';
-import { ConnectionStatus } from '../components/ConnectionStatus';
-import { NetworkInspector } from '../components/NetworkInspector';
-import { wsClient } from '../websocket/WebSocketClient';
-import { MessageType, createWSRequest } from '../websocket/protocol';
-import { DrawPoint, RemoteStrokeState } from '../types/game';
-import { metricsStore } from '../store/metricsStore';
-import { recoveryStore, useRecoveryStore } from '../store/recoveryStore';
-import { useConnectionStore } from '../store/connectionStore';
+import React, { useEffect, useCallback, useState, useRef } from "react";
+import { useGameStore, gameStore } from "../store/gameStore";
+import { usePlayerStore, playerStore } from "../store/playerStore";
+import { useRoomStore, roomStore } from "../store/roomStore";
+import { GameHeader } from "../features/game/GameHeader";
+import {
+  DrawingCanvas,
+  DrawingCanvasHandle,
+} from "../features/drawing/DrawingCanvas";
+import { DrawingToolbar } from "../features/drawing/DrawingToolbar";
+import { Scoreboard } from "../components/Scoreboard";
+import { ChatPanel } from "../features/chat/ChatPanel";
+import { GuessInput } from "../features/game/GuessInput";
+import { ConnectionStatus } from "../components/ConnectionStatus";
+import { NetworkInspector } from "../components/NetworkInspector";
+import { wsClient, resetAllSessionState } from "../websocket/WebSocketClient";
+import { MessageType, createWSRequest } from "../websocket/protocol";
+import { DrawPoint, RemoteStrokeState } from "../types/game";
+import { metricsStore } from "../store/metricsStore";
+import { recoveryStore, useRecoveryStore } from "../store/recoveryStore";
+import { useConnectionStore } from "../store/connectionStore";
 import {
   encodeDrawStart,
   encodeDrawBatch,
   encodeClearCanvas,
   generateStrokeId,
-  decodeDrawingFrame
-} from '../features/drawing/binaryCodec';
+  decodeDrawingFrame,
+} from "../features/drawing/binaryCodec";
 
 export const GamePage: React.FC = () => {
   const gameState = useGameStore((s) => s.gameState);
@@ -31,9 +34,11 @@ export const GamePage: React.FC = () => {
   const { playerId } = usePlayerStore((s) => s);
 
   // Drawing Toolbar State (for Drawer)
-  const [brushColor, setBrushColor] = useState<string>('#000000');
+  const [brushColor, setBrushColor] = useState<string>("#000000");
   const [brushSize, setBrushSize] = useState<number>(4);
-  const [activeTool, setActiveTool] = useState<'pen' | 'eraser' | 'fill' | 'line' | 'circle' | 'rect'>('pen');
+  const [activeTool, setActiveTool] = useState<
+    "pen" | "eraser" | "fill" | "line" | "circle" | "rect"
+  >("pen");
   const canvasHandleRef = useRef<DrawingCanvasHandle | null>(null);
 
   // Stroke Tracking for Binary Mode
@@ -41,38 +46,109 @@ export const GamePage: React.FC = () => {
   const seqCounterRef = useRef<number>(0);
   const remoteStrokeMapRef = useRef<Map<string, RemoteStrokeState>>(new Map());
 
-  const roomId = room?.roomId || gameState?.roomId || '';
+  const roomId = room?.roomId || gameState?.roomId || "";
   const isDrawer = gameState?.drawerId === playerId;
   const currentRound = gameState?.currentRound || 1;
   // C9: lock guess input after this player has guessed correctly in the current round
-  const hasGuessed = !!gameState?.scores?.find((s) => s.playerId === playerId)?.hasGuessed;
+  const hasGuessed = !!gameState?.scores?.find((s) => s.playerId === playerId)
+    ?.hasGuessed;
   // TV7: reconnect/recovery UX states (small banner, game stays visible)
   const canvasMode = useRecoveryStore((s) => s.mode);
   const connStatus = useConnectionStore((s) => s.status);
-  const showRecoveryBanner = canvasMode === 'RECOVERING';
+  const showRecoveryBanner = canvasMode === "RECOVERING";
   const showReconnectBanner =
-    connStatus === 'DISCONNECTED' || connStatus === 'RECONNECTING' || connStatus === 'CONNECTING' || connStatus === 'FAILING_OVER';
+    connStatus === "DISCONNECTED" ||
+    connStatus === "RECONNECTING" ||
+    connStatus === "CONNECTING" ||
+    connStatus === "FAILING_OVER";
   // TV10: rematch is host-only; room.status WAITING (after ROOM_RESET) exits game screen via App routing
   const isHost = room?.hostPlayerId === playerId;
   const handleRematch = async () => {
     try {
-      await wsClient.send('REMATCH', {});
+      await wsClient.send("REMATCH", {});
     } catch (err: any) {
-      console.error('Rematch failed:', err);
+      console.error("Rematch failed:", err);
     }
   };
 
+  // BUG-3: Fallback timeout to prevent infinite spinner if gameState is never received
+  const [loadTimedOut, setLoadTimedOut] = useState<boolean>(false);
+
   useEffect(() => {
-    // Poll game state periodically if needed to keep state sync when game is active
-    if (roomId && (gameState?.status === 'IN_ROUND' || room?.status === 'IN_GAME')) {
+    if (gameState) {
+      setLoadTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (!gameState) {
+        setLoadTimedOut(true);
+      }
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [gameState]);
+
+  // Initial fetch on mount if gameState is missing
+  useEffect(() => {
+    if (roomId && !gameState) {
+      wsClient
+        .send(MessageType.GET_GAME_STATE, { roomId, playerId }, 5000)
+        .catch((err) => {
+          const errStr = String(err?.message || err || "");
+          if (errStr.includes("Game not found") || errStr.includes("NOT_FOUND")) {
+            const current = gameStore.getState().gameState;
+            if (current && current.status !== "FINISHED") {
+              gameStore.setGameState({ ...current, status: "FINISHED" });
+            }
+          } else {
+            console.warn("[GamePage] Initial GET_GAME_STATE failed:", err);
+          }
+        });
+    }
+  }, [roomId, playerId, !gameState]);
+
+  useEffect(() => {
+    // Poll game state periodically only when game is actively in round
+    const isGameActive =
+      (gameState?.status === "IN_ROUND" ||
+       gameState?.status === "PLAYING" ||
+       room?.status === "IN_GAME" ||
+       room?.status === "PLAYING") &&
+      gameState?.status !== "FINISHED" &&
+      gameState?.status !== "GAME_OVER";
+    if (roomId && isGameActive) {
       const interval = setInterval(() => {
         wsClient
           .send(MessageType.GET_GAME_STATE, { roomId, playerId }, 5000)
-          .catch(() => {});
+          .catch((err) => {
+            const errStr = String(err?.message || err || "");
+            if (errStr.includes("Game not found") || errStr.includes("NOT_FOUND")) {
+              const current = gameStore.getState().gameState;
+              if (current && current.status !== "FINISHED") {
+                gameStore.setGameState({ ...current, status: "FINISHED" });
+              }
+            }
+          });
       }, 5000);
       return () => clearInterval(interval);
     }
   }, [roomId, playerId, gameState?.status, room?.status]);
+
+  // Clean exit when closing tab or navigating away
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (roomId && playerId) {
+        wsClient
+          .send("LEAVE_ROOM", {
+            roomId,
+            playerId,
+            username: playerStore.getState().username || "Người chơi",
+          })
+          .catch(() => {});
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [roomId, playerId]);
 
   // ─── Binary WebSocket Drawing Listener ──────────────────────────────
   useEffect(() => {
@@ -84,57 +160,67 @@ export const GamePage: React.FC = () => {
       // TV7 recovery/live race: while canvas recovery is in flight, buffer live
       // frames instead of applying them. They are flushed (in arrival order)
       // right after the recovered history is applied — no missing/duplicate stroke.
-      if (recoveryStore.getState().mode === 'RECOVERING') {
-        if (decoded.type === 'CLEAR_CANVAS') {
+      if (recoveryStore.getState().mode === "RECOVERING") {
+        if (decoded.type === "CLEAR_CANVAS") {
           recoveryStore.clearBuffer();
           return;
         }
-        if (decoded.type === 'DRAW_START') {
-          const isEraser = decoded.data.tool === 'ERASER' || decoded.data.colorHex.toUpperCase() === '#FFFFFF';
-          recoveryStore.buffer([{
-            x: decoded.data.x,
-            y: decoded.data.y,
-            color: decoded.data.colorHex,
-            size: decoded.data.width,
-            tool: isEraser ? 'ERASER' : 'BRUSH',
-            strokeId: decoded.data.strokeId,
-            isNewPath: true,
-          }]);
+        if (decoded.type === "DRAW_START") {
+          const isEraser =
+            decoded.data.tool === "ERASER" ||
+            decoded.data.colorHex.toUpperCase() === "#FFFFFF";
+          recoveryStore.buffer([
+            {
+              x: decoded.data.x,
+              y: decoded.data.y,
+              color: decoded.data.colorHex,
+              size: decoded.data.width,
+              tool: isEraser ? "ERASER" : "BRUSH",
+              strokeId: decoded.data.strokeId,
+              isNewPath: true,
+            },
+          ]);
           // remember stroke style for buffered batches of the same stroke
           remoteStrokeMapRef.current.set(decoded.data.strokeId, {
             strokeId: decoded.data.strokeId,
-            tool: isEraser ? 'ERASER' : 'BRUSH',
+            tool: isEraser ? "ERASER" : "BRUSH",
             color: decoded.data.colorHex,
             width: decoded.data.width,
             round: decoded.data.round,
             lastX: decoded.data.x,
             lastY: decoded.data.y,
           });
-        } else if (decoded.type === 'DRAW_BATCH') {
-          const strokeState = remoteStrokeMapRef.current.get(decoded.data.strokeId);
-          const color = strokeState?.color ?? '#000000';
+        } else if (decoded.type === "DRAW_BATCH") {
+          const strokeState = remoteStrokeMapRef.current.get(
+            decoded.data.strokeId,
+          );
+          const color = strokeState?.color ?? "#000000";
           const size = strokeState?.width ?? 4;
-          const tool = strokeState?.tool ?? 'BRUSH';
-          recoveryStore.buffer(decoded.data.points.map((p) => ({
-            x: p.x,
-            y: p.y,
-            color,
-            size,
-            tool,
-            strokeId: decoded.data.strokeId,
-            isNewPath: false,
-          })));
+          const tool = strokeState?.tool ?? "BRUSH";
+          recoveryStore.buffer(
+            decoded.data.points.map((p) => ({
+              x: p.x,
+              y: p.y,
+              color,
+              size,
+              tool,
+              strokeId: decoded.data.strokeId,
+              isNewPath: false,
+            })),
+          );
         }
         return;
       }
 
       switch (decoded.type) {
-        case 'DRAW_START': {
+        case "DRAW_START": {
           metricsStore.recordDrawBatchReceived(1, decoded.data.strokeId, 0);
-          const isEraser = decoded.data.tool === 'ERASER' || decoded.data.colorHex.toUpperCase() === '#FFFFFF';
+          const isEraser =
+            decoded.data.tool === "ERASER" ||
+            decoded.data.colorHex.toUpperCase() === "#FFFFFF";
           const strokeState: RemoteStrokeState = {
             strokeId: decoded.data.strokeId,
-            tool: isEraser ? 'ERASER' : 'BRUSH',
+            tool: isEraser ? "ERASER" : "BRUSH",
             color: decoded.data.colorHex,
             width: decoded.data.width,
             round: decoded.data.round,
@@ -154,16 +240,18 @@ export const GamePage: React.FC = () => {
           });
           break;
         }
-        case 'DRAW_BATCH': {
+        case "DRAW_BATCH": {
           metricsStore.recordDrawBatchReceived(
             decoded.data.points.length,
             decoded.data.strokeId,
-            decoded.data.seqStart
+            decoded.data.seqStart,
           );
-          const strokeState = remoteStrokeMapRef.current.get(decoded.data.strokeId);
-          const color = strokeState?.color ?? '#000000';
+          const strokeState = remoteStrokeMapRef.current.get(
+            decoded.data.strokeId,
+          );
+          const color = strokeState?.color ?? "#000000";
           const size = strokeState?.width ?? 4;
-          const tool = strokeState?.tool ?? 'BRUSH';
+          const tool = strokeState?.tool ?? "BRUSH";
 
           const batchPoints: DrawPoint[] = decoded.data.points.map((p) => ({
             x: p.x,
@@ -177,12 +265,12 @@ export const GamePage: React.FC = () => {
           gameStore.addDrawPoints(batchPoints);
           break;
         }
-        case 'DRAW_END': {
+        case "DRAW_END": {
           metricsStore.resetStrokeSequence(decoded.data.strokeId);
           remoteStrokeMapRef.current.delete(decoded.data.strokeId);
           break;
         }
-        case 'CLEAR_CANVAS': {
+        case "CLEAR_CANVAS": {
           metricsStore.resetStrokeSequence();
           remoteStrokeMapRef.current.clear();
           gameStore.clearDrawPoints();
@@ -193,7 +281,10 @@ export const GamePage: React.FC = () => {
     });
 
     const unsubscribeMessage = wsClient.addMessageListener((msg) => {
-      if (msg.type === MessageType.CANVAS_CLEARED || msg.type === 'CANVAS_CLEARED') {
+      if (
+        msg.type === MessageType.CANVAS_CLEARED ||
+        msg.type === "CANVAS_CLEARED"
+      ) {
         metricsStore.resetStrokeSequence();
         remoteStrokeMapRef.current.clear();
         gameStore.clearDrawPoints();
@@ -205,11 +296,15 @@ export const GamePage: React.FC = () => {
         const rid =
           roomStore.getState().room?.roomId ||
           gameStore.getState().gameState?.roomId ||
-          '';
+          "";
         const pid = playerStore.getState().playerId;
         if (rid) {
           wsClient
-            .send(MessageType.GET_GAME_STATE, { roomId: rid, playerId: pid }, 5000)
+            .send(
+              MessageType.GET_GAME_STATE,
+              { roomId: rid, playerId: pid },
+              5000,
+            )
             .catch(() => {});
         }
       }
@@ -225,7 +320,9 @@ export const GamePage: React.FC = () => {
   const prevRoundRef = useRef<number>(currentRound);
   useEffect(() => {
     if (currentRound !== prevRoundRef.current) {
-      console.log(`[GamePage] Round transitioned from ${prevRoundRef.current} to ${currentRound}. Resetting canvas state.`);
+      console.log(
+        `[GamePage] Round transitioned from ${prevRoundRef.current} to ${currentRound}. Resetting canvas state.`,
+      );
       prevRoundRef.current = currentRound;
       // Cancel active stroke if in progress
       canvasHandleRef.current?.cancelActiveStroke();
@@ -245,7 +342,9 @@ export const GamePage: React.FC = () => {
       prevDrawerRef.current = isDrawer;
       if (!isDrawer) {
         // Player lost drawer role - immediately cancel active stroke and flush buffers
-        console.log('[GamePage] Drawer privilege revoked. Cancelling active drawing stroke.');
+        console.log(
+          "[GamePage] Drawer privilege revoked. Cancelling active drawing stroke.",
+        );
         canvasHandleRef.current?.cancelActiveStroke();
       }
     }
@@ -254,96 +353,101 @@ export const GamePage: React.FC = () => {
   // ─── Drawing Callbacks ─────────────────────────────────────────────
 
   /** Send a batch of draw points to the server via WebSocket according to active mode */
-  const handleDrawBatch = useCallback((points: DrawPoint[]) => {
-    if (!roomId || points.length === 0) return;
+  const handleDrawBatch = useCallback(
+    (points: DrawPoint[]) => {
+      if (!roomId || points.length === 0) return;
 
-    const isEraserTool = activeTool === 'eraser';
-    const mode = metricsStore.getState().drawingMode;
+      const isEraserTool = activeTool === "eraser";
+      const mode = metricsStore.getState().drawingMode;
 
-    if (mode === 'BINARY_BATCH') {
-      const hasNewPath = points.some((p) => p.isNewPath);
-      if (hasNewPath) {
-        currentStrokeIdRef.current = generateStrokeId();
-        seqCounterRef.current = 0;
+      if (mode === "BINARY_BATCH") {
+        const hasNewPath = points.some((p) => p.isNewPath);
+        if (hasNewPath) {
+          currentStrokeIdRef.current = generateStrokeId();
+          seqCounterRef.current = 0;
 
-        const firstPt = points[0];
-        const startBuffer = encodeDrawStart({
-          round: currentRound,
-          strokeId: currentStrokeIdRef.current,
-          x: firstPt.x,
-          y: firstPt.y,
-          colorHex: isEraserTool ? '#FFFFFF' : (firstPt.color || brushColor),
-          width: isEraserTool ? Math.min(64, Math.round((brushSize || 4) * 2.5)) : Math.min(64, Math.round(firstPt.size || brushSize)),
-          tool: isEraserTool ? 'ERASER' : 'BRUSH',
-        });
-        wsClient.sendBinary(startBuffer);
-        metricsStore.recordDrawBatchSent(1);
+          const firstPt = points[0];
+          const startBuffer = encodeDrawStart({
+            round: currentRound,
+            strokeId: currentStrokeIdRef.current,
+            x: firstPt.x,
+            y: firstPt.y,
+            colorHex: isEraserTool ? "#FFFFFF" : firstPt.color || brushColor,
+            width: isEraserTool
+              ? Math.min(64, Math.round((brushSize || 4) * 2.5))
+              : Math.min(64, Math.round(firstPt.size || brushSize)),
+            tool: isEraserTool ? "ERASER" : "BRUSH",
+          });
+          wsClient.sendBinary(startBuffer);
+          metricsStore.recordDrawBatchSent(1);
 
-        if (points.length > 1) {
-          const restPoints = points.slice(1);
+          if (points.length > 1) {
+            const restPoints = points.slice(1);
+            const batchBuffer = encodeDrawBatch({
+              round: currentRound,
+              strokeId: currentStrokeIdRef.current,
+              seqStart: seqCounterRef.current,
+              points: restPoints.map((p) => ({ x: p.x, y: p.y })),
+            });
+            seqCounterRef.current += restPoints.length;
+            wsClient.sendBinary(batchBuffer);
+            metricsStore.recordDrawBatchSent(restPoints.length);
+          }
+        } else {
           const batchBuffer = encodeDrawBatch({
             round: currentRound,
             strokeId: currentStrokeIdRef.current,
             seqStart: seqCounterRef.current,
-            points: restPoints.map((p) => ({ x: p.x, y: p.y })),
+            points: points.map((p) => ({ x: p.x, y: p.y })),
           });
-          seqCounterRef.current += restPoints.length;
+          seqCounterRef.current += points.length;
           wsClient.sendBinary(batchBuffer);
-          metricsStore.recordDrawBatchSent(restPoints.length);
+          metricsStore.recordDrawBatchSent(points.length);
         }
-      } else {
-        const batchBuffer = encodeDrawBatch({
-          round: currentRound,
-          strokeId: currentStrokeIdRef.current,
-          seqStart: seqCounterRef.current,
-          points: points.map((p) => ({ x: p.x, y: p.y })),
-        });
-        seqCounterRef.current += points.length;
-        wsClient.sendBinary(batchBuffer);
-        metricsStore.recordDrawBatchSent(points.length);
+        return;
       }
-      return;
-    }
 
-    // JSON Modes: Include tool and strokeId in payload
-    const pointsWithTool = points.map((p) => ({
-      ...p,
-      tool: isEraserTool ? ('ERASER' as const) : ('BRUSH' as const),
-      strokeId: currentStrokeIdRef.current,
-    }));
+      // JSON Modes: Include tool and strokeId in payload
+      const pointsWithTool = points.map((p) => ({
+        ...p,
+        tool: isEraserTool ? ("ERASER" as const) : ("BRUSH" as const),
+        strokeId: currentStrokeIdRef.current,
+      }));
 
-    if (mode === 'JSON_POINT') {
-      for (const pt of pointsWithTool) {
+      if (mode === "JSON_POINT") {
+        for (const pt of pointsWithTool) {
+          const req = createWSRequest(MessageType.DRAW_POINT, {
+            roomId,
+            drawerId: playerId,
+            point: pt,
+          });
+          wsClient.sendRaw(JSON.stringify(req));
+          metricsStore.recordDrawBatchSent(1);
+        }
+        return;
+      }
+
+      // Default: JSON_BATCH
+      if (pointsWithTool.length === 1) {
         const req = createWSRequest(MessageType.DRAW_POINT, {
           roomId,
           drawerId: playerId,
-          point: pt,
+          point: pointsWithTool[0],
         });
         wsClient.sendRaw(JSON.stringify(req));
         metricsStore.recordDrawBatchSent(1);
+      } else {
+        const req = createWSRequest(MessageType.DRAW_BATCH, {
+          roomId,
+          drawerId: playerId,
+          points: pointsWithTool,
+        });
+        wsClient.sendRaw(JSON.stringify(req));
+        metricsStore.recordDrawBatchSent(pointsWithTool.length);
       }
-      return;
-    }
-
-    // Default: JSON_BATCH
-    if (pointsWithTool.length === 1) {
-      const req = createWSRequest(MessageType.DRAW_POINT, {
-        roomId,
-        drawerId: playerId,
-        point: pointsWithTool[0],
-      });
-      wsClient.sendRaw(JSON.stringify(req));
-      metricsStore.recordDrawBatchSent(1);
-    } else {
-      const req = createWSRequest(MessageType.DRAW_BATCH, {
-        roomId,
-        drawerId: playerId,
-        points: pointsWithTool,
-      });
-      wsClient.sendRaw(JSON.stringify(req));
-      metricsStore.recordDrawBatchSent(pointsWithTool.length);
-    }
-  }, [roomId, playerId, currentRound, brushColor, brushSize, activeTool]);
+    },
+    [roomId, playerId, currentRound, brushColor, brushSize, activeTool],
+  );
 
   /** Send clear canvas command to the server */
   const handleClearCanvas = useCallback(() => {
@@ -354,7 +458,7 @@ export const GamePage: React.FC = () => {
     canvasHandleRef.current?.clear();
 
     const mode = metricsStore.getState().drawingMode;
-    if (mode === 'BINARY_BATCH') {
+    if (mode === "BINARY_BATCH") {
       const buffer = encodeClearCanvas({ round: currentRound });
       wsClient.sendBinary(buffer);
       metricsStore.resetStrokeSequence();
@@ -370,11 +474,36 @@ export const GamePage: React.FC = () => {
   }, [roomId, playerId, currentRound]);
 
   if (!gameState) {
+    if (loadTimedOut) {
+      return (
+        <div className="min-h-screen flex items-center justify-center select-none p-4">
+          <div className="glass-panel p-8 rounded-3xl text-center space-y-4 shadow-2xl max-w-sm w-full">
+            <div className="text-4xl">⚠️</div>
+            <h3 className="text-white font-extrabold text-lg">
+              Không thể tải trận đấu
+            </h3>
+            <p className="text-slate-300 text-xs font-medium">
+              Ván chơi có thể đã kết thúc hoặc kết nối gặp gián đoạn.
+            </p>
+            <button
+              onClick={() => {
+                resetAllSessionState();
+              }}
+              className="bouncy-btn w-full py-3 bg-rose-500 hover:bg-rose-600 text-white font-black text-sm rounded-2xl shadow-lg transition-all"
+            >
+              Trở về trang chủ 🏠
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center select-none">
         <div className="glass-panel p-8 rounded-3xl text-center space-y-4 shadow-2xl">
           <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-white font-extrabold text-sm drop-shadow">Đang tải trạng thái trận đấu...</p>
+          <p className="text-white font-extrabold text-sm drop-shadow">
+            Đang tải trạng thái trận đấu...
+          </p>
         </div>
       </div>
     );
@@ -382,7 +511,8 @@ export const GamePage: React.FC = () => {
 
   // TV5 regression fix: game-service reports "FINISHED" when the game ends
   // (legacy "GAME_OVER" kept for compatibility with older payloads).
-  const isGameOver = gameState.status === 'GAME_OVER' || gameState.status === 'FINISHED';
+  const isGameOver =
+    gameState.status === "GAME_OVER" || gameState.status === "FINISHED";
 
   return (
     <div className="h-screen w-screen flex flex-col p-2 sm:p-3 md:p-4 gap-2 sm:gap-3 overflow-hidden text-slate-100 select-none">
@@ -390,11 +520,11 @@ export const GamePage: React.FC = () => {
       {showReconnectBanner && (
         <div className="shrink-0 px-4 py-2 rounded-2xl bg-rose-500/25 border border-rose-300/50 backdrop-blur-md text-rose-100 text-xs font-bold flex items-center gap-2 animate-pulse">
           <span className="w-2 h-2 rounded-full bg-rose-400" />
-          {connStatus === 'DISCONNECTED'
-            ? 'Mất kết nối...'
-            : connStatus === 'FAILING_OVER'
-              ? 'Đang chuyển máy chủ...'
-              : 'Đang kết nối lại...'}
+          {connStatus === "DISCONNECTED"
+            ? "Mất kết nối..."
+            : connStatus === "FAILING_OVER"
+              ? "Đang chuyển máy chủ..."
+              : "Đang kết nối lại..."}
         </div>
       )}
       {showRecoveryBanner && (
@@ -406,7 +536,11 @@ export const GamePage: React.FC = () => {
       {/* Top Bar Header */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <div className="flex-1 min-w-0">
-          <GameHeader gameState={gameState} isDrawer={isDrawer} roomId={roomId} />
+          <GameHeader
+            gameState={gameState}
+            isDrawer={isDrawer}
+            roomId={roomId}
+          />
         </div>
         <div className="hidden md:flex items-center gap-2">
           <button className="btn-3d bg-white/20 hover:bg-white/30 text-white p-2 rounded-2xl border border-white/30 shadow-md">
@@ -414,6 +548,24 @@ export const GamePage: React.FC = () => {
           </button>
           <button className="btn-3d bg-white/20 hover:bg-white/30 text-white p-2 rounded-2xl border border-white/30 shadow-md">
             <span className="material-symbols-outlined text-lg">help</span>
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm("Bạn có chắc muốn rời phòng?")) {
+                wsClient
+                  .send("LEAVE_ROOM", {
+                    roomId,
+                    playerId,
+                    username: playerStore.getState().username || "Người chơi",
+                  })
+                  .catch(() => {});
+                resetAllSessionState();
+              }
+            }}
+            title="Rời phòng"
+            className="btn-3d bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 p-2 rounded-2xl border border-rose-400/40 shadow-md"
+          >
+            <span className="material-symbols-outlined text-lg">logout</span>
           </button>
           <ConnectionStatus />
         </div>
@@ -452,7 +604,7 @@ export const GamePage: React.FC = () => {
               isDrawer={isDrawer}
               color={brushColor}
               size={brushSize}
-              isEraser={activeTool === 'eraser'}
+              isEraser={activeTool === "eraser"}
               onDrawBatch={handleDrawBatch}
               onClearCanvas={handleClearCanvas}
               externalPoints={isDrawer ? undefined : drawPoints}
@@ -467,7 +619,11 @@ export const GamePage: React.FC = () => {
           <div className="h-44 sm:h-48 grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 shrink-0">
             {/* Left: TRẢ LỜI / ĐOÁN TỪ */}
             <div className="h-full min-h-0">
-              <GuessInput roomId={roomId} disabled={isDrawer || isGameOver} hasGuessed={hasGuessed} />
+              <GuessInput
+                roomId={roomId}
+                disabled={isDrawer || isGameOver}
+                hasGuessed={hasGuessed}
+              />
             </div>
 
             {/* Right: TRÒ CHUYỆN */}
@@ -487,7 +643,9 @@ export const GamePage: React.FC = () => {
               <h2 className="text-3xl font-black bubbly-logo text-amber-300">
                 TRẬN ĐẤU KẾT THÚC!
               </h2>
-              <p className="text-xs font-bold text-slate-300 mt-1">Bảng điểm chung cuộc</p>
+              <p className="text-xs font-bold text-slate-300 mt-1">
+                Bảng điểm chung cuộc
+              </p>
             </div>
 
             <div className="max-h-52 overflow-y-auto">
@@ -500,11 +658,17 @@ export const GamePage: React.FC = () => {
 
             {/* TV10: winner callout */}
             {(() => {
-              const sorted = [...(gameState.scores || [])].sort((a, b) => b.score - a.score);
+              const sorted = [...(gameState.scores || [])].sort(
+                (a, b) => b.score - a.score,
+              );
               const winner = sorted[0];
               return winner ? (
                 <p className="text-sm font-black text-white">
-                  🥇 Người thắng: <span className="text-amber-300">{winner.username || 'Người chơi'}</span> ({winner.score} điểm)
+                  🥇 Người thắng:{" "}
+                  <span className="text-amber-300">
+                    {winner.username || "Người chơi"}
+                  </span>{" "}
+                  ({winner.score} điểm)
                 </p>
               ) : null;
             })()}
@@ -524,10 +688,14 @@ export const GamePage: React.FC = () => {
 
             <button
               onClick={() => {
-                wsClient.send('LEAVE_ROOM', {}).catch(() => {});
-                playerStore.clearSessionToken();
-                roomStore.clearRoom();
-                gameStore.clearGame();
+                wsClient
+                  .send("LEAVE_ROOM", {
+                    roomId,
+                    playerId,
+                    username: playerStore.getState().username || "Người chơi",
+                  })
+                  .catch(() => {});
+                resetAllSessionState();
               }}
               className="bouncy-btn w-full py-3 bg-white/15 hover:bg-white/25 text-white font-black text-sm rounded-2xl border border-white/25 transition-all"
             >
@@ -539,4 +707,3 @@ export const GamePage: React.FC = () => {
     </div>
   );
 };
-

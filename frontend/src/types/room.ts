@@ -6,7 +6,12 @@ export interface Player {
   ready?: boolean;
 }
 
-export type RoomStatus = 'WAITING' | 'IN_GAME' | 'FINISHED' | 'LOBBY';
+export type RoomStatus =
+  | "WAITING"
+  | "IN_GAME"
+  | "PLAYING"
+  | "FINISHED"
+  | "LOBBY";
 
 export interface Room {
   roomId: string;

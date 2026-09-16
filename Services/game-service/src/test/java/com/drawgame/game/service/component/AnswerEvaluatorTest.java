@@ -184,6 +184,82 @@ class AnswerEvaluatorTest {
     }
 
     @Nested
+    @DisplayName("QA Matrix: Canonical 'trái đất' (QA-005 -> QA-014)")
+    class TraiDatQaMatrixTests {
+
+        private final String canonical = "trái đất";
+        private final List<String> aliases = Arrays.asList("địa cầu", "quả đất");
+
+        @Test
+        @DisplayName("QA-005: 'trái đất' -> CORRECT")
+        void testExactAccent() {
+            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("trái đất", canonical, aliases));
+        }
+
+        @Test
+        @DisplayName("QA-006: 'Trái Đất' -> CORRECT")
+        void testCapitalization() {
+            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("Trái Đất", canonical, aliases));
+        }
+
+        @Test
+        @DisplayName("QA-007: '  trái    đất ' -> CORRECT")
+        void testExtraWhitespace() {
+            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("  trái    đất ", canonical, aliases));
+        }
+
+        @Test
+        @DisplayName("QA-008: NFD decomposed equivalent -> CORRECT")
+        void testNfdDecomposed() {
+            String nfd = Normalizer.normalize(canonical, Normalizer.Form.NFD);
+            assertNotEquals(canonical, nfd);
+            assertEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate(nfd, canonical, aliases));
+        }
+
+        @Test
+        @DisplayName("QA-009: 'trai dat' -> WRONG (unaccented)")
+        void testUnaccented() {
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("trai dat", canonical, aliases));
+        }
+
+        @Test
+        @DisplayName("QA-010: 'trái dat' -> WRONG (partially accented)")
+        void testPartiallyAccentedFirstWord() {
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("trái dat", canonical, aliases));
+        }
+
+        @Test
+        @DisplayName("QA-011: 'trai đất' -> WRONG (partially accented)")
+        void testPartiallyAccentedSecondWord() {
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("trai đất", canonical, aliases));
+        }
+
+        @Test
+        @DisplayName("QA-012: Wrong accent variant -> WRONG")
+        void testWrongAccentVariant() {
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("trại đất", canonical, aliases));
+            assertEquals(AnswerEvaluator.Result.WRONG, evaluator.evaluate("trải đắt", canonical, aliases));
+        }
+
+        @Test
+        @DisplayName("QA-013: Alias/synonym -> NOT CORRECT (returns CLOSE)")
+        void testAliasSynonym() {
+            assertEquals(AnswerEvaluator.Result.CLOSE, evaluator.evaluate("địa cầu", canonical, aliases));
+            assertEquals(AnswerEvaluator.Result.CLOSE, evaluator.evaluate("quả đất", canonical, aliases));
+            assertNotEquals(AnswerEvaluator.Result.CORRECT, evaluator.evaluate("địa cầu", canonical, aliases));
+        }
+
+        @Test
+        @DisplayName("QA-014: Typo -> CLOSE only if fuzzy qualifies, never CORRECT")
+        void testTypoClose() {
+            // Edit distance 1 on unaccented form ("trai dat" length 8 -> max distance 2)
+            // e.g. "trai dat" typo: "trai day" -> unaccented distance 1 -> CLOSE
+            AnswerEvaluator.Result res = evaluator.evaluate("trái đật", canonical, aliases);
+            assertNotEquals(AnswerEvaluator.Result.CORRECT, res);
+        }
+    }
+
+    @Nested
     @DisplayName("Negative, Null, and Boundary Safety")
     class SafetyAndNegativeTests {
 

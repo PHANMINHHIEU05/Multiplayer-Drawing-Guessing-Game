@@ -1,16 +1,26 @@
-import React, { useState } from 'react';
-import { useRoomStore } from '../../store/roomStore';
-import { usePlayerStore } from '../../store/playerStore';
-import { wsClient } from '../../websocket/WebSocketClient';
-import { MessageType } from '../../websocket/protocol';
-import { PlayerList } from '../../components/PlayerList';
-import { ChatPanel } from '../chat/ChatPanel';
+import React, { useState } from "react";
+import { useRoomStore } from "../../store/roomStore";
+import { usePlayerStore, playerStore } from "../../store/playerStore";
+import {
+  wsClient,
+  resetAllSessionState,
+} from "../../websocket/WebSocketClient";
+import { MessageType } from "../../websocket/protocol";
+import { PlayerList } from "../../components/PlayerList";
+import { ChatPanel } from "../chat/ChatPanel";
 
 /** TV10: readiness summary for the Start gating UI. Host is implicitly ready. */
-function readinessSummary(room: { players: { playerId: string; ready?: boolean }[]; hostPlayerId: string }) {
+function readinessSummary(room: {
+  players: { playerId: string; ready?: boolean }[];
+  hostPlayerId: string;
+}) {
   const required = room.players.filter((p) => p.playerId !== room.hostPlayerId);
   const unready = required.filter((p) => !p.ready);
-  return { allReady: required.length > 0 ? unready.length === 0 : true, unreadyCount: unready.length, requiredCount: required.length };
+  return {
+    allReady: required.length > 0 ? unready.length === 0 : true,
+    unreadyCount: unready.length,
+    requiredCount: required.length,
+  };
 }
 
 export const RoomLobby: React.FC = () => {
@@ -33,19 +43,20 @@ export const RoomLobby: React.FC = () => {
         playerId,
       });
     } catch (err: any) {
-      setError(err.message || 'Không thể bắt đầu game');
+      setError(err.message || "Không thể bắt đầu game");
     } finally {
       setStarting(false);
     }
   };
 
   // TV10: ready toggle (non-host) — server is authoritative, UI reflects PLAYER_READY_CHANGED
-  const myReady = room.players.find((p) => p.playerId === playerId)?.ready ?? false;
+  const myReady =
+    room.players.find((p) => p.playerId === playerId)?.ready ?? false;
   const handleToggleReady = async () => {
     try {
       await wsClient.send(MessageType.SET_READY, { ready: !myReady });
     } catch (err: any) {
-      setError(err.message || 'Không thể đổi trạng thái sẵn sàng');
+      setError(err.message || "Không thể đổi trạng thái sẵn sàng");
     }
   };
 
@@ -56,7 +67,7 @@ export const RoomLobby: React.FC = () => {
     try {
       await wsClient.send(MessageType.KICK_PLAYER, { targetPlayerId });
     } catch (err: any) {
-      setError(err.message || 'Không thể mời người chơi khỏi phòng');
+      setError(err.message || "Không thể mời người chơi khỏi phòng");
     }
   };
 
@@ -66,11 +77,13 @@ export const RoomLobby: React.FC = () => {
       await wsClient.send(MessageType.LEAVE_ROOM, {
         roomId: room.roomId,
         playerId,
+        username: playerStore.getState().username,
       });
     } catch (err: any) {
-      console.error('Leave room failed:', err);
+      console.error("Leave room failed:", err);
     } finally {
       setLeaving(false);
+      resetAllSessionState();
     }
   };
 
@@ -92,8 +105,12 @@ export const RoomLobby: React.FC = () => {
               {room.name || `Phòng #${room.roomId}`}
             </h1>
             <p className="text-xs text-slate-500 font-bold mt-1">
-              Số vòng: <span className="text-primary font-black">{room.roundCount}</span> • Thời gian vẽ:{' '}
-              <span className="text-primary font-black">{room.roundDuration}s</span>
+              Số vòng:{" "}
+              <span className="text-primary font-black">{room.roundCount}</span>{" "}
+              • Thời gian vẽ:{" "}
+              <span className="text-primary font-black">
+                {room.roundDuration}s
+              </span>
             </p>
           </div>
 
@@ -103,7 +120,7 @@ export const RoomLobby: React.FC = () => {
               disabled={leaving}
               className="bouncy-btn px-4 py-2.5 bg-white/80 hover:bg-white text-rose-600 border border-rose-200 font-extrabold text-xs rounded-2xl transition-all shadow-sm"
             >
-              {leaving ? 'Đang rời...' : 'Rời phòng'}
+              {leaving ? "Đang rời..." : "Rời phòng"}
             </button>
 
             {/* TV10: non-host Ready toggle */}
@@ -112,39 +129,48 @@ export const RoomLobby: React.FC = () => {
                 onClick={handleToggleReady}
                 className={`bouncy-btn px-5 py-2.5 font-black text-xs rounded-2xl transition-all border ${
                   myReady
-                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-400 shadow-[0_4px_0_0_#059669]'
-                    : 'bg-white/80 hover:bg-white text-emerald-700 border-emerald-300 shadow-sm'
+                    ? "bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-400 shadow-[0_4px_0_0_#059669]"
+                    : "bg-white/80 hover:bg-white text-emerald-700 border-emerald-300 shadow-sm"
                 }`}
               >
-                {myReady ? '✓ Đã sẵn sàng' : 'Sẵn sàng'}
+                {myReady ? "✓ Đã sẵn sàng" : "Sẵn sàng"}
               </button>
             )}
 
-            {isHost && (() => {
-              const { allReady, unreadyCount } = readinessSummary(room);
-              const canStart = room.players.length >= 2 && allReady;
-              return (
-                <div className="flex flex-col items-end gap-1">
-                  <button
-                    onClick={handleStartGame}
-                    disabled={starting || !canStart}
-                    title={canStart ? '' : 'Cần ít nhất 2 người và tất cả sẵn sàng'}
-                    className="bouncy-btn px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#059669] transition-all disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    <span>🚀</span>
-                    <span>{starting ? 'Đang bắt đầu...' : 'BẮT ĐẦU GAME'}</span>
-                  </button>
-                  {!allReady && (
-                    <span className="text-[10px] font-bold text-amber-600">
-                      {unreadyCount === 1 ? 'Đang chờ 1 người sẵn sàng' : `Đang chờ ${unreadyCount} người sẵn sàng`}
-                    </span>
-                  )}
-                  {allReady && room.players.length < 2 && (
-                    <span className="text-[10px] font-bold text-amber-600">Cần ít nhất 2 người để bắt đầu</span>
-                  )}
-                </div>
-              );
-            })()}
+            {isHost &&
+              (() => {
+                const { allReady, unreadyCount } = readinessSummary(room);
+                const canStart = room.players.length >= 2 && allReady;
+                return (
+                  <div className="flex flex-col items-end gap-1">
+                    <button
+                      onClick={handleStartGame}
+                      disabled={starting || !canStart}
+                      title={
+                        canStart ? "" : "Cần ít nhất 2 người và tất cả sẵn sàng"
+                      }
+                      className="bouncy-btn px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#059669] transition-all disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      <span>🚀</span>
+                      <span>
+                        {starting ? "Đang bắt đầu..." : "BẮT ĐẦU GAME"}
+                      </span>
+                    </button>
+                    {!allReady && (
+                      <span className="text-[10px] font-bold text-amber-600">
+                        {unreadyCount === 1
+                          ? "Đang chờ 1 người sẵn sàng"
+                          : `Đang chờ ${unreadyCount} người sẵn sàng`}
+                      </span>
+                    )}
+                    {allReady && room.players.length < 2 && (
+                      <span className="text-[10px] font-bold text-amber-600">
+                        Cần ít nhất 2 người để bắt đầu
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
           </div>
         </div>
 
@@ -154,10 +180,14 @@ export const RoomLobby: React.FC = () => {
           </div>
         )}
 
-        <PlayerList players={room.players} hostPlayerId={room.hostPlayerId} currentPlayerId={playerId} />
+        <PlayerList
+          players={room.players}
+          hostPlayerId={room.hostPlayerId}
+          currentPlayerId={playerId}
+        />
 
         {/* TV10: host kick controls (WAITING-only) */}
-        {isHost && room.status === 'WAITING' && (
+        {isHost && room.status === "WAITING" && (
           <div className="glass-panel-game p-3 shadow-lg select-none">
             <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <span>🛡️</span> Quản lý phòng (Chủ phòng)
@@ -166,10 +196,17 @@ export const RoomLobby: React.FC = () => {
               {room.players
                 .filter((p) => p.playerId !== room.hostPlayerId)
                 .map((p) => (
-                  <div key={p.playerId} className="flex items-center gap-1.5 bg-white/70 border border-slate-200 rounded-xl px-2 py-1">
-                    <span className="text-xs font-bold text-slate-700">{p.username}</span>
-                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${p.ready ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {p.ready ? '✓ Sẵn sàng' : 'Chưa'}
+                  <div
+                    key={p.playerId}
+                    className="flex items-center gap-1.5 bg-white/70 border border-slate-200 rounded-xl px-2 py-1"
+                  >
+                    <span className="text-xs font-bold text-slate-700">
+                      {p.username}
+                    </span>
+                    <span
+                      className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${p.ready ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
+                    >
+                      {p.ready ? "✓ Sẵn sàng" : "Chưa"}
                     </span>
                     {kickTarget === p.playerId ? (
                       <span className="flex items-center gap-1">
@@ -198,7 +235,9 @@ export const RoomLobby: React.FC = () => {
                   </div>
                 ))}
               {room.players.length <= 1 && (
-                <span className="text-xs text-slate-400 italic">Chỉ có chủ phòng trong phòng.</span>
+                <span className="text-xs text-slate-400 italic">
+                  Chỉ có chủ phòng trong phòng.
+                </span>
               )}
             </div>
           </div>
@@ -212,4 +251,3 @@ export const RoomLobby: React.FC = () => {
     </div>
   );
 };
-

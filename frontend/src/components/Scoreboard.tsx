@@ -1,5 +1,5 @@
-import React from 'react';
-import { PlayerScore } from '../types/game';
+import React from "react";
+import { PlayerScore } from "../types/game";
 
 interface ScoreboardProps {
   scores: PlayerScore[];
@@ -8,12 +8,12 @@ interface ScoreboardProps {
 }
 
 const AVATAR_BG_COLORS = [
-  'bg-amber-200 text-amber-800',
-  'bg-sky-200 text-sky-800',
-  'bg-emerald-200 text-emerald-800',
-  'bg-purple-200 text-purple-800',
-  'bg-pink-200 text-pink-800',
-  'bg-indigo-200 text-indigo-800',
+  "bg-amber-200 text-amber-800",
+  "bg-sky-200 text-sky-800",
+  "bg-emerald-200 text-emerald-800",
+  "bg-purple-200 text-purple-800",
+  "bg-pink-200 text-pink-800",
+  "bg-indigo-200 text-indigo-800",
 ];
 
 export const Scoreboard: React.FC<ScoreboardProps> = ({
@@ -34,17 +34,17 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
           const isCurrent = s.playerId === currentPlayerId;
           const isDrawer = s.playerId === currentDrawerId;
           const avatarColor = AVATAR_BG_COLORS[index % AVATAR_BG_COLORS.length];
-          const initial = (s.username || 'P').charAt(0).toUpperCase();
+          const initial = (s.username || "P").charAt(0).toUpperCase();
 
           return (
             <div
               key={s.playerId}
               className={`flex items-center gap-2.5 p-2 rounded-2xl border transition-all ${
                 isDrawer
-                  ? 'bg-white/30 border-amber-300 shadow-md ring-1 ring-amber-300/60'
+                  ? "bg-white/30 border-amber-300 shadow-md ring-1 ring-amber-300/60"
                   : isCurrent
-                  ? 'bg-white/20 border-white/40 shadow-sm'
-                  : 'bg-white/10 border-white/15 hover:bg-white/15'
+                    ? "bg-white/20 border-white/40 shadow-sm"
+                    : "bg-white/10 border-white/15 hover:bg-white/15"
               }`}
             >
               {/* Avatar with status icon */}
@@ -79,9 +79,17 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
                       Bạn
                     </span>
                   )}
+                  {isDrawer && (
+                    <span className="text-[9px] font-black text-amber-300 bg-amber-500/30 px-1 rounded border border-amber-400/40">
+                      Đang vẽ ✏️
+                    </span>
+                  )}
                 </div>
                 <div className="text-[11px] font-black text-amber-300">
-                  {s.score} <span className="text-[9px] font-semibold text-white/70">điểm</span>
+                  {s.score}{" "}
+                  <span className="text-[9px] font-semibold text-white/70">
+                    điểm
+                  </span>
                 </div>
               </div>
 
@@ -103,4 +111,3 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
     </div>
   );
 };
-

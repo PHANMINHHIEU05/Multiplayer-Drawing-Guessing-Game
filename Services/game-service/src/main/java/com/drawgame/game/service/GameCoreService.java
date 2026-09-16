@@ -133,8 +133,35 @@ public class GameCoreService {
     }
 
     public GameStateData getGameState(String roomId, String viewerPlayerId) {
-        GameStateData state = redisGameRepository.findState(roomId)
-                .orElseThrow(() -> new IllegalArgumentException("Game not found for room " + roomId));
+        Optional<GameStateData> stateOpt = redisGameRepository.findState(roomId);
+        if (stateOpt.isEmpty()) {
+            // Check if game has finished and was persisted in DB
+            List<GameResultEntity> results = gameResultRepository.findByRoomId(roomId);
+            if (!results.isEmpty()) {
+                GameResultEntity res = results.get(results.size() - 1);
+                List<PlayerScoreData> scores = res.getPlayerResults() != null
+                        ? res.getPlayerResults().stream()
+                                .map(p -> PlayerScoreData.builder()
+                                        .playerId(p.getPlayerId())
+                                        .username(p.getUsername())
+                                        .score(p.getFinalScore())
+                                        .build())
+                                .collect(java.util.stream.Collectors.toList())
+                        : Collections.emptyList();
+                return GameStateData.builder()
+                        .roomId(roomId)
+                        .status("FINISHED")
+                        .totalRounds(res.getTotalRounds())
+                        .currentRound(res.getTotalRounds())
+                        .scores(scores)
+                        .secretWord("")
+                        .hint("")
+                        .build();
+            }
+            throw new IllegalArgumentException("Game not found for room " + roomId);
+        }
+
+        GameStateData state = stateOpt.get();
 
         // Secret word protection: Only drawer sees secret word
         if (viewerPlayerId == null || !viewerPlayerId.equals(state.getDrawerId())) {
@@ -221,7 +248,7 @@ public class GameCoreService {
 
         // TV6: cross-Gateway control fanout — every Gateway's clients AND drawing
         // authorization caches learn the round ended immediately.
-        controlEventPublisher.publishRoundEnded(roomId, state.getCurrentRound());
+        controlEventPublisher.publishRoundEnded(roomId, state.getCurrentRound(), state.getSecretWord());
 
         // Schedule next round after intermission
         roundScheduler.scheduleRoundEnd(roomId, INTERMISSION_SECONDS * 1000L, () -> nextRound(roomId));
@@ -340,7 +367,7 @@ public class GameCoreService {
         // Delete Redis ephemeral game state ONLY after DB persistence succeeds
         redisGameRepository.deleteGame(roomId);
         // TV6: cross-Gateway control fanout — clients on every Gateway enter finished state.
-        controlEventPublisher.publishGameFinished(roomId);
+        controlEventPublisher.publishGameFinished(roomId, scores);
         log.info("GAME_FINISHED_SUCCESSFULLY: roomId={}", roomId);
 
         return state;
