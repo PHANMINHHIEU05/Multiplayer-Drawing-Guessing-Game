@@ -94,7 +94,10 @@ export const GamePage: React.FC = () => {
         .send(MessageType.GET_GAME_STATE, { roomId, playerId }, 5000)
         .catch((err) => {
           const errStr = String(err?.message || err || "");
-          if (errStr.includes("Game not found") || errStr.includes("NOT_FOUND")) {
+          if (
+            errStr.includes("Game not found") ||
+            errStr.includes("NOT_FOUND")
+          ) {
             const current = gameStore.getState().gameState;
             if (current && current.status !== "FINISHED") {
               gameStore.setGameState({ ...current, status: "FINISHED" });
@@ -110,9 +113,9 @@ export const GamePage: React.FC = () => {
     // Poll game state periodically only when game is actively in round
     const isGameActive =
       (gameState?.status === "IN_ROUND" ||
-       gameState?.status === "PLAYING" ||
-       room?.status === "IN_GAME" ||
-       room?.status === "PLAYING") &&
+        gameState?.status === "PLAYING" ||
+        room?.status === "IN_GAME" ||
+        room?.status === "PLAYING") &&
       gameState?.status !== "FINISHED" &&
       gameState?.status !== "GAME_OVER";
     if (roomId && isGameActive) {
@@ -121,7 +124,10 @@ export const GamePage: React.FC = () => {
           .send(MessageType.GET_GAME_STATE, { roomId, playerId }, 5000)
           .catch((err) => {
             const errStr = String(err?.message || err || "");
-            if (errStr.includes("Game not found") || errStr.includes("NOT_FOUND")) {
+            if (
+              errStr.includes("Game not found") ||
+              errStr.includes("NOT_FOUND")
+            ) {
               const current = gameStore.getState().gameState;
               if (current && current.status !== "FINISHED") {
                 gameStore.setGameState({ ...current, status: "FINISHED" });

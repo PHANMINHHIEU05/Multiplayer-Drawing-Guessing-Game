@@ -638,7 +638,8 @@ export function setupMessageHandlers(
           gameStore.setGameState({
             ...current,
             status: "FINISHED",
-            scores: formattedScores.length > 0 ? formattedScores : current.scores,
+            scores:
+              formattedScores.length > 0 ? formattedScores : current.scores,
           });
         } else {
           gameStore.setGameState({
