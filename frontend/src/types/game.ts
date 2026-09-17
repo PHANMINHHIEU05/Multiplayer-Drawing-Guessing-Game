@@ -1,4 +1,36 @@
 export type GameStatus = 'WAITING' | 'STARTING' | 'IN_ROUND' | 'PLAYING' | 'ROUND_ENDED' | 'GAME_OVER' | 'FINISHED';
+export type RoundPhase = 'WORD_SELECTION' | 'COUNTDOWN' | 'DRAWING' | 'ROUND_RECAP' | '';
+
+export interface WordChoice {
+  choiceId: string;
+  displayWord: string;
+}
+
+export interface RoundScoreDelta {
+  playerId: string;
+  username: string;
+  roundDelta: number;
+  totalScore: number;
+}
+
+export interface RoundRecap {
+  roundNumber: number;
+  answer: string;
+  scoreDeltas: RoundScoreDelta[];
+  fastestPlayerId?: string;
+  fastestUsername?: string;
+  fastestElapsedMillis?: number;
+  correctPlayerIds?: string[];
+}
+
+export interface MatchAward {
+  type: string;
+  label: string;
+  playerId: string;
+  username: string;
+  value: number;
+  elapsedMillis?: number;
+}
 
 export interface PlayerScore {
   playerId: string;
@@ -15,6 +47,14 @@ export interface GameState {
   drawerId: string;
   roundStartedAt: number;
   roundEndsAt: number;
+  gameId?: string;
+  roundPhase?: RoundPhase;
+  phaseStartedAt?: number;
+  phaseEndsAt?: number;
+  roundDurationSeconds?: number;
+  wordChoices?: WordChoice[];
+  roundRecap?: RoundRecap;
+  awards?: MatchAward[];
   hint: string;
   secretWord?: string;
   scores: PlayerScore[];

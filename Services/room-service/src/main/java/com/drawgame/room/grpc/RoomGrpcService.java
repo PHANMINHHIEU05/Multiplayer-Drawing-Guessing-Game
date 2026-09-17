@@ -190,6 +190,19 @@ public class RoomGrpcService extends RoomServiceGrpc.RoomServiceImplBase {
     }
 
     @Override
+    public void setCategories(com.drawgame.room.grpc.generated.SetCategoriesRequest request,
+                              StreamObserver<RoomResponse> responseObserver) {
+        try {
+            Room room = roomService.setCategories(request.getRoomId(), request.getRequesterPlayerId(),
+                    request.getSelectedCategoriesList());
+            responseObserver.onNext(mapper.toResponse(room));
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            handleException(e, responseObserver);
+        }
+    }
+
+    @Override
     public void finishGame(
             com.drawgame.room.grpc.generated.FinishGameRequest request,
             StreamObserver<RoomResponse> responseObserver

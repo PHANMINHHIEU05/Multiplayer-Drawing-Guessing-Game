@@ -6,6 +6,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import com.drawgame.game.model.GameStateData;
+import com.drawgame.game.model.MatchAwardData;
+import com.drawgame.game.model.RoundRecapData;
 
 /**
  * Publishes game-lifecycle CONTROL events to Redis Pub/Sub so that EVERY Realtime
@@ -51,13 +54,48 @@ public class GameControlEventPublisher {
 
     /** Broadcast ROOM-scoped event: a new round started with a new drawer. */
     public void publishRoundStarted(String roomId, int round, String drawerId) {
+        publishRoundStarted(roomId, "", round, drawerId, 0, 0);
+    }
+
+    public void publishWordSelectionStarted(String roomId, GameStateData state) {
+        Map<String, Object> payload = publicPhasePayload("WORD_SELECTION_STARTED", roomId, state, "WORD_SELECTION");
+        publish(roomId, "WORD_SELECTION_STARTED", payload);
+    }
+
+    public void publishCountdownStarted(String roomId, GameStateData state) {
+        Map<String, Object> payload = publicPhasePayload("ROUND_COUNTDOWN_STARTED", roomId, state, "COUNTDOWN");
+        publish(roomId, "ROUND_COUNTDOWN_STARTED", payload);
+    }
+
+    public void publishRoundStarted(String roomId, String gameId, int round, String drawerId,
+                                    long startedAt, long endsAt) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "ROUND_STARTED");
         payload.put("roomId", roomId);
+        payload.put("gameId", gameId);
+        payload.put("roundPhase", "DRAWING");
         payload.put("currentRound", round);
         payload.put("drawerId", drawerId);
+        payload.put("phaseStartedAt", startedAt);
+        payload.put("phaseEndsAt", endsAt);
+        payload.put("roundStartedAt", startedAt);
+        payload.put("roundEndsAt", endsAt);
         payload.put("status", "PLAYING");
         publish(roomId, "ROUND_STARTED", payload);
+    }
+
+    public void publishHintUpdated(String roomId, String gameId, int round, int hintStage,
+                                   long phaseEndsAt, String pattern) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("type", "HINT_UPDATED");
+        payload.put("roomId", roomId);
+        payload.put("gameId", gameId);
+        payload.put("currentRound", round);
+        payload.put("roundPhase", "DRAWING");
+        payload.put("hintStage", hintStage);
+        payload.put("phaseEndsAt", phaseEndsAt);
+        payload.put("hint", pattern);
+        publish(roomId, "HINT_UPDATED", payload);
     }
 
     /** Broadcast ROOM-scoped event: the current round ended (intermission). */
@@ -65,18 +103,25 @@ public class GameControlEventPublisher {
         publishRoundEnded(roomId, round, null);
     }
 
-    /** Broadcast ROOM-scoped event: the current round ended with revealed answer. */
+    /** Legacy ROUND_ENDED signal. Answers are only published by ROUND_RECAP_STARTED. */
     public void publishRoundEnded(String roomId, int round, String revealedWord) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "ROUND_ENDED");
         payload.put("roomId", roomId);
         payload.put("currentRound", round);
         payload.put("status", "ROUND_ENDED");
-        if (revealedWord != null && !revealedWord.isBlank()) {
-            payload.put("word", revealedWord);
-            payload.put("revealedWord", revealedWord);
-        }
         publish(roomId, "ROUND_ENDED", payload);
+    }
+
+    /** The answer becomes public only after the authoritative ROUND_RECAP transition. */
+    public void publishRoundRecapStarted(String roomId, GameStateData state, RoundRecapData recap) {
+        Map<String, Object> payload = publicPhasePayload("ROUND_RECAP_STARTED", roomId, state, "ROUND_RECAP");
+        payload.put("type", "ROUND_RECAP_STARTED");
+        payload.put("answer", recap.answer());
+        payload.put("word", recap.answer());
+        payload.put("roundRecap", recap);
+        payload.put("scores", state.getScores());
+        publish(roomId, "ROUND_RECAP_STARTED", payload);
     }
 
     /** Broadcast ROOM-scoped event: the game finished — no more drawing/guessing. */
@@ -85,9 +130,16 @@ public class GameControlEventPublisher {
     }
 
     public void publishGameFinished(String roomId, List<com.drawgame.game.model.PlayerScoreData> scores) {
+        publishGameFinished(roomId, "", scores, List.of());
+    }
+
+    public void publishGameFinished(String roomId, String gameId,
+                                    List<com.drawgame.game.model.PlayerScoreData> scores,
+                                    List<MatchAwardData> awards) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "GAME_FINISHED");
         payload.put("roomId", roomId);
+        payload.put("gameId", gameId);
         payload.put("status", "FINISHED");
         if (scores != null && !scores.isEmpty()) {
             payload.put("scores", scores.stream()
@@ -98,7 +150,23 @@ public class GameControlEventPublisher {
                     ))
                     .collect(java.util.stream.Collectors.toList()));
         }
+        payload.put("awards", awards == null ? List.of() : awards);
         publish(roomId, "GAME_FINISHED", payload);
+    }
+
+    private Map<String, Object> publicPhasePayload(String type, String roomId,
+                                                   GameStateData state, String phase) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("type", type);
+        payload.put("roomId", roomId);
+        payload.put("gameId", state.getGameId());
+        payload.put("currentRound", state.getCurrentRound());
+        payload.put("drawerId", state.getDrawerId());
+        payload.put("roundPhase", phase);
+        payload.put("status", "PLAYING");
+        payload.put("phaseStartedAt", state.getPhaseStartedAt());
+        payload.put("phaseEndsAt", state.getPhaseEndsAt());
+        return payload;
     }
 
     private void publish(String roomId, String eventType, Map<String, Object> payload) {

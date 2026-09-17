@@ -453,7 +453,8 @@ export class WebSocketClient {
                     // TV7: current-round canvas recovery after game state is known
                     if (
                       gameResponse.status === "PLAYING" &&
-                      gameResponse.currentRound
+                      gameResponse.currentRound &&
+                      (!gameResponse.roundPhase || gameResponse.roundPhase === "DRAWING")
                     ) {
                       this.recoverCanvas(gameResponse.currentRound);
                     }

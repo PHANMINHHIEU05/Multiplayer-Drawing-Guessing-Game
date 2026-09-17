@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRoomStore } from "../../store/roomStore";
 import { usePlayerStore, playerStore } from "../../store/playerStore";
 import {
@@ -8,6 +8,18 @@ import {
 import { MessageType } from "../../websocket/protocol";
 import { PlayerList } from "../../components/PlayerList";
 import { ChatPanel } from "../chat/ChatPanel";
+
+const CATEGORY_OPTIONS = [
+  { id: "ANIMALS", label: "Động vật", icon: "🐾" },
+  { id: "FOOD", label: "Đồ ăn", icon: "🍜" },
+  { id: "OBJECTS", label: "Đồ vật", icon: "🧸" },
+  { id: "PLACES", label: "Địa điểm", icon: "📍" },
+  { id: "NATURE", label: "Thiên nhiên", icon: "🌿" },
+  { id: "TECHNOLOGY", label: "Công nghệ", icon: "💻" },
+] as const;
+
+const sameCategories = (a: string[], b: string[]) =>
+  [...a].sort().join(",") === [...b].sort().join(",");
 
 /** TV10: readiness summary for the Start gating UI. Host is implicitly ready. */
 function readinessSummary(room: {
@@ -29,10 +41,37 @@ export const RoomLobby: React.FC = () => {
   const [starting, setStarting] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [categoryDraft, setCategoryDraft] = useState<string[]>(
+    room?.selectedCategories || CATEGORY_OPTIONS.map((category) => category.id),
+  );
+  const [savingCategories, setSavingCategories] = useState(false);
+
+  useEffect(() => {
+    if (room?.selectedCategories) setCategoryDraft(room.selectedCategories);
+  }, [room?.selectedCategories]);
 
   if (!room) return null;
 
   const isHost = room.hostPlayerId === playerId;
+  const categoriesDirty = !sameCategories(categoryDraft, room.selectedCategories || []);
+
+  const handleSaveCategories = async () => {
+    if (categoryDraft.length === 0) {
+      setError("Chọn ít nhất một chủ đề từ khóa.");
+      return;
+    }
+    setSavingCategories(true);
+    setError(null);
+    try {
+      await wsClient.send(MessageType.SET_CATEGORIES, {
+        selectedCategories: categoryDraft,
+      });
+    } catch (err: any) {
+      setError(err.message || "Không thể lưu chủ đề từ khóa");
+    } finally {
+      setSavingCategories(false);
+    }
+  };
 
   const handleStartGame = async () => {
     setStarting(true);
@@ -173,6 +212,80 @@ export const RoomLobby: React.FC = () => {
               })()}
           </div>
         </div>
+
+        <section className="glass-panel-game p-4 shadow-lg">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 className="text-sm font-black text-slate-800">Chủ đề từ khóa</h2>
+              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
+                Từ trong các chủ đề đã chọn sẽ được trộn chung.
+              </p>
+            </div>
+            {isHost && room.status === "WAITING" && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCategoryDraft(CATEGORY_OPTIONS.map((category) => category.id))}
+                  disabled={savingCategories}
+                  className="rounded-xl px-3 py-1.5 text-[10px] font-extrabold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50"
+                >
+                  Chọn tất cả
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCategoryDraft([])}
+                  disabled={savingCategories || categoryDraft.length === 0}
+                  className="rounded-xl px-3 py-1.5 text-[10px] font-extrabold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Bỏ chọn tất cả
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {CATEGORY_OPTIONS.map((category) => {
+              const selected = categoryDraft.includes(category.id);
+              const editable = isHost && room.status === "WAITING" && !savingCategories;
+              return (
+                <button
+                  key={category.id}
+                  type="button"
+                  aria-pressed={selected}
+                  disabled={!editable}
+                  onClick={() => setCategoryDraft((current) =>
+                    selected
+                      ? current.filter((id) => id !== category.id)
+                      : [...current, category.id],
+                  )}
+                  className={`rounded-2xl border px-3 py-2.5 text-left flex items-center gap-2 transition-all disabled:cursor-default ${
+                    selected
+                      ? "bg-indigo-600 text-white border-indigo-500 shadow-md"
+                      : "bg-white/80 text-slate-700 border-slate-200 hover:border-indigo-300"
+                  }`}
+                >
+                  <span>{category.icon}</span>
+                  <span className="text-xs font-extrabold">{category.label}</span>
+                  {selected && <span className="ml-auto text-xs">✓</span>}
+                </button>
+              );
+            })}
+          </div>
+          {isHost && room.status === "WAITING" && categoriesDirty && (
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-[10px] font-bold text-amber-700">
+                {categoryDraft.length === 0 ? "Chọn ít nhất một chủ đề." : "Thay đổi chưa được lưu."}
+              </span>
+              <button
+                type="button"
+                onClick={handleSaveCategories}
+                disabled={savingCategories || categoryDraft.length === 0}
+                className="rounded-xl px-4 py-2 text-xs font-black bg-emerald-500 hover:bg-emerald-600 text-white disabled:opacity-50"
+              >
+                {savingCategories ? "Đang lưu..." : "Lưu chủ đề"}
+              </button>
+            </div>
+          )}
+        </section>
 
         {error && (
           <div className="p-3 bg-rose-500/20 border border-rose-500/40 text-rose-800 rounded-2xl text-xs font-bold">

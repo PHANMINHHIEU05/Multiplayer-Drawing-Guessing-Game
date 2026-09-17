@@ -11,6 +11,9 @@ interface GameHeaderProps {
 }
 
 export const GameHeader: React.FC<GameHeaderProps> = ({ gameState, isDrawer, roomId }) => {
+  const phase = gameState.roundPhase || 'DRAWING';
+  const timerDeadline = phase === 'DRAWING' ? gameState.roundEndsAt : gameState.phaseEndsAt || gameState.roundEndsAt;
+  const timerDuration = phase === 'WORD_SELECTION' ? 10 : phase === 'COUNTDOWN' ? 3 : phase === 'ROUND_RECAP' ? 3 : gameState.roundDurationSeconds || 60;
   return (
     <div className="glass-panel-game px-4 py-2 flex items-center justify-between gap-3 shrink-0 shadow-lg">
       {/* Left: Logo & Room info */}
@@ -30,7 +33,7 @@ export const GameHeader: React.FC<GameHeaderProps> = ({ gameState, isDrawer, roo
         </div>
 
         {/* Word or Hint */}
-        {isDrawer ? (
+        {isDrawer && phase !== 'ROUND_RECAP' ? (
           <SecretWord secretWord={gameState.secretWord || '???'} />
         ) : (
           <WordHint hint={gameState.hint} />
@@ -39,9 +42,8 @@ export const GameHeader: React.FC<GameHeaderProps> = ({ gameState, isDrawer, roo
 
       {/* Right: Round Timer */}
       <div className="flex items-center gap-2">
-        <RoundTimer roundEndsAt={gameState.roundEndsAt} />
+        <RoundTimer roundEndsAt={timerDeadline} totalDurationSeconds={timerDuration} />
       </div>
     </div>
   );
 };
-

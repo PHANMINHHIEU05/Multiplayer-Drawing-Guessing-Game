@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Collection;
 import java.util.Optional;
 
 @Repository
@@ -16,6 +17,8 @@ public interface WordRepository extends JpaRepository<WordEntity, Long> {
     Optional<WordEntity> findRandomWord();
 
     Optional<WordEntity> findByWord(String word);
+
+    List<WordEntity> findByCategoryIn(Collection<String> categories);
 
     @Query("SELECT wa.alias FROM WordAliasEntity wa WHERE wa.word.word = :canonicalWord")
     List<String> findAliasesByCanonicalWord(@Param("canonicalWord") String canonicalWord);

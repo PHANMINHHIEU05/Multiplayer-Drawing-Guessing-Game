@@ -127,6 +127,11 @@ public class ControlRedisSubscriber {
                 // Old-round recovery history must never become the new round's canvas
                 recoveryRepository.resetForNewRound(envelope.targetRoomId()).subscribe();
             }
+            case "WORD_SELECTION_STARTED", "ROUND_COUNTDOWN_STARTED", "ROUND_RECAP_STARTED" -> {
+                // Drawing authorization is active only during DRAWING. Do not leave the old
+                // drawer's fast-path permission live through selection/countdown/recap.
+                drawingRoomStateCache.remove(envelope.targetRoomId());
+            }
             case "GAME_FINISHED" -> {
                 drawingRoomStateCache.remove(envelope.targetRoomId());
                 recoveryRepository.removeAll(envelope.targetRoomId()).subscribe();

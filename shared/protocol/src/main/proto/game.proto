@@ -15,6 +15,9 @@ service GameService {
 
   rpc SubmitGuess(SubmitGuessRequest)
       returns (GuessResponse);
+
+  rpc SelectWord(SelectWordRequest)
+      returns (GameStateResponse);
 }
 
 message StartGameRequest {
@@ -31,6 +34,51 @@ message SubmitGuessRequest {
   string room_id = 1;
   string player_id = 2;
   string guess = 3;
+}
+
+message SelectWordRequest {
+  string room_id = 1;
+  string player_id = 2;
+  string choice_id = 3;
+}
+
+message WordChoiceMessage {
+  string choice_id = 1;
+  string display_word = 2;
+}
+
+message RoundScoreDeltaMessage {
+  string player_id = 1;
+  string username = 2;
+  int32 round_delta = 3;
+  int32 total_score = 4;
+}
+
+message CorrectGuessTimingMessage {
+  string player_id = 1;
+  int64 elapsed_millis = 2;
+}
+
+message RoundRecapMessage {
+  int32 round_number = 1;
+  string drawer_id = 2;
+  string answer = 3;
+  repeated RoundScoreDeltaMessage score_deltas = 4;
+  int32 drawer_score = 5;
+  string fastest_player_id = 6;
+  string fastest_username = 7;
+  int64 fastest_elapsed_millis = 8;
+  repeated string correct_player_ids = 9;
+  repeated CorrectGuessTimingMessage correct_guess_times = 10;
+}
+
+message MatchAwardMessage {
+  string type = 1;
+  string label = 2;
+  string player_id = 3;
+  string username = 4;
+  int32 value = 5;
+  int64 elapsed_millis = 6;
 }
 
 message PlayerScoreMessage {
@@ -58,4 +106,12 @@ message GameStateResponse {
   repeated PlayerScoreMessage scores = 8;
   string hint = 9;
   string secret_word = 10;
+  string game_id = 11;
+  string round_phase = 12;
+  int64 phase_started_at = 13;
+  int64 phase_ends_at = 14;
+  int32 round_duration_seconds = 15;
+  repeated WordChoiceMessage word_choices = 16;
+  RoundRecapMessage round_recap = 17;
+  repeated MatchAwardMessage awards = 18;
 }

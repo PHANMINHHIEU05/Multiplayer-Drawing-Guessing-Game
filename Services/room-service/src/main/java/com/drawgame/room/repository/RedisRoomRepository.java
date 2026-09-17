@@ -1,6 +1,7 @@
 package com.drawgame.room.repository;
 
 import com.drawgame.room.domain.Room;
+import com.drawgame.room.domain.RoomCategories;
 import com.drawgame.room.domain.RoomPlayer;
 import com.drawgame.room.domain.RoomStatus;
 import com.drawgame.room.exception.InvalidRoomStateException;
@@ -19,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -66,6 +68,19 @@ public class RedisRoomRepository implements RoomRepository {
                 redis.call('EXPIRE', orderKey, ttl)
             end
 
+            return 0
+            """,
+            Long.class
+    );
+
+    private static final RedisScript<Long> SET_CATEGORIES_SCRIPT = new DefaultRedisScript<>(
+            """
+            if redis.call('EXISTS', KEYS[1]) == 0 then return -1 end
+            if redis.call('HGET', KEYS[1], 'hostId') ~= ARGV[1] then return -2 end
+            if redis.call('HGET', KEYS[1], 'status') ~= 'WAITING' then return -3 end
+            redis.call('HSET', KEYS[1], 'selectedCategories', ARGV[2])
+            local ttl = tonumber(ARGV[3])
+            if ttl > 0 then redis.call('EXPIRE', KEYS[1], ttl) end
             return 0
             """,
             Long.class
@@ -155,7 +170,8 @@ public class RedisRoomRepository implements RoomRepository {
                 "status", room.status().name(),
                 "maxPlayers", String.valueOf(room.maxPlayers()),
                 "roundCount", String.valueOf(room.roundCount()),
-                "roundDuration", String.valueOf(room.roundDuration())
+                "roundDuration", String.valueOf(room.roundDuration()),
+                "selectedCategories", String.join(",", room.selectedCategories())
         );
 
         redis.opsForHash().putAll(key, meta);
@@ -210,6 +226,13 @@ public class RedisRoomRepository implements RoomRepository {
                     readySet.contains(entry.getKey().toString())));
         }
 
+        String categoriesValue = values.get("selectedCategories") == null
+                ? String.join(",", RoomCategories.ALL)
+                : values.get("selectedCategories").toString();
+        List<String> categories = categoriesValue.isBlank()
+                ? RoomCategories.ALL
+                : Arrays.asList(categoriesValue.split(","));
+
         Room room = new Room(
                 roomId,
                 values.get("name").toString(),
@@ -218,7 +241,8 @@ public class RedisRoomRepository implements RoomRepository {
                 Integer.parseInt(values.get("maxPlayers").toString()),
                 Integer.parseInt(values.get("roundCount").toString()),
                 Integer.parseInt(values.get("roundDuration").toString()),
-                roomPlayers
+                roomPlayers,
+                categories
         );
 
         return Optional.of(room);
@@ -413,5 +437,28 @@ public class RedisRoomRepository implements RoomRepository {
         redis.opsForHash().put(roomKey(roomId), "status", RoomStatus.FINISHED.name());
         return findById(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("Room not found after finish: " + roomId));
+    }
+
+    @Override
+    public Room setCategories(String roomId, String requesterId, List<String> categories) {
+        Long result = redis.execute(SET_CATEGORIES_SCRIPT,
+                List.of(roomKey(roomId)),
+                requesterId,
+                String.join(",", categories),
+                String.valueOf(roomTtlSeconds));
+        if (result == null) {
+            throw new IllegalStateException("Redis category update returned null");
+        }
+        if (result == -1) {
+            throw new RoomNotFoundException("Room not found: " + roomId);
+        }
+        if (result == -2) {
+            throw new IllegalArgumentException("Requester is not host of room " + roomId);
+        }
+        if (result == -3) {
+            throw new InvalidRoomStateException("Room is not in WAITING state: " + roomId);
+        }
+        return findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found after category update: " + roomId));
     }
 }

@@ -35,6 +35,9 @@ service RoomService {
 
   rpc KickPlayer(KickPlayerRequest)
       returns (RoomResponse);
+
+  rpc SetCategories(SetCategoriesRequest)
+      returns (RoomResponse);
 }
 
 message BeginGameRequest {
@@ -99,6 +102,12 @@ message KickPlayerRequest {
   string target_player_id = 3;
 }
 
+message SetCategoriesRequest {
+  string room_id = 1;
+  string requester_player_id = 2;
+  repeated string selected_categories = 3;
+}
+
 message PlayerMessage {
 
   string player_id = 1;
@@ -125,4 +134,5 @@ message RoomResponse {
   int32 round_duration = 7;
 
   repeated PlayerMessage players = 8;
+  repeated string selected_categories = 9;
 }

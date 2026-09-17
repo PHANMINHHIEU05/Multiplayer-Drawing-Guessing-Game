@@ -20,6 +20,9 @@ public class GameResultEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "game_id", nullable = false, unique = true, length = 64)
+    private String gameId;
+
     @Column(name = "room_id", nullable = false, length = 50)
     private String roomId;
 
@@ -34,6 +37,14 @@ public class GameResultEntity {
 
     @Column(name = "finished_at")
     private LocalDateTime finishedAt;
+
+    @Column(name = "round_results_json", nullable = false, columnDefinition = "TEXT")
+    @Builder.Default
+    private String roundResultsJson = "[]";
+
+    @Column(name = "awards_json", nullable = false, columnDefinition = "TEXT")
+    @Builder.Default
+    private String awardsJson = "[]";
 
     @OneToMany(mappedBy = "gameResult", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

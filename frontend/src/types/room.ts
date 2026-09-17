@@ -23,4 +23,5 @@ export interface Room {
   roundCount: number;
   roundDuration: number;
   playerCount: number;
+  selectedCategories: string[];
 }

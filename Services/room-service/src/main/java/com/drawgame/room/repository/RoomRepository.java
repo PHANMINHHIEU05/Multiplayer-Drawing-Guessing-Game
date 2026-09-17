@@ -4,6 +4,7 @@ import com.drawgame.room.domain.Room;
 import com.drawgame.room.domain.RoomPlayer;
 
 import java.util.Optional;
+import java.util.List;
 
 public interface RoomRepository {
 
@@ -26,6 +27,8 @@ public interface RoomRepository {
     Room resetRoom(String roomId, String requesterId);
 
     Room kickPlayer(String roomId, String requesterId, String targetPlayerId);
+
+    Room setCategories(String roomId, String requesterId, List<String> categories);
 
     void delete(String roomId);
 }

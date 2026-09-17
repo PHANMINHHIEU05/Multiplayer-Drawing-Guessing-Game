@@ -23,6 +23,7 @@ public interface RoomGrpcMapper {
 
         RoomResponse.Builder builder = RoomResponse.newBuilder();
         mapRoom(room, builder);
+        builder.addAllSelectedCategories(room.selectedCategories());
 
         if (room.players() != null) {
             room.players()
@@ -37,6 +38,7 @@ public interface RoomGrpcMapper {
     @Mapping(target = "roomId", source = "id")
     @Mapping(target = "status", expression = "java(room.status() != null ? room.status().name() : \"\")")
     @Mapping(target = "playersList", ignore = true)
+    @Mapping(target = "selectedCategoriesList", ignore = true)
     void mapRoom(Room room, @MappingTarget RoomResponse.Builder builder);
 
     default PlayerMessage toPlayerMessage(RoomPlayer player) {

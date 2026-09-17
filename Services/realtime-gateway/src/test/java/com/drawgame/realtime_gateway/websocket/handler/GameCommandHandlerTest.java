@@ -114,6 +114,37 @@ class GameCommandHandlerTest {
     }
 
     @Test
+    void handleSendReaction_UsesBoundIdentityAndOnlyAllowsDrawingPhase() throws Exception {
+        when(connectionManager.getUsername("session-1")).thenReturn("Minh");
+        when(gameGrpcClient.getGameState("room-1", "player-1")).thenReturn(Mono.just(GameStateResponse.newBuilder()
+                .setStatus("PLAYING").setRoundPhase("DRAWING").setGameId("game-1").setCurrentRound(2)
+                .addScores(com.drawgame.game.grpc.generated.PlayerScoreMessage.newBuilder().setPlayerId("player-1").build()).build()));
+        JsonNode command = objectMapper.readTree("""
+                {"type":"SEND_REACTION","payload":{"reactionType":"🔥","playerId":"spoofed"}}
+                """);
+        StepVerifier.create(handler.handleCommand("session-1", command))
+                .assertNext(json -> {
+                    assertTrue(json.contains("\"type\":\"REACTION\""));
+                    assertTrue(json.contains("\"playerId\":\"player-1\""));
+                    assertTrue(json.contains("\"displayName\":\"Minh\""));
+                    assertTrue(json.contains("🔥"));
+                    assertFalse(json.contains("spoofed"));
+                }).verifyComplete();
+        verify(gameGrpcClient).getGameState("room-1", "player-1");
+    }
+
+    @Test
+    void handleSendReaction_RejectsUnknownReactionBeforeGameLookup() throws Exception {
+        JsonNode command = objectMapper.readTree("""
+                {"type":"SEND_REACTION","payload":{"reactionType":"<script>alert(1)</script>"}}
+                """);
+        StepVerifier.create(handler.handleCommand("session-1", command))
+                .assertNext(json -> assertTrue(json.contains("INVALID_REACTION")))
+                .verifyComplete();
+        verify(gameGrpcClient, never()).getGameState(anyString(), anyString());
+    }
+
+    @Test
     void handleSendChat_RateLimited_ReturnsErrorJson() throws Exception {
         String jsonStr = """
             {
@@ -207,6 +238,7 @@ class GameCommandHandlerTest {
                 .setDrawerId("player-2")
                 .setCurrentRound(2)
                 .setStatus("PLAYING")
+                .setRoundPhase("DRAWING")
                 .build();
         when(gameGrpcClient.getGameState("room-1", "player-1"))
                 .thenReturn(Mono.just(gameState));
@@ -363,7 +395,7 @@ class GameCommandHandlerTest {
                 })
                 .verifyComplete();
 
-        verify(connectionManager).bindSession("new-session", "room-1", "player-1");
+        verify(connectionManager).bindSession("new-session", "room-1", "player-1", "Minh");
         verify(roomGrpcClient, never()).joinRoom(anyString(), anyString(), anyString());
     }
 

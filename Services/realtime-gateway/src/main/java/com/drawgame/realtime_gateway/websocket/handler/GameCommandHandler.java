@@ -3,6 +3,8 @@ package com.drawgame.realtime_gateway.websocket.handler;
 import com.drawgame.chat.grpc.generated.ChatMessageResponse;
 import com.drawgame.game.grpc.generated.GameStateResponse;
 import com.drawgame.game.grpc.generated.PlayerScoreMessage;
+import com.drawgame.game.grpc.generated.WordChoiceMessage;
+import com.drawgame.game.grpc.generated.RoundRecapMessage;
 import com.drawgame.realtime_gateway.connection.BoundedOutboundQueue;
 import com.drawgame.realtime_gateway.connection.ConnectionManager;
 import com.drawgame.realtime_gateway.control.ControlEventRouter;
@@ -115,6 +117,7 @@ public class GameCommandHandler {
         if (rateLimiter != null && !"PING".equalsIgnoreCase(type) && !"APP_PING".equalsIgnoreCase(type)) {
             SessionRateLimiter.Bucket bucket = switch (type) {
                 case "SUBMIT_GUESS", "SEND_CHAT" -> SessionRateLimiter.Bucket.GUESS;
+                case "SEND_REACTION" -> SessionRateLimiter.Bucket.REACTION;
                 case "DRAW_POINT", "DRAW_BATCH", "CLEAR_CANVAS" -> SessionRateLimiter.Bucket.DRAW;
                 default -> SessionRateLimiter.Bucket.CONTROL;
             };
@@ -133,13 +136,16 @@ public class GameCommandHandler {
             case "LEAVE_ROOM" -> handleLeaveRoom(sessionId, json, requestId);
             case "START_GAME" -> handleStartGame(sessionId, json, requestId);
             case "GET_GAME_STATE" -> handleGetGameState(sessionId, json, requestId);
+            case "SELECT_WORD" -> handleSelectWord(sessionId, json, requestId);
             case "SUBMIT_GUESS" -> handleSubmitGuess(sessionId, json, requestId);
             case "GET_CANVAS_STATE" -> handleGetCanvasState(sessionId, json, requestId);
             // TV10: lobby/product features — all derive identity from the bound session
             case "SET_READY" -> handleSetReady(sessionId, json, requestId);
+            case "SET_CATEGORIES" -> handleSetCategories(sessionId, json, requestId);
             case "REMATCH" -> handleRematch(sessionId, json, requestId);
             case "KICK_PLAYER" -> handleKickPlayer(sessionId, json, requestId);
             case "SEND_CHAT" -> handleSendChat(sessionId, json, requestId);
+            case "SEND_REACTION" -> handleSendReaction(sessionId, json, requestId);
             case "GET_RECENT_CHAT" -> handleGetRecentChat(sessionId, json, requestId);
             case "DRAW_POINT" -> handleDrawPoint(sessionId, json);
             case "DRAW_BATCH" -> handleDrawBatch(sessionId, json);
@@ -404,6 +410,35 @@ public class GameCommandHandler {
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "SET_READY_FAILED", e.getMessage())));
     }
 
+    /** Host identity is taken only from the authenticated, room-bound WebSocket session. */
+    private Mono<String> handleSetCategories(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+        JsonNode categoryNodes = node.get("selectedCategories");
+        if (categoryNodes == null || !categoryNodes.isArray()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_CATEGORIES", "selectedCategories must be an array"));
+        }
+        List<String> categories = new ArrayList<>();
+        for (JsonNode category : categoryNodes) {
+            if (!category.isTextual()) {
+                return Mono.just(createErrorJson(requestId, "INVALID_CATEGORIES", "Category identifiers must be strings"));
+            }
+            categories.add(category.asText());
+        }
+
+        return roomGrpcClient.setCategories(roomId, playerId, categories)
+                .map(room -> {
+                    controlBroadcast(roomId, null, "ROOM_CATEGORIES_UPDATED",
+                            createRoomSuccessJson("ROOM_CATEGORIES_UPDATED", room, null));
+                    return createRoomSuccessJson("ROOM_INFO", room, requestId);
+                })
+                .onErrorResume(e -> Mono.just(createErrorJson(requestId, "SET_CATEGORIES_FAILED", e.getMessage())));
+    }
+
     /**
      * TV10 REMATCH: host-only FINISHED -> WAITING. Room/members/config preserved;
      * ready state cleared. Old match result already persisted by Game Service.
@@ -554,7 +589,6 @@ public class GameCommandHandler {
                     controlBroadcast(roomId, sessionId, "GAME_STARTED",
                             createGameStateJson("GAME_STARTED", gameState, null));
                     // TV3: update drawing fast-path cache with the new drawer and round
-                    updateDrawingCache(roomId, gameState);
                     return stateJson;
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "START_GAME_FAILED", e.getMessage())));
@@ -571,12 +605,32 @@ public class GameCommandHandler {
         return gameGrpcClient.getGameState(roomId, playerId)
                 .map(gameState -> {
                     // TV3: sync drawing fast-path cache on GET_GAME_STATE (handles cache miss after restart)
-                    if ("PLAYING".equalsIgnoreCase(gameState.getStatus())) {
+                    if ("PLAYING".equalsIgnoreCase(gameState.getStatus())
+                            && "DRAWING".equals(gameState.getRoundPhase())) {
                         updateDrawingCache(roomId, gameState);
+                    } else {
+                        drawingRoomStateCache.remove(roomId);
                     }
                     return createGameStateJson("GAME_STATE", gameState, requestId);
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "GET_GAME_STATE_FAILED", e.getMessage())));
+    }
+
+    /** Private drawer command; player identity comes exclusively from the bound session. */
+    private Mono<String> handleSelectWord(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        String roomId = connectionManager.getRoomId(sessionId);
+        String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+        String choiceId = extractString(node, "choiceId", "");
+        if (choiceId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_WORD_CHOICE", "choiceId is required"));
+        }
+        return gameGrpcClient.selectWord(roomId, playerId, choiceId)
+                .map(state -> createGameStateJson("GAME_STATE", state, requestId))
+                .onErrorResume(e -> Mono.just(createErrorJson(requestId, "SELECT_WORD_FAILED", e.getMessage())));
     }
 
     /**
@@ -612,6 +666,10 @@ public class GameCommandHandler {
                     if (!"PLAYING".equalsIgnoreCase(gameState.getStatus())) {
                         return Mono.just(createErrorJson(requestId, "GAME_NOT_ACTIVE",
                                 "Game is not active: " + gameState.getStatus()));
+                    }
+                    if (!"DRAWING".equals(gameState.getRoundPhase())) {
+                        return Mono.just(createErrorJson(requestId, "DRAWING_NOT_ACTIVE",
+                                "Canvas recovery is available during drawing only"));
                     }
                     if (gameState.getCurrentRound() != requestedRound) {
                         return Mono.just(createErrorJson(requestId, "WRONG_ROUND",
@@ -737,6 +795,46 @@ public class GameCommandHandler {
                     return createChatMessageBroadcastJson(chatRes, requestId);
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, mapGrpcErrorCode(e), e.getMessage())));
+    }
+
+    private static final java.util.Set<String> ALLOWED_REACTIONS = java.util.Set.of("😂", "👍", "🔥", "😮", "🤔", "❤️");
+
+    /** Ephemeral, room-scoped reaction: never persisted to chat or drawing recovery. */
+    private Mono<String> handleSendReaction(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        String roomId = connectionManager.getRoomId(sessionId);
+        String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+        String reactionType = extractString(node, "reactionType", "");
+        if (!ALLOWED_REACTIONS.contains(reactionType)) {
+            return Mono.just(createErrorJson(requestId, "INVALID_REACTION", "Unsupported reaction"));
+        }
+        return gameGrpcClient.getGameState(roomId, playerId)
+                .flatMap(state -> {
+                    boolean member = state.getScoresList().stream().anyMatch(score -> playerId.equals(score.getPlayerId()));
+                    if (!member) {
+                        return Mono.just(createErrorJson(requestId, "ROOM_MEMBERSHIP_REQUIRED", "Player is not an active match member"));
+                    }
+                    if (!"PLAYING".equalsIgnoreCase(state.getStatus()) || !"DRAWING".equals(state.getRoundPhase())) {
+                        return Mono.just(createErrorJson(requestId, "REACTION_NOT_ALLOWED", "Reactions are available during drawing only"));
+                    }
+                    Map<String, Object> event = new HashMap<>();
+                    event.put("type", "REACTION");
+                    event.put("roomId", roomId);
+                    event.put("gameId", state.getGameId());
+                    event.put("roundNumber", state.getCurrentRound());
+                    event.put("playerId", playerId);
+                    String displayName = connectionManager.getUsername(sessionId);
+                    event.put("displayName", displayName == null || displayName.isBlank() ? playerId : displayName);
+                    event.put("reactionType", reactionType);
+                    String eventJson = toJson(event);
+                    controlBroadcast(roomId, sessionId, "REACTION", eventJson);
+                    event.put("requestId", requestId);
+                    return Mono.just(toJson(event));
+                })
+                .onErrorResume(e -> Mono.just(createErrorJson(requestId, "SEND_REACTION_FAILED", e.getMessage())));
     }
 
     private Mono<String> handleGetRecentChat(String sessionId, JsonNode json, String requestId) {
@@ -944,6 +1042,7 @@ public class GameCommandHandler {
         map.put("maxPlayers", room.getMaxPlayers());
         map.put("roundCount", room.getRoundCount());
         map.put("roundDuration", room.getRoundDuration());
+        map.put("selectedCategories", room.getSelectedCategoriesList());
         map.put("playerCount", room.getPlayersCount());
 
         List<Map<String, Object>> players = new ArrayList<>();
@@ -972,10 +1071,43 @@ public class GameCommandHandler {
         map.put("drawerId", state.getDrawerId());
         map.put("roundStartedAt", state.getRoundStartedAt());
         map.put("roundEndsAt", state.getRoundEndsAt());
+        map.put("gameId", state.getGameId());
+        map.put("roundPhase", state.getRoundPhase());
+        map.put("phaseStartedAt", state.getPhaseStartedAt());
+        map.put("phaseEndsAt", state.getPhaseEndsAt());
+        map.put("roundDurationSeconds", state.getRoundDurationSeconds());
         map.put("hint", state.getHint());
         if (state.getSecretWord() != null && !state.getSecretWord().isEmpty()) {
             map.put("secretWord", state.getSecretWord());
         }
+
+        List<Map<String, Object>> wordChoices = new ArrayList<>();
+        for (WordChoiceMessage choice : state.getWordChoicesList()) {
+            wordChoices.add(Map.of("choiceId", choice.getChoiceId(), "displayWord", choice.getDisplayWord()));
+        }
+        map.put("wordChoices", wordChoices);
+        if (state.hasRoundRecap()) {
+            RoundRecapMessage recap = state.getRoundRecap();
+            Map<String, Object> recapJson = new HashMap<>();
+            recapJson.put("roundNumber", recap.getRoundNumber());
+            recapJson.put("drawerId", recap.getDrawerId());
+            recapJson.put("answer", recap.getAnswer());
+            recapJson.put("scoreDeltas", recap.getScoreDeltasList().stream().map(delta -> Map.of(
+                    "playerId", delta.getPlayerId(), "username", delta.getUsername(),
+                    "roundDelta", delta.getRoundDelta(), "totalScore", delta.getTotalScore())).toList());
+            recapJson.put("drawerScore", recap.getDrawerScore());
+            recapJson.put("fastestPlayerId", recap.getFastestPlayerId());
+            recapJson.put("fastestUsername", recap.getFastestUsername());
+            recapJson.put("fastestElapsedMillis", recap.getFastestElapsedMillis());
+            recapJson.put("correctPlayerIds", recap.getCorrectPlayerIdsList());
+            recapJson.put("correctGuessTimes", recap.getCorrectGuessTimesList().stream().map(timing -> Map.of(
+                    "playerId", timing.getPlayerId(), "elapsedMillis", timing.getElapsedMillis())).toList());
+            map.put("roundRecap", recapJson);
+        }
+        map.put("awards", state.getAwardsList().stream().map(award -> Map.of(
+                "type", award.getType(), "label", award.getLabel(), "playerId", award.getPlayerId(),
+                "username", award.getUsername(), "value", award.getValue(),
+                "elapsedMillis", award.getElapsedMillis())).toList());
 
         List<Map<String, Object>> scores = new ArrayList<>();
         for (PlayerScoreMessage p : state.getScoresList()) {
@@ -1089,7 +1221,8 @@ public class GameCommandHandler {
      * to keep cache in sync across round transitions without requiring GET_GAME_STATE per round.
      */
     private void updateDrawingCache(String roomId, GameStateResponse gameState) {
-        if (gameState.getDrawerId() != null && !gameState.getDrawerId().isBlank()) {
+        if ("DRAWING".equals(gameState.getRoundPhase())
+                && gameState.getDrawerId() != null && !gameState.getDrawerId().isBlank()) {
             DrawingRoomState state = DrawingRoomState.playing(
                     gameState.getDrawerId(),
                     gameState.getCurrentRound()
@@ -1134,4 +1267,3 @@ public class GameCommandHandler {
         return Mono.just(toJson(response));
     }
 }
-

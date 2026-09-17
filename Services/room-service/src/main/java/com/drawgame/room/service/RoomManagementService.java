@@ -3,6 +3,7 @@ package com.drawgame.room.service;
 import com.drawgame.room.domain.Room;
 import com.drawgame.room.domain.RoomPlayer;
 import com.drawgame.room.domain.RoomStatus;
+import com.drawgame.room.domain.RoomCategories;
 import com.drawgame.room.exception.RoomNotFoundException;
 import com.drawgame.room.repository.RoomRepository;
 
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.List;
 
 @Service
 public class RoomManagementService {
@@ -154,6 +156,15 @@ public class RoomManagementService {
         Room room = repository.kickPlayer(roomId, requesterId, targetPlayerId);
         log.info("PLAYER_KICKED roomId={} hostId={} target={}", roomId, requesterId, targetPlayerId);
         return room;
+    }
+
+    /** Host-only category configuration. Authorization and WAITING checks are atomic in Redis. */
+    public Room setCategories(String roomId, String requesterId, List<String> categories) {
+        if (roomId == null || roomId.isBlank() || requesterId == null || requesterId.isBlank()) {
+            throw new IllegalArgumentException("Room and requester IDs are required");
+        }
+        List<String> normalized = RoomCategories.normalize(categories);
+        return repository.setCategories(roomId, requesterId, normalized);
     }
 
     public Room finishGame(String roomId) {

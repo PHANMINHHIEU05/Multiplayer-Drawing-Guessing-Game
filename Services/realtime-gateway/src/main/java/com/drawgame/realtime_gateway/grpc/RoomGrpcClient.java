@@ -129,4 +129,17 @@ public class RoomGrpcClient {
             return blockingStub.kickPlayer(request);
         }).subscribeOn(Schedulers.boundedElastic());
     }
+
+    /** Host-only, WAITING-only category update; Room Service performs authoritative validation. */
+    public Mono<RoomResponse> setCategories(String roomId, String requesterPlayerId,
+                                            java.util.List<String> categories) {
+        return Mono.fromCallable(() -> {
+            SetCategoriesRequest request = SetCategoriesRequest.newBuilder()
+                    .setRoomId(roomId)
+                    .setRequesterPlayerId(requesterPlayerId)
+                    .addAllSelectedCategories(categories)
+                    .build();
+            return blockingStub.setCategories(request);
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
 }

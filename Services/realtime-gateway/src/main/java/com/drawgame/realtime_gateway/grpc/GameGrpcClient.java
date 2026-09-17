@@ -6,6 +6,7 @@ import com.drawgame.game.grpc.generated.GetGameStateRequest;
 import com.drawgame.game.grpc.generated.GuessResponse;
 import com.drawgame.game.grpc.generated.StartGameRequest;
 import com.drawgame.game.grpc.generated.SubmitGuessRequest;
+import com.drawgame.game.grpc.generated.SelectWordRequest;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import org.slf4j.Logger;
@@ -77,5 +78,11 @@ public class GameGrpcClient {
                     .build();
             return blockingStub.submitGuess(request);
         }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    public Mono<GameStateResponse> selectWord(String roomId, String playerId, String choiceId) {
+        return Mono.fromCallable(() -> blockingStub.selectWord(SelectWordRequest.newBuilder()
+                .setRoomId(roomId).setPlayerId(playerId).setChoiceId(choiceId).build()))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 }

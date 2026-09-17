@@ -37,7 +37,7 @@ public class SessionRateLimiter {
 
     /** Replenish rate = capacity tokens per windowSeconds (fixed-window token bucket). */
     public enum Bucket {
-        GUESS, CONTROL, DRAW
+        GUESS, CONTROL, DRAW, REACTION
     }
 
     private static final class Window {
@@ -53,6 +53,7 @@ public class SessionRateLimiter {
     private final int guessMax;
     private final int controlMax;
     private final int drawMax;
+    private final int reactionMax;
     private final long windowMs;
     private final int retryAfterMs;
 
@@ -63,13 +64,26 @@ public class SessionRateLimiter {
             @Value("${security.rate-limit.window-ms:1000}") long windowMs,
             @Value("${security.rate-limit.retry-after-ms:500}") int retryAfterMs
     ) {
+        this(guessMax, controlMax, drawMax, 1, windowMs, retryAfterMs);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SessionRateLimiter(
+            @Value("${security.rate-limit.guess-max-per-window:${SECURITY_GUESS_MAX_PER_SECOND:3}}") int guessMax,
+            @Value("${security.rate-limit.control-max-per-window:10}") int controlMax,
+            @Value("${security.rate-limit.draw-max-per-window:120}") int drawMax,
+            @Value("${security.rate-limit.reaction-max-per-window:1}") int reactionMax,
+            @Value("${security.rate-limit.window-ms:1000}") long windowMs,
+            @Value("${security.rate-limit.retry-after-ms:500}") int retryAfterMs
+    ) {
         this.guessMax = guessMax;
         this.controlMax = controlMax;
         this.drawMax = drawMax;
+        this.reactionMax = reactionMax;
         this.windowMs = windowMs;
         this.retryAfterMs = retryAfterMs;
-        log.info("SessionRateLimiter initialized: guess={}/{}ms control={}/{}ms draw={}/{}ms",
-                guessMax, windowMs, controlMax, windowMs, drawMax, windowMs);
+        log.info("SessionRateLimiter initialized: guess={}/{}ms control={}/{}ms draw={}/{}ms reaction={}/{}ms",
+                guessMax, windowMs, controlMax, windowMs, drawMax, windowMs, reactionMax, windowMs);
     }
 
     /**
@@ -92,6 +106,7 @@ public class SessionRateLimiter {
                 case GUESS -> guessMax;
                 case CONTROL -> controlMax;
                 case DRAW -> drawMax;
+                case REACTION -> reactionMax;
             };
             if (used > max) {
                 log.debug("Rate limited: session={} bucket={} used={}/{}", sessionId, bucket, used, max);

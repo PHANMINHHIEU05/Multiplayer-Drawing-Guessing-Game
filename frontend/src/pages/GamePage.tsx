@@ -1,7 +1,7 @@
 import React, { useEffect, useCallback, useState, useRef } from "react";
 import { useGameStore, gameStore } from "../store/gameStore";
 import { usePlayerStore, playerStore } from "../store/playerStore";
-import { useRoomStore, roomStore } from "../store/roomStore";
+import { useRoomStore } from "../store/roomStore";
 import { GameHeader } from "../features/game/GameHeader";
 import {
   DrawingCanvas,
@@ -11,6 +11,7 @@ import { DrawingToolbar } from "../features/drawing/DrawingToolbar";
 import { Scoreboard } from "../components/Scoreboard";
 import { ChatPanel } from "../features/chat/ChatPanel";
 import { GuessInput } from "../features/game/GuessInput";
+import { ReactionBar, RoundPhaseOverlay } from "../features/game/RoundPhaseOverlay";
 import { ConnectionStatus } from "../components/ConnectionStatus";
 import { NetworkInspector } from "../components/NetworkInspector";
 import { wsClient, resetAllSessionState } from "../websocket/WebSocketClient";
@@ -19,6 +20,7 @@ import { DrawPoint, RemoteStrokeState } from "../types/game";
 import { metricsStore } from "../store/metricsStore";
 import { recoveryStore, useRecoveryStore } from "../store/recoveryStore";
 import { useConnectionStore } from "../store/connectionStore";
+import { reactionStore, useReactions } from "../store/reactionStore";
 import {
   encodeDrawStart,
   encodeDrawBatch,
@@ -48,6 +50,10 @@ export const GamePage: React.FC = () => {
 
   const roomId = room?.roomId || gameState?.roomId || "";
   const isDrawer = gameState?.drawerId === playerId;
+  const roundPhase = gameState?.roundPhase || "DRAWING";
+  const canDraw = isDrawer && roundPhase === "DRAWING";
+  const canGuess = roundPhase === "DRAWING";
+  const reactions = useReactions();
   const currentRound = gameState?.currentRound || 1;
   // C9: lock guess input after this player has guessed correctly in the current round
   const hasGuessed = !!gameState?.scores?.find((s) => s.playerId === playerId)
@@ -296,24 +302,6 @@ export const GamePage: React.FC = () => {
         gameStore.clearDrawPoints();
         canvasHandleRef.current?.clear();
       }
-      // TV5: GAME_STARTED no longer carries the secret word (privacy fix), so the
-      // drawer fetches fresh state immediately instead of waiting for the 5s poll.
-      if (msg.type === MessageType.GAME_STARTED) {
-        const rid =
-          roomStore.getState().room?.roomId ||
-          gameStore.getState().gameState?.roomId ||
-          "";
-        const pid = playerStore.getState().playerId;
-        if (rid) {
-          wsClient
-            .send(
-              MessageType.GET_GAME_STATE,
-              { roomId: rid, playerId: pid },
-              5000,
-            )
-            .catch(() => {});
-        }
-      }
     });
 
     return () => {
@@ -361,7 +349,7 @@ export const GamePage: React.FC = () => {
   /** Send a batch of draw points to the server via WebSocket according to active mode */
   const handleDrawBatch = useCallback(
     (points: DrawPoint[]) => {
-      if (!roomId || points.length === 0) return;
+      if (!roomId || points.length === 0 || !isDrawer || (gameStore.getState().gameState?.roundPhase && gameStore.getState().gameState?.roundPhase !== "DRAWING")) return;
 
       const isEraserTool = activeTool === "eraser";
       const mode = metricsStore.getState().drawingMode;
@@ -452,12 +440,12 @@ export const GamePage: React.FC = () => {
         metricsStore.recordDrawBatchSent(pointsWithTool.length);
       }
     },
-    [roomId, playerId, currentRound, brushColor, brushSize, activeTool],
+    [roomId, playerId, currentRound, brushColor, brushSize, activeTool, isDrawer],
   );
 
   /** Send clear canvas command to the server */
   const handleClearCanvas = useCallback(() => {
-    if (!roomId) return;
+    if (!roomId || !isDrawer || (gameStore.getState().gameState?.roundPhase && gameStore.getState().gameState?.roundPhase !== "DRAWING")) return;
 
     remoteStrokeMapRef.current.clear();
     gameStore.clearDrawPoints();
@@ -477,7 +465,21 @@ export const GamePage: React.FC = () => {
       wsClient.sendRaw(JSON.stringify(req));
       metricsStore.resetStrokeSequence();
     }
-  }, [roomId, playerId, currentRound]);
+  }, [roomId, playerId, currentRound, isDrawer]);
+
+  const handleSelectWord = useCallback((choiceId: string) => {
+    wsClient.send(MessageType.SELECT_WORD, { choiceId }, 5000).catch(() => {
+      // The authoritative timeout remains active; a failed command cannot start drawing locally.
+    });
+  }, []);
+
+  const handleSendReaction = useCallback((reactionType: string) => {
+    wsClient.send(MessageType.SEND_REACTION, { reactionType }, 3000).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    reactionStore.clear();
+  }, [gameState?.gameId, gameState?.currentRound, roundPhase]);
 
   if (!gameState) {
     if (loadTimedOut) {
@@ -589,7 +591,7 @@ export const GamePage: React.FC = () => {
         </div>
 
         {/* Left Column 2: Vertical Drawing Toolbar (Drawer Only) */}
-        {isDrawer && (
+        {canDraw && (
           <DrawingToolbar
             color={brushColor}
             size={brushSize}
@@ -607,7 +609,7 @@ export const GamePage: React.FC = () => {
           <div className="flex-1 min-h-0 relative">
             <DrawingCanvas
               ref={canvasHandleRef}
-              isDrawer={isDrawer}
+              isDrawer={canDraw}
               color={brushColor}
               size={brushSize}
               isEraser={activeTool === "eraser"}
@@ -616,6 +618,14 @@ export const GamePage: React.FC = () => {
               externalPoints={isDrawer ? undefined : drawPoints}
               hideInternalToolbar={true}
             />
+            <RoundPhaseOverlay gameState={gameState} isDrawer={isDrawer} onSelectWord={handleSelectWord} />
+            {canGuess && !isGameOver && <ReactionBar onSend={handleSendReaction} />}
+            {reactions.filter((reaction) => reaction.gameId === gameState.gameId && reaction.roundNumber === gameState.currentRound).map((reaction) => (
+              <div key={reaction.id} className="pointer-events-none absolute z-20 motion-safe:animate-bounce" style={{ left: `${reaction.x}%`, top: `${reaction.y}%` }}>
+                <span className="text-4xl drop-shadow-lg">{reaction.reactionType}</span>
+                <span className="mt-1 block rounded-full bg-slate-900/75 px-2 py-0.5 text-center text-[10px] font-bold text-white">{reaction.displayName}</span>
+              </div>
+            ))}
             {/* Floating NET chip / Network Inspector — anchored inside the canvas
                 area so it never covers the chat panel or the guess input. */}
             <NetworkInspector />
@@ -627,7 +637,7 @@ export const GamePage: React.FC = () => {
             <div className="h-full min-h-0">
               <GuessInput
                 roomId={roomId}
-                disabled={isDrawer || isGameOver}
+                disabled={isDrawer || isGameOver || !canGuess}
                 hasGuessed={hasGuessed}
               />
             </div>
@@ -643,7 +653,7 @@ export const GamePage: React.FC = () => {
       {/* Game Over Celebration Modal */}
       {isGameOver && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="glass-panel-dark border-2 border-amber-400/80 rounded-3xl p-6 max-w-md w-full text-center space-y-5 shadow-2xl">
+          <div className="glass-panel-dark border-2 border-amber-400/80 rounded-3xl p-6 max-h-[90vh] max-w-md w-full overflow-y-auto text-center space-y-5 shadow-2xl">
             <div className="text-6xl animate-bounce">🏆</div>
             <div>
               <h2 className="text-3xl font-black bubbly-logo text-amber-300">
@@ -690,6 +700,28 @@ export const GamePage: React.FC = () => {
               <p className="text-xs font-bold text-slate-300 animate-pulse">
                 Đang chờ chủ phòng bắt đầu ván mới...
               </p>
+            )}
+
+            {(gameState.awards || []).length > 0 && (
+              <div className="rounded-2xl border border-amber-300/30 bg-white/5 p-3 text-left">
+                <p className="mb-2 text-xs font-black tracking-widest text-amber-200">GIẢI THƯỞNG</p>
+                <div className="space-y-1.5">
+                  {gameState.awards?.map((award) => (
+                    <div key={`${award.type}-${award.playerId}`} className="flex justify-between gap-3 text-xs">
+                      <span className="font-bold text-white/80">{award.label}</span>
+                      <span className="text-right font-black text-amber-100">
+                        {award.username}
+                        {award.type === "FASTEST_GUESS" && typeof award.elapsedMillis === "number" && award.elapsedMillis > 0
+                          ? ` · ${(award.elapsedMillis / 1000).toFixed(1)}s`
+                          : award.type === "WINNER" ? ` · ${award.value} điểm`
+                            : award.type === "BEST_ARTIST" ? ` · ${award.value} điểm vẽ`
+                              : award.type === "MOST_CORRECT" ? ` · ${award.value} lượt`
+                                : award.type === "BEST_STREAK" ? ` · ${award.value} vòng liên tiếp` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
             <button

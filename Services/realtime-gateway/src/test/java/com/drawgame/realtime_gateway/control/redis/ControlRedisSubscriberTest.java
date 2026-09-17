@@ -107,6 +107,16 @@ class ControlRedisSubscriberTest {
     }
 
     @Test
+    @DisplayName("Ephemeral reactions use the existing cross-Gateway room fanout")
+    void reactionFanout() {
+        String payload = "{\"type\":\"REACTION\",\"roomId\":\"ROOM01\",\"reactionType\":\"🔥\"}";
+        deliver(new ControlEventEnvelope("gateway-2", "ROOM01", "REACTION", "evt-reaction", payload));
+        verify(connectionManager).broadcastToRoom("ROOM01", payload);
+        verify(drawingRoomStateCache, never()).update(any(), any());
+        verify(drawingRoomStateCache, never()).remove(any());
+    }
+
+    @Test
     @DisplayName("Room isolation: event for ROOM02 never touches ROOM01 sessions")
     void roomIsolation() {
         String payload = "{\"type\":\"PLAYER_JOINED\"}";
