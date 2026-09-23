@@ -1,0 +1,133 @@
+x-logging: &production-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    mem_limit: 1g
+    networks:
+      - drawing-game-internal
+    logging: *production-logging
+
+  redis:
+    container_name: !reset null
+    ports: !reset []
+    mem_limit: 512m
+    networks:
+      - drawing-game-internal
+    logging: *production-logging
+
+  room-service:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=10.0 -XX:MaxRAMPercentage=50.0
+    mem_limit: 512m
+    networks:
+      - drawing-game-internal
+    logging: *production-logging
+
+  game-service:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+      DB_USERNAME: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=10.0 -XX:MaxRAMPercentage=50.0
+    mem_limit: 1g
+    networks:
+      - drawing-game-internal
+    logging: *production-logging
+
+  chat-service:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=10.0 -XX:MaxRAMPercentage=50.0
+    mem_limit: 512m
+    networks:
+      - drawing-game-internal
+    logging: *production-logging
+
+  realtime-gateway:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      GAME_SESSION_JWT_SECRET: ${GAME_SESSION_JWT_SECRET:?Set GAME_SESSION_JWT_SECRET in .env.production}
+      WS_ALLOWED_ORIGINS: ${WS_ALLOWED_ORIGINS:?Set WS_ALLOWED_ORIGINS in .env.production}
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=10.0 -XX:MaxRAMPercentage=50.0
+    mem_limit: 768m
+    networks:
+      - drawing-game-internal
+    logging: *production-logging
+
+  realtime-gateway-2:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      GAME_SESSION_JWT_SECRET: ${GAME_SESSION_JWT_SECRET:?Set GAME_SESSION_JWT_SECRET in .env.production}
+      WS_ALLOWED_ORIGINS: ${WS_ALLOWED_ORIGINS:?Set WS_ALLOWED_ORIGINS in .env.production}
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=10.0 -XX:MaxRAMPercentage=50.0
+    mem_limit: 768m
+    networks:
+      - drawing-game-internal
+    logging: *production-logging
+
+  frontend:
+    container_name: !reset null
+    ports: !reset []
+    build:
+      args:
+        VITE_WS_URL: ""
+        VITE_WS_URLS: ""
+        VITE_WS_SAME_ORIGIN: "true"
+    mem_limit: 256m
+    networks:
+      - drawing-game-internal
+    logging: *production-logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro,z
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      frontend:
+        condition: service_started
+      realtime-gateway:
+        condition: service_started
+      realtime-gateway-2:
+        condition: service_started
+    mem_limit: 256m
+    networks:
+      - drawing-game-internal
+      - drawing-game-edge
+    logging: *production-logging
+
+networks:
+  drawing-game-internal:
+    name: drawing-game-internal
+    internal: true
+  drawing-game-edge:
+    name: drawing-game-edge
+
+volumes:
+  caddy-data:
+  caddy-config:
