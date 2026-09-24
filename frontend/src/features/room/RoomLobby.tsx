@@ -8,6 +8,8 @@ import {
 import { MessageType } from "../../websocket/protocol";
 import { PlayerList } from "../../components/PlayerList";
 import { ChatPanel } from "../chat/ChatPanel";
+import { noticeStore } from "../../store/noticeStore";
+import { translateError } from "../../utils/errorTranslation";
 
 const CATEGORY_OPTIONS = [
   { id: "ANIMALS", label: "Động vật", icon: "🐾" },
@@ -40,6 +42,7 @@ export const RoomLobby: React.FC = () => {
   const { playerId } = usePlayerStore((s) => s);
   const [starting, setStarting] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [togglingReady, setTogglingReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [categoryDraft, setCategoryDraft] = useState<string[]>(
     room?.selectedCategories || CATEGORY_OPTIONS.map((category) => category.id),
@@ -53,11 +56,31 @@ export const RoomLobby: React.FC = () => {
   if (!room) return null;
 
   const isHost = room.hostPlayerId === playerId;
-  const categoriesDirty = !sameCategories(categoryDraft, room.selectedCategories || []);
+  const categoriesDirty = !sameCategories(
+    categoryDraft,
+    room.selectedCategories || [],
+  );
+
+  const handleCopyRoomCode = async () => {
+    try {
+      await navigator.clipboard.writeText(room.roomId);
+      noticeStore.pushNotice({
+        type: "SUCCESS",
+        message: "Đã sao chép mã phòng",
+        durationMs: 2500,
+      });
+    } catch {
+      noticeStore.pushNotice({
+        type: "INFO",
+        message: `Mã phòng: ${room.roomId}`,
+        durationMs: 3000,
+      });
+    }
+  };
 
   const handleSaveCategories = async () => {
     if (categoryDraft.length === 0) {
-      setError("Chọn ít nhất một chủ đề từ khóa.");
+      setError("Vui lòng chọn ít nhất một chủ đề từ khóa.");
       return;
     }
     setSavingCategories(true);
@@ -66,14 +89,20 @@ export const RoomLobby: React.FC = () => {
       await wsClient.send(MessageType.SET_CATEGORIES, {
         selectedCategories: categoryDraft,
       });
+      noticeStore.pushNotice({
+        type: "SUCCESS",
+        message: "Đã lưu cài đặt chủ đề",
+        durationMs: 2000,
+      });
     } catch (err: any) {
-      setError(err.message || "Không thể lưu chủ đề từ khóa");
+      setError(translateError(err));
     } finally {
       setSavingCategories(false);
     }
   };
 
   const handleStartGame = async () => {
+    if (starting) return;
     setStarting(true);
     setError(null);
     try {
@@ -82,7 +111,7 @@ export const RoomLobby: React.FC = () => {
         playerId,
       });
     } catch (err: any) {
-      setError(err.message || "Không thể bắt đầu game");
+      setError(translateError(err));
     } finally {
       setStarting(false);
     }
@@ -92,21 +121,28 @@ export const RoomLobby: React.FC = () => {
   const myReady =
     room.players.find((p) => p.playerId === playerId)?.ready ?? false;
   const handleToggleReady = async () => {
+    if (togglingReady) return;
+    setTogglingReady(true);
     try {
       await wsClient.send(MessageType.SET_READY, { ready: !myReady });
     } catch (err: any) {
-      setError(err.message || "Không thể đổi trạng thái sẵn sàng");
+      setError(translateError(err));
+    } finally {
+      setTogglingReady(false);
     }
   };
 
-  // TV10: host kick (WAITING-only) with a small confirmation
-  const [kickTarget, setKickTarget] = useState<string | null>(null);
+  // TV10: host kick (WAITING-only)
   const handleKick = async (targetPlayerId: string) => {
-    setKickTarget(null);
     try {
       await wsClient.send(MessageType.KICK_PLAYER, { targetPlayerId });
+      noticeStore.pushNotice({
+        type: "SUCCESS",
+        message: "Đã mời người chơi ra khỏi phòng.",
+        durationMs: 2500,
+      });
     } catch (err: any) {
-      setError(err.message || "Không thể mời người chơi khỏi phòng");
+      setError(translateError(err));
     }
   };
 
@@ -130,12 +166,21 @@ export const RoomLobby: React.FC = () => {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 max-w-6xl mx-auto p-4">
       {/* Left Column: Room info & Player List */}
       <div className="lg:col-span-2 space-y-4">
+        {/* Room Header Card */}
         <div className="glass-panel rounded-3xl p-5 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs px-3 py-1 rounded-xl bg-primary text-white font-mono font-black shadow-sm">
+              <span className="text-xs px-3 py-1 rounded-xl bg-primary text-white font-mono font-black shadow-sm tracking-wider">
                 #{room.roomId}
               </span>
+              <button
+                type="button"
+                onClick={handleCopyRoomCode}
+                className="text-xs font-black px-2.5 py-1 rounded-xl bg-white/90 hover:bg-white text-slate-700 border border-slate-200 shadow-sm transition-all flex items-center gap-1 hover:border-primary"
+                title="Sao chép mã phòng"
+              >
+                <span>📋</span> Sao chép
+              </button>
               <span className="text-xs px-2.5 py-1 rounded-xl bg-sky-100 text-sky-800 font-extrabold">
                 {room.playerCount} / {room.maxPlayers} Người
               </span>
@@ -157,37 +202,58 @@ export const RoomLobby: React.FC = () => {
             <button
               onClick={handleLeaveRoom}
               disabled={leaving}
-              className="bouncy-btn px-4 py-2.5 bg-white/80 hover:bg-white text-rose-600 border border-rose-200 font-extrabold text-xs rounded-2xl transition-all shadow-sm"
+              className="bouncy-btn px-4 py-2.5 bg-white/80 hover:bg-white text-rose-600 border border-rose-200 font-extrabold text-xs rounded-2xl transition-all shadow-sm disabled:opacity-50"
             >
               {leaving ? "Đang rời..." : "Rời phòng"}
             </button>
 
-            {/* TV10: non-host Ready toggle */}
+            {/* Non-host Ready toggle */}
             {!isHost && (
               <button
                 onClick={handleToggleReady}
-                className={`bouncy-btn px-5 py-2.5 font-black text-xs rounded-2xl transition-all border ${
+                disabled={togglingReady}
+                className={`bouncy-btn px-5 py-2.5 font-black text-xs rounded-2xl transition-all border disabled:opacity-50 ${
                   myReady
                     ? "bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-400 shadow-[0_4px_0_0_#059669]"
-                    : "bg-white/80 hover:bg-white text-emerald-700 border-emerald-300 shadow-sm"
+                    : "bg-white/90 hover:bg-white text-emerald-700 border-emerald-300 shadow-sm"
                 }`}
               >
-                {myReady ? "✓ Đã sẵn sàng" : "Sẵn sàng"}
+                {togglingReady
+                  ? "Đang lưu..."
+                  : myReady
+                    ? "✓ ĐÃ SẴN SÀNG (HỦY)"
+                    : "SẴN SÀNG"}
               </button>
             )}
 
+            {/* Host Start Game Button with explicit disabled reasons */}
             {isHost &&
               (() => {
                 const { allReady, unreadyCount } = readinessSummary(room);
-                const canStart = room.players.length >= 2 && allReady;
+                const hasCategories =
+                  (room.selectedCategories || []).length > 0;
+                const canStart =
+                  room.players.length >= 2 && allReady && hasCategories;
+
+                let disabledReason = "";
+                if (room.players.length < 2) {
+                  disabledReason =
+                    "Cần ít nhất 2 người chơi để bắt đầu (tối thiểu 2 người)";
+                } else if (!allReady) {
+                  disabledReason =
+                    unreadyCount === 1
+                      ? "Đang chờ 1 người sẵn sàng"
+                      : `Đang chờ ${unreadyCount} người sẵn sàng`;
+                } else if (!hasCategories) {
+                  disabledReason = "Vui lòng chọn ít nhất 1 chủ đề từ khóa";
+                }
+
                 return (
                   <div className="flex flex-col items-end gap-1">
                     <button
                       onClick={handleStartGame}
                       disabled={starting || !canStart}
-                      title={
-                        canStart ? "" : "Cần ít nhất 2 người và tất cả sẵn sàng"
-                      }
+                      title={canStart ? "" : disabledReason}
                       className="bouncy-btn px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#059669] transition-all disabled:opacity-50 flex items-center gap-1.5"
                     >
                       <span>🚀</span>
@@ -195,16 +261,9 @@ export const RoomLobby: React.FC = () => {
                         {starting ? "Đang bắt đầu..." : "BẮT ĐẦU GAME"}
                       </span>
                     </button>
-                    {!allReady && (
-                      <span className="text-[10px] font-bold text-amber-600">
-                        {unreadyCount === 1
-                          ? "Đang chờ 1 người sẵn sàng"
-                          : `Đang chờ ${unreadyCount} người sẵn sàng`}
-                      </span>
-                    )}
-                    {allReady && room.players.length < 2 && (
-                      <span className="text-[10px] font-bold text-amber-600">
-                        Cần ít nhất 2 người để bắt đầu
+                    {!canStart && (
+                      <span className="text-[11px] font-bold text-amber-600 max-w-xs text-right">
+                        {disabledReason}
                       </span>
                     )}
                   </div>
@@ -213,21 +272,28 @@ export const RoomLobby: React.FC = () => {
           </div>
         </div>
 
+        {/* Room Settings: Selected Categories */}
         <section className="glass-panel-game p-4 shadow-lg">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <div>
-              <h2 className="text-sm font-black text-slate-800">Chủ đề từ khóa</h2>
+              <h2 className="text-sm font-black text-slate-800">
+                Chủ đề từ khóa
+              </h2>
               <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
-                Từ trong các chủ đề đã chọn sẽ được trộn chung.
+                Từ trong các chủ đề đã chọn sẽ được xáo trộn ngẫu nhiên.
               </p>
             </div>
             {isHost && room.status === "WAITING" && (
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setCategoryDraft(CATEGORY_OPTIONS.map((category) => category.id))}
+                  onClick={() =>
+                    setCategoryDraft(
+                      CATEGORY_OPTIONS.map((category) => category.id),
+                    )
+                  }
                   disabled={savingCategories}
-                  className="rounded-xl px-3 py-1.5 text-[10px] font-extrabold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50"
+                  className="rounded-xl px-3 py-1.5 text-[10px] font-extrabold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50 transition-colors"
                 >
                   Chọn tất cả
                 </button>
@@ -235,7 +301,7 @@ export const RoomLobby: React.FC = () => {
                   type="button"
                   onClick={() => setCategoryDraft([])}
                   disabled={savingCategories || categoryDraft.length === 0}
-                  className="rounded-xl px-3 py-1.5 text-[10px] font-extrabold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  className="rounded-xl px-3 py-1.5 text-[10px] font-extrabold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
                 >
                   Bỏ chọn tất cả
                 </button>
@@ -245,18 +311,21 @@ export const RoomLobby: React.FC = () => {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {CATEGORY_OPTIONS.map((category) => {
               const selected = categoryDraft.includes(category.id);
-              const editable = isHost && room.status === "WAITING" && !savingCategories;
+              const editable =
+                isHost && room.status === "WAITING" && !savingCategories;
               return (
                 <button
                   key={category.id}
                   type="button"
                   aria-pressed={selected}
                   disabled={!editable}
-                  onClick={() => setCategoryDraft((current) =>
-                    selected
-                      ? current.filter((id) => id !== category.id)
-                      : [...current, category.id],
-                  )}
+                  onClick={() =>
+                    setCategoryDraft((current) =>
+                      selected
+                        ? current.filter((id) => id !== category.id)
+                        : [...current, category.id],
+                    )
+                  }
                   className={`rounded-2xl border px-3 py-2.5 text-left flex items-center gap-2 transition-all disabled:cursor-default ${
                     selected
                       ? "bg-indigo-600 text-white border-indigo-500 shadow-md"
@@ -264,8 +333,12 @@ export const RoomLobby: React.FC = () => {
                   }`}
                 >
                   <span>{category.icon}</span>
-                  <span className="text-xs font-extrabold">{category.label}</span>
-                  {selected && <span className="ml-auto text-xs">✓</span>}
+                  <span className="text-xs font-extrabold">
+                    {category.label}
+                  </span>
+                  {selected && (
+                    <span className="ml-auto text-xs font-black">✓</span>
+                  )}
                 </button>
               );
             })}
@@ -273,13 +346,15 @@ export const RoomLobby: React.FC = () => {
           {isHost && room.status === "WAITING" && categoriesDirty && (
             <div className="mt-3 flex items-center justify-between gap-3">
               <span className="text-[10px] font-bold text-amber-700">
-                {categoryDraft.length === 0 ? "Chọn ít nhất một chủ đề." : "Thay đổi chưa được lưu."}
+                {categoryDraft.length === 0
+                  ? "Chọn ít nhất một chủ đề."
+                  : "Thay đổi chưa được lưu."}
               </span>
               <button
                 type="button"
                 onClick={handleSaveCategories}
                 disabled={savingCategories || categoryDraft.length === 0}
-                className="rounded-xl px-4 py-2 text-xs font-black bg-emerald-500 hover:bg-emerald-600 text-white disabled:opacity-50"
+                className="rounded-xl px-4 py-2 text-xs font-black bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm disabled:opacity-50 transition-all"
               >
                 {savingCategories ? "Đang lưu..." : "Lưu chủ đề"}
               </button>
@@ -288,8 +363,14 @@ export const RoomLobby: React.FC = () => {
         </section>
 
         {error && (
-          <div className="p-3 bg-rose-500/20 border border-rose-500/40 text-rose-800 rounded-2xl text-xs font-bold">
-            ⚠️ {error}
+          <div className="p-3 bg-rose-500/20 border border-rose-500/40 text-rose-800 rounded-2xl text-xs font-bold flex items-center justify-between">
+            <span>⚠️ {error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="text-rose-700 hover:text-rose-900 font-black ml-2"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -297,64 +378,9 @@ export const RoomLobby: React.FC = () => {
           players={room.players}
           hostPlayerId={room.hostPlayerId}
           currentPlayerId={playerId}
+          onKick={handleKick}
+          canKick={isHost && room.status === "WAITING"}
         />
-
-        {/* TV10: host kick controls (WAITING-only) */}
-        {isHost && room.status === "WAITING" && (
-          <div className="glass-panel-game p-3 shadow-lg select-none">
-            <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <span>🛡️</span> Quản lý phòng (Chủ phòng)
-            </h4>
-            <div className="flex flex-wrap gap-1.5">
-              {room.players
-                .filter((p) => p.playerId !== room.hostPlayerId)
-                .map((p) => (
-                  <div
-                    key={p.playerId}
-                    className="flex items-center gap-1.5 bg-white/70 border border-slate-200 rounded-xl px-2 py-1"
-                  >
-                    <span className="text-xs font-bold text-slate-700">
-                      {p.username}
-                    </span>
-                    <span
-                      className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${p.ready ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
-                    >
-                      {p.ready ? "✓ Sẵn sàng" : "Chưa"}
-                    </span>
-                    {kickTarget === p.playerId ? (
-                      <span className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleKick(p.playerId)}
-                          className="text-[10px] font-black text-rose-600 hover:text-rose-700 underline"
-                        >
-                          Xác nhận
-                        </button>
-                        <button
-                          onClick={() => setKickTarget(null)}
-                          className="text-[10px] font-bold text-slate-400 hover:text-slate-600 underline"
-                        >
-                          Hủy
-                        </button>
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => setKickTarget(p.playerId)}
-                        className="text-[10px] font-bold text-rose-500 hover:text-rose-600 hover:underline"
-                        title={`Mời ${p.username} khỏi phòng`}
-                      >
-                        Mời ra
-                      </button>
-                    )}
-                  </div>
-                ))}
-              {room.players.length <= 1 && (
-                <span className="text-xs text-slate-400 italic">
-                  Chỉ có chủ phòng trong phòng.
-                </span>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Right Column: Chat Panel */}

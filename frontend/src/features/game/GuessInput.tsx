@@ -1,8 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { wsClient } from '../../websocket/WebSocketClient';
-import { MessageType } from '../../websocket/protocol';
-import { usePlayerStore } from '../../store/playerStore';
-import { useGuessStore, guessStore, GuessEntry, GuessResultStatus } from '../../store/guessStore';
+import React, { useState, useRef, useEffect } from "react";
+import { wsClient } from "../../websocket/WebSocketClient";
+import { MessageType } from "../../websocket/protocol";
+import { usePlayerStore } from "../../store/playerStore";
+import {
+  useGuessStore,
+  guessStore,
+  GuessEntry,
+  GuessResultStatus,
+} from "../../store/guessStore";
 
 interface GuessInputProps {
   roomId: string;
@@ -11,19 +16,20 @@ interface GuessInputProps {
   hasGuessed?: boolean;
 }
 
-const isOwnPending = (entry: GuessEntry) => entry.result === undefined && !entry.isCorrect;
+const isOwnPending = (entry: GuessEntry) =>
+  entry.result === undefined && !entry.isCorrect;
 
 /** Renders a locally-submitted guess annotated with the private server result. */
 const GuessFeedback: React.FC<{ entry: GuessEntry }> = ({ entry }) => {
   switch (entry.result) {
-    case 'CORRECT':
+    case "CORRECT":
       return (
         <div className="p-1.5 rounded-xl bg-emerald-500/25 border border-emerald-400/50 text-emerald-200 text-xs font-black shadow-sm flex items-center gap-1.5">
           <span className="text-emerald-300">✓</span>
           <span>Chính xác! +{entry.scoreDelta ?? 0} điểm</span>
         </div>
       );
-    case 'CLOSE':
+    case "CLOSE":
       return (
         <div className="p-1.5 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-200 text-xs font-bold shadow-sm flex items-center gap-1.5">
           <span className="text-amber-300">~</span>
@@ -32,7 +38,7 @@ const GuessFeedback: React.FC<{ entry: GuessEntry }> = ({ entry }) => {
           </span>
         </div>
       );
-    case 'WRONG':
+    case "WRONG":
       return (
         <div className="p-1.5 rounded-xl bg-rose-500/15 border border-rose-400/40 text-rose-200 text-xs font-bold flex items-center gap-1.5">
           <span className="text-rose-300">✕</span>
@@ -41,35 +47,35 @@ const GuessFeedback: React.FC<{ entry: GuessEntry }> = ({ entry }) => {
           </span>
         </div>
       );
-    case 'ALREADY_GUESSED':
+    case "ALREADY_GUESSED":
       return (
         <div className="p-1.5 rounded-xl bg-emerald-500/15 border border-emerald-400/40 text-emerald-200/90 text-xs font-bold flex items-center gap-1.5">
           <span>✓</span>
           <span>Bạn đã đoán đúng rồi!</span>
         </div>
       );
-    case 'TIME_EXPIRED':
+    case "TIME_EXPIRED":
       return (
         <div className="p-1.5 rounded-xl bg-white/10 border border-white/25 text-blue-100/80 text-xs font-bold flex items-center gap-1.5">
           <span>⏱</span>
           <span>Đã hết thời gian nhận đoán.</span>
         </div>
       );
-    case 'ROUND_NOT_ACTIVE':
+    case "ROUND_NOT_ACTIVE":
       return (
         <div className="p-1.5 rounded-xl bg-white/10 border border-white/25 text-blue-100/80 text-xs font-bold flex items-center gap-1.5">
           <span>⏸</span>
           <span>Vòng chơi hiện không còn hoạt động.</span>
         </div>
       );
-    case 'RATE_LIMITED':
+    case "RATE_LIMITED":
       return (
         <div className="p-1.5 rounded-xl bg-amber-500/15 border border-amber-400/40 text-amber-200 text-xs font-bold flex items-center gap-1.5">
           <span>⏳</span>
           <span>Bạn thao tác quá nhanh, vui lòng thử lại.</span>
         </div>
       );
-    case 'ERROR':
+    case "ERROR":
       return (
         <div className="p-1.5 rounded-xl bg-rose-500/15 border border-rose-400/40 text-rose-200 text-xs font-bold flex items-center gap-1.5">
           <span>⚠</span>
@@ -81,22 +87,28 @@ const GuessFeedback: React.FC<{ entry: GuessEntry }> = ({ entry }) => {
       return (
         <div className="text-xs font-semibold flex items-center gap-1.5 animate-pulse">
           <span className="text-sky-200 font-bold">{entry.username}:</span>
-          <span className="text-white bg-white/15 px-2 py-0.5 rounded-md font-mono">{entry.guess}</span>
+          <span className="text-white bg-white/15 px-2 py-0.5 rounded-md font-mono">
+            {entry.guess}
+          </span>
           <span className="text-white/50 italic">đang chờ...</span>
         </div>
       );
   }
 };
 
-export const GuessInput: React.FC<GuessInputProps> = ({ roomId, disabled, hasGuessed }) => {
+export const GuessInput: React.FC<GuessInputProps> = ({
+  roomId,
+  disabled,
+  hasGuessed,
+}) => {
   const { playerId, username } = usePlayerStore((s) => s);
   const guesses = useGuessStore((s) => s.guesses);
-  const [guess, setGuess] = useState('');
+  const [guess, setGuess] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [guesses]);
 
   const inputDisabled = disabled || hasGuessed;
@@ -106,7 +118,7 @@ export const GuessInput: React.FC<GuessInputProps> = ({ roomId, disabled, hasGue
     if (!guess.trim() || inputDisabled || submitting) return;
 
     const val = guess.trim();
-    setGuess('');
+    setGuess("");
     setSubmitting(true);
 
     // Record local guess immediately in guess stream
@@ -115,7 +127,7 @@ export const GuessInput: React.FC<GuessInputProps> = ({ roomId, disabled, hasGue
       id: entryId,
       roomId,
       playerId,
-      username: username || 'Bạn',
+      username: username || "Bạn",
       guess: val,
       timestamp: Date.now(),
     });
@@ -129,15 +141,16 @@ export const GuessInput: React.FC<GuessInputProps> = ({ roomId, disabled, hasGue
         guess: val,
       });
       guessStore.updateGuess(entryId, {
-        result: (response.status as GuessResultStatus) || 'WRONG',
+        result: (response.status as GuessResultStatus) || "WRONG",
         scoreDelta: response.scoreAwarded ?? 0,
-        isCorrect: response.status === 'CORRECT',
+        isCorrect: response.status === "CORRECT",
       });
     } catch (err: any) {
-      console.error('Submit guess error:', err);
+      console.error("Submit guess error:", err);
       // TV10: friendly copy for the common rate-limit case
       guessStore.updateGuess(entryId, {
-        result: err?.wsError?.code === 'RATE_LIMITED' ? 'RATE_LIMITED' : 'ERROR',
+        result:
+          err?.wsError?.code === "RATE_LIMITED" ? "RATE_LIMITED" : "ERROR",
       });
     } finally {
       setSubmitting(false);
@@ -153,10 +166,10 @@ export const GuessInput: React.FC<GuessInputProps> = ({ roomId, disabled, hasGue
         </span>
         <span className="text-[10px] font-bold text-emerald-300">
           {hasGuessed
-            ? 'Bạn đã đoán đúng 🎉'
+            ? "✓ Đã đoán đúng"
             : disabled
-              ? 'Bạn đang vẽ'
-              : 'Nhập từ dự đoán'}
+              ? "Người vẽ"
+              : "Đến lượt đoán"}
         </span>
       </div>
 
@@ -164,7 +177,9 @@ export const GuessInput: React.FC<GuessInputProps> = ({ roomId, disabled, hasGue
       <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-1.5 custom-scrollbar bg-black/10 text-xs">
         {guesses.length === 0 ? (
           <div className="h-full flex items-center justify-center text-xs text-white/50 italic text-center">
-            {disabled ? 'Người chơi khác đang suy nghĩ để đoán...' : 'Hãy nhập từ bạn đoán vào khung bên dưới!'}
+            {disabled
+              ? "Người chơi khác đang suy nghĩ để đoán..."
+              : "Hãy nhập từ bạn đoán vào khung bên dưới!"}
           </div>
         ) : (
           guesses.map((entry) => {
@@ -181,7 +196,9 @@ export const GuessInput: React.FC<GuessInputProps> = ({ roomId, disabled, hasGue
                   className="p-1.5 rounded-xl bg-emerald-500/25 border border-emerald-400/50 text-emerald-200 text-xs font-black shadow-sm flex items-center gap-1.5"
                 >
                   <span className="text-emerald-300">✓</span>
-                  <span>{entry.username} {entry.guess}</span>
+                  <span>
+                    {entry.username} {entry.guess}
+                  </span>
                 </div>
               );
             }
@@ -192,9 +209,16 @@ export const GuessInput: React.FC<GuessInputProps> = ({ roomId, disabled, hasGue
             }
 
             return (
-              <div key={entry.id} className="text-xs font-semibold flex items-center gap-1.5">
-                <span className="text-sky-200 font-bold">{entry.username}:</span>
-                <span className="text-white bg-white/15 px-2 py-0.5 rounded-md font-mono">{entry.guess}</span>
+              <div
+                key={entry.id}
+                className="text-xs font-semibold flex items-center gap-1.5"
+              >
+                <span className="text-sky-200 font-bold">
+                  {entry.username}:
+                </span>
+                <span className="text-white bg-white/15 px-2 py-0.5 rounded-md font-mono">
+                  {entry.guess}
+                </span>
               </div>
             );
           })
@@ -202,30 +226,39 @@ export const GuessInput: React.FC<GuessInputProps> = ({ roomId, disabled, hasGue
         <div ref={scrollRef} />
       </div>
 
-      {/* Input Form */}
-      <form onSubmit={handleSubmit} className="p-2 bg-slate-900/30 border-t border-white/15 flex gap-1.5 shrink-0">
-        <input
-          type="text"
-          disabled={inputDisabled}
-          placeholder={
-            hasGuessed
-              ? 'Bạn đã đoán đúng rồi! 🎉'
-              : disabled
-                ? 'Người vẽ không được đoán...'
-                : 'Lượt của bạn... (Nhập từ dự đoán)'
-          }
-          value={guess}
-          onChange={(e) => setGuess(e.target.value)}
-          className="flex-1 px-3 py-1.5 bg-white/90 text-slate-800 rounded-xl text-xs outline-none border border-transparent focus:border-emerald-500 font-bold placeholder:text-slate-400 disabled:opacity-50"
-        />
-        <button
-          type="submit"
-          disabled={inputDisabled || !guess.trim() || submitting}
-          className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs rounded-xl shadow-md transition-all disabled:opacity-40"
+      {/* Input or Distinct Status Banners */}
+      {hasGuessed ? (
+        <div className="p-3 bg-emerald-500/20 border-t border-emerald-400/40 flex items-center justify-center gap-2 text-emerald-300 font-extrabold text-xs shadow-inner">
+          <span className="text-base">✓</span>
+          <span>Bạn đã đoán đúng từ khóa! Đang đợi các bạn khác 🎉</span>
+        </div>
+      ) : disabled ? (
+        <div className="p-3 bg-slate-900/40 border-t border-white/15 flex items-center justify-center gap-2 text-amber-300 font-extrabold text-xs">
+          <span>🎨</span>
+          <span>Bạn đang là người vẽ — không thể đoán từ!</span>
+        </div>
+      ) : (
+        <form
+          onSubmit={handleSubmit}
+          className="p-2 bg-slate-900/30 border-t border-white/15 flex gap-1.5 shrink-0"
         >
-          {submitting ? '...' : 'ĐOÁN'}
-        </button>
-      </form>
+          <input
+            type="text"
+            disabled={inputDisabled || submitting}
+            placeholder="Nhập từ dự đoán của bạn..."
+            value={guess}
+            onChange={(e) => setGuess(e.target.value)}
+            className="flex-1 px-3 py-1.5 bg-white/90 text-slate-800 rounded-xl text-xs outline-none border border-transparent focus:border-emerald-500 font-bold placeholder:text-slate-400 disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={inputDisabled || !guess.trim() || submitting}
+            className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs rounded-xl shadow-md transition-all disabled:opacity-40"
+          >
+            {submitting ? "..." : "ĐOÁN"}
+          </button>
+        </form>
+      )}
     </div>
   );
 };

@@ -243,6 +243,12 @@ async function main() {
   await D.connect();
   await D.send('JOIN_ROOM', { roomId, playerId: pid.D, username: 'Dave' });
 
+  // TV10: non-host players must explicitly ready up before the host can start.
+  // The host is implicitly ready, so mark each joined participant ready here.
+  for (const player of [B, C, D]) {
+    await player.send('SET_READY', { ready: true });
+  }
+
   // ============ SECTION 2: GAME START (G1–G3) ============
   let drawerId = null, secretWord = null;
   try {

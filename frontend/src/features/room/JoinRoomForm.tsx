@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
-import { wsClient } from '../../websocket/WebSocketClient';
-import { MessageType } from '../../websocket/protocol';
-import { usePlayerStore } from '../../store/playerStore';
+import React, { useState, useRef } from "react";
+import { wsClient } from "../../websocket/WebSocketClient";
+import { MessageType } from "../../websocket/protocol";
+import { usePlayerStore } from "../../store/playerStore";
+import { translateError } from "../../utils/errorTranslation";
 
 interface JoinRoomFormProps {
   onSuccess?: () => void;
@@ -9,12 +10,12 @@ interface JoinRoomFormProps {
 
 export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
   const { playerId, username } = usePlayerStore((s) => s);
-  const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const fullRoomId = digits.join('').toUpperCase();
+  const fullRoomId = digits.join("").toUpperCase();
 
   const handleDigitChange = (index: number, val: string) => {
     const char = val.slice(-1).toUpperCase();
@@ -27,15 +28,22 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
     }
   };
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !digits[index] && index > 0) {
+  const handleKeyDown = (
+    index: number,
+    e: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (e.key === "Backspace" && !digits[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').trim().toUpperCase().slice(0, 6);
+    const pasted = e.clipboardData
+      .getData("text")
+      .trim()
+      .toUpperCase()
+      .slice(0, 6);
     const newDigits = [...digits];
     for (let i = 0; i < pasted.length; i++) {
       newDigits[i] = pasted[i];
@@ -46,12 +54,13 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
   };
 
   const executeJoin = async (targetRoomId: string) => {
+    if (loading) return;
     if (!username.trim()) {
-      setError('Vui lòng nhập tên người chơi trước.');
+      setError("Vui lòng nhập tên người chơi trước.");
       return;
     }
     if (!targetRoomId.trim()) {
-      setError('Vui lòng nhập mã phòng hợp lệ.');
+      setError("Vui lòng nhập mã phòng hợp lệ.");
       return;
     }
 
@@ -66,7 +75,7 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
       });
       if (onSuccess) onSuccess();
     } catch (err: any) {
-      setError(err.message || 'Không thể vào phòng');
+      setError(translateError(err));
     } finally {
       setLoading(false);
     }
@@ -90,7 +99,10 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
         <label className="text-xs font-extrabold text-slate-700 block mb-3">
           Nhập Mã Phòng 6 Ký Tự
         </label>
-        <div className="flex justify-center gap-1.5 sm:gap-2.5" onPaste={handlePaste}>
+        <div
+          className="flex justify-center gap-1.5 sm:gap-2.5"
+          onPaste={handlePaste}
+        >
           {digits.map((digit, i) => (
             <input
               key={i}
@@ -110,27 +122,43 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
           disabled={loading || fullRoomId.length < 3}
           className="bouncy-btn w-full max-w-xs mx-auto py-3 bg-primary hover:bg-primary-dark text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#1565C0] mt-4 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
         >
-          <span>{loading ? 'Đang vào...' : 'VÀO PHÒNG NGAY'}</span>
-          <span className="material-symbols-outlined text-base">arrow_forward</span>
+          <span>{loading ? "Đang vào..." : "VÀO PHÒNG NGAY"}</span>
+          <span className="material-symbols-outlined text-base">
+            arrow_forward
+          </span>
         </button>
       </div>
 
       {/* Public Rooms List */}
       <div className="bg-white/80 p-3 rounded-2xl border border-sky-200/80 shadow-sm">
         <div className="flex justify-between items-center mb-2 px-1">
-          <label className="text-xs font-extrabold text-slate-500 uppercase">Phòng Chờ Phổ Biến</label>
-          <span className="text-[10px] font-bold text-sky-600">Đang hoạt động</span>
+          <label className="text-xs font-extrabold text-slate-500 uppercase">
+            Phòng Chờ Phổ Biến
+          </label>
+          <span className="text-[10px] font-bold text-sky-600">
+            Đang hoạt động
+          </span>
         </div>
         <div className="space-y-2 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
           {[
-            { id: 'VM5CZD', name: 'Phòng Vui Vẻ #VM5CZD', players: '4/8 ng', topic: 'Tiếng Việt' },
-            { id: 'DANK99', name: 'Hội Họa Sĩ Pro #DANK99', players: '6/8 ng', topic: 'Anime' },
+            {
+              id: "VM5CZD",
+              name: "Phòng Vui Vẻ #VM5CZD",
+              players: "4/8 ng",
+              topic: "Tiếng Việt",
+            },
+            {
+              id: "DANK99",
+              name: "Hội Họa Sĩ Pro #DANK99",
+              players: "6/8 ng",
+              topic: "Anime",
+            },
           ].map((room) => (
             <div
               key={room.id}
               onClick={() => {
-                const chars = room.id.split('');
-                const newDigits = ['', '', '', '', '', ''];
+                const chars = room.id.split("");
+                const newDigits = ["", "", "", "", "", ""];
                 chars.forEach((c, idx) => (newDigits[idx] = c));
                 setDigits(newDigits);
               }}
@@ -142,7 +170,9 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
                   <div className="font-bold text-xs text-slate-800 group-hover:text-primary transition-colors">
                     {room.name}
                   </div>
-                  <div className="text-[10px] text-slate-400 font-semibold">{room.topic}</div>
+                  <div className="text-[10px] text-slate-400 font-semibold">
+                    {room.topic}
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -160,4 +190,3 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
     </form>
   );
 };
-

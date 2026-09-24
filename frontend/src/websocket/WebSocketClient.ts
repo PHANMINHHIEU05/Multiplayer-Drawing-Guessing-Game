@@ -18,6 +18,14 @@ interface PendingRequest {
 
 export type BinaryMessageHandler = (buffer: ArrayBuffer) => void;
 
+function defaultWebSocketEndpoint(useSameOrigin: boolean): string {
+  if (useSameOrigin && typeof window !== "undefined" && window.location?.host) {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}/ws`;
+  }
+  return "ws://localhost:8080/ws";
+}
+
 export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
@@ -52,14 +60,17 @@ export class WebSocketClient {
 
   constructor(url?: string) {
     const env = (import.meta as any).env || {};
-    const poolRaw: string =
-      url || env.VITE_WS_URLS || env.VITE_WS_URL || "ws://localhost:8080/ws";
+    const configuredPool = url || env.VITE_WS_URLS || env.VITE_WS_URL;
+    const fallbackEndpoint = defaultWebSocketEndpoint(
+      env.VITE_WS_SAME_ORIGIN === "true",
+    );
+    const poolRaw: string = configuredPool || fallbackEndpoint;
     this.endpoints = String(poolRaw)
       .split(",")
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
     if (this.endpoints.length === 0) {
-      this.endpoints = ["ws://localhost:8080/ws"];
+      this.endpoints = [fallbackEndpoint];
     }
     this.url = this.endpoints[0];
     console.log(
@@ -80,6 +91,12 @@ export class WebSocketClient {
     this.endpointIndex = (this.endpointIndex + 1) % this.endpoints.length;
     this.url = this.endpoints[this.endpointIndex];
     connectionStore.setStatus("FAILING_OVER");
+    noticeStore.pushNotice({
+      id: "connection_reconnecting",
+      type: "WARNING",
+      message: "Đang chuyển sang máy chủ dự phòng...",
+      durationMs: 0,
+    });
     console.warn(`[WebSocket] FAILOVER: switching to ${this.url}`);
     return true;
   }
@@ -454,7 +471,8 @@ export class WebSocketClient {
                     if (
                       gameResponse.status === "PLAYING" &&
                       gameResponse.currentRound &&
-                      (!gameResponse.roundPhase || gameResponse.roundPhase === "DRAWING")
+                      (!gameResponse.roundPhase ||
+                        gameResponse.roundPhase === "DRAWING")
                     ) {
                       this.recoverCanvas(gameResponse.currentRound);
                     }

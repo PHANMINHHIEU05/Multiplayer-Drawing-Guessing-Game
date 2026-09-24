@@ -4,6 +4,8 @@ export interface Player {
   isHost?: boolean;
   /** TV10: authoritative server-side lobby readiness. */
   ready?: boolean;
+  /** Player connection presence state. */
+  connected?: boolean;
 }
 
 export type RoomStatus =

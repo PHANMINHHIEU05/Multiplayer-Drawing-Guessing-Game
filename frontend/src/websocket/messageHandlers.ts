@@ -14,6 +14,7 @@ import { ChatMessage } from "../types/chat";
 import { metricsStore } from "../store/metricsStore";
 import { noticeStore } from "../store/noticeStore";
 import { reactionStore } from "../store/reactionStore";
+import { translateError } from "../utils/errorTranslation";
 
 export function setupMessageHandlers(
   onResponse?: (response: WSResponse) => void,
@@ -79,14 +80,15 @@ export function setupMessageHandlers(
             roomStore.updatePlayers(updatedPlayers);
           }
         }
-        chatStore.addMessage({
-          roomId: response.roomId || "",
-          playerId: "system",
-          username: "System",
-          content: `${response.username || "A player"} has joined the room.`,
-          type: "SYSTEM",
-          createdAt: Date.now(),
-        });
+        const joinedUser = response.username || "Người chơi";
+        const myPlayerId = playerStore.getState().playerId;
+        if (response.playerId !== myPlayerId) {
+          noticeStore.pushNotice({
+            type: "INFO",
+            message: `${joinedUser} đã vào phòng.`,
+            durationMs: 3000,
+          });
+        }
         break;
       }
 
@@ -212,7 +214,14 @@ export function setupMessageHandlers(
           playerCount: response.playerCount || players.length,
           selectedCategories: Array.isArray(response.selectedCategories)
             ? response.selectedCategories
-            : currentRoom?.selectedCategories || ["ANIMALS", "FOOD", "OBJECTS", "PLACES", "NATURE", "TECHNOLOGY"],
+            : currentRoom?.selectedCategories || [
+                "ANIMALS",
+                "FOOD",
+                "OBJECTS",
+                "PLACES",
+                "NATURE",
+                "TECHNOLOGY",
+              ],
         });
         // reset ALL match-specific frontend state
         gameStore.clearGame();
@@ -258,14 +267,29 @@ export function setupMessageHandlers(
         const previous = gameStore.getState().gameState;
         const phase = response.roundPhase || "DRAWING";
         const phaseOrder: Record<string, number> = {
-          WORD_SELECTION: 0, COUNTDOWN: 1, DRAWING: 2, ROUND_RECAP: 3,
+          WORD_SELECTION: 0,
+          COUNTDOWN: 1,
+          DRAWING: 2,
+          ROUND_RECAP: 3,
         };
-        const sameMatch = previous && response.gameId && previous.gameId === response.gameId;
-        if (sameMatch && (Number(response.currentRound || 0) < previous.currentRound ||
-          (Number(response.currentRound || 0) === previous.currentRound &&
-            (phaseOrder[phase] ?? 0) < (phaseOrder[previous.roundPhase || "DRAWING"] ?? 0)))) break;
-        if (previous && response.gameId && previous.gameId && previous.gameId !== response.gameId &&
-          response.type !== MessageType.GAME_STARTED) break;
+        const sameMatch =
+          previous && response.gameId && previous.gameId === response.gameId;
+        if (
+          sameMatch &&
+          (Number(response.currentRound || 0) < previous.currentRound ||
+            (Number(response.currentRound || 0) === previous.currentRound &&
+              (phaseOrder[phase] ?? 0) <
+                (phaseOrder[previous.roundPhase || "DRAWING"] ?? 0)))
+        )
+          break;
+        if (
+          previous &&
+          response.gameId &&
+          previous.gameId &&
+          previous.gameId !== response.gameId &&
+          response.type !== MessageType.GAME_STARTED
+        )
+          break;
         const gameState: GameState = {
           roomId: response.roomId || "",
           status: response.status || "IN_ROUND",
@@ -283,14 +307,20 @@ export function setupMessageHandlers(
             choiceId: choice.choiceId,
             displayWord: choice.displayWord,
           })),
-          roundRecap: response.roundRecap ? {
-            ...response.roundRecap,
-            correctPlayerIds: response.roundRecap.correctPlayerIds || [],
-            scoreDeltas: (response.roundRecap.scoreDeltas || []).map((delta: any) => ({
-              playerId: delta.playerId, username: delta.username,
-              roundDelta: Number(delta.roundDelta || 0), totalScore: Number(delta.totalScore || 0),
-            })),
-          } : undefined,
+          roundRecap: response.roundRecap
+            ? {
+                ...response.roundRecap,
+                correctPlayerIds: response.roundRecap.correctPlayerIds || [],
+                scoreDeltas: (response.roundRecap.scoreDeltas || []).map(
+                  (delta: any) => ({
+                    playerId: delta.playerId,
+                    username: delta.username,
+                    roundDelta: Number(delta.roundDelta || 0),
+                    totalScore: Number(delta.totalScore || 0),
+                  }),
+                ),
+              }
+            : undefined,
           awards: response.awards || [],
           hint: response.hint || "",
           secretWord: response.secretWord,
@@ -313,18 +343,39 @@ export function setupMessageHandlers(
           // viewer-filtered state immediately so the drawer has the full 10s selection.
           const activeRoomId = response.roomId || gameState.roomId;
           if (activeRoomId) {
-            wsClient.send(MessageType.GET_GAME_STATE, { roomId: activeRoomId, playerId: myPlayerId }, 5000).catch(() => {});
+            wsClient
+              .send(
+                MessageType.GET_GAME_STATE,
+                { roomId: activeRoomId, playerId: myPlayerId },
+                5000,
+              )
+              .catch(() => {});
           }
-          if (gameState.roundPhase === "WORD_SELECTION" && gameState.drawerId !== myPlayerId) {
-            noticeStore.pushNotice({ id: "game_started_guesser", type: "INFO", message: "Người vẽ đang chọn từ…", durationMs: 3000 });
-          } else if (gameState.drawerId === myPlayerId && gameState.secretWord) {
+          if (
+            gameState.roundPhase === "WORD_SELECTION" &&
+            gameState.drawerId !== myPlayerId
+          ) {
+            noticeStore.pushNotice({
+              id: "game_started_guesser",
+              type: "INFO",
+              message: "Người vẽ đang chọn từ…",
+              durationMs: 3000,
+            });
+          } else if (
+            gameState.drawerId === myPlayerId &&
+            gameState.secretWord
+          ) {
             noticeStore.pushNotice({
               id: "game_started_drawer",
               type: "SUCCESS",
               message: `Đến lượt bạn vẽ! Từ khóa: ${gameState.secretWord}`,
               durationMs: 6000,
             });
-          } else if (gameState.drawerId && gameState.drawerId !== myPlayerId && gameState.roundPhase === "DRAWING") {
+          } else if (
+            gameState.drawerId &&
+            gameState.drawerId !== myPlayerId &&
+            gameState.roundPhase === "DRAWING"
+          ) {
             const drawerPlayer = room?.players.find(
               (p) => p.playerId === gameState.drawerId,
             );
@@ -346,9 +397,19 @@ export function setupMessageHandlers(
       case MessageType.ROUND_RECAP_STARTED: {
         const payload = response.payload || response;
         const current = gameStore.getState().gameState;
-        if (current && ((payload.gameId && current.gameId && payload.gameId !== current.gameId) ||
-          (payload.currentRound && Number(payload.currentRound) < current.currentRound))) break;
-        if (response.type === MessageType.WORD_SELECTION_STARTED || response.type === MessageType.ROUND_STARTED) {
+        if (
+          current &&
+          ((payload.gameId &&
+            current.gameId &&
+            payload.gameId !== current.gameId) ||
+            (payload.currentRound &&
+              Number(payload.currentRound) < current.currentRound))
+        )
+          break;
+        if (
+          response.type === MessageType.WORD_SELECTION_STARTED ||
+          response.type === MessageType.ROUND_STARTED
+        ) {
           gameStore.clearDrawPoints();
           guessStore.clearGuesses();
           metricsStore.resetStrokeSequence();
@@ -356,17 +417,33 @@ export function setupMessageHandlers(
         }
         const rid = roomStore.getState().room?.roomId || current?.roomId;
         const pid = playerStore.getState().playerId;
-        if (rid) wsClient.send(MessageType.GET_GAME_STATE, { roomId: rid, playerId: pid }, 5000).catch(() => {});
+        if (rid)
+          wsClient
+            .send(
+              MessageType.GET_GAME_STATE,
+              { roomId: rid, playerId: pid },
+              5000,
+            )
+            .catch(() => {});
         break;
       }
 
       case MessageType.HINT_UPDATED: {
         const payload = response.payload || response;
         const current = gameStore.getState().gameState;
-        if (current && current.roundPhase === "DRAWING" &&
-          (!payload.gameId || !current.gameId || payload.gameId === current.gameId) &&
-          (!payload.currentRound || Number(payload.currentRound) === current.currentRound)) {
-          gameStore.setGameState({ ...current, hint: String(payload.hint || current.hint) });
+        if (
+          current &&
+          current.roundPhase === "DRAWING" &&
+          (!payload.gameId ||
+            !current.gameId ||
+            payload.gameId === current.gameId) &&
+          (!payload.currentRound ||
+            Number(payload.currentRound) === current.currentRound)
+        ) {
+          gameStore.setGameState({
+            ...current,
+            hint: String(payload.hint || current.hint),
+          });
         }
         break;
       }
@@ -374,12 +451,17 @@ export function setupMessageHandlers(
       case MessageType.REACTION: {
         const payload = response.payload || response;
         const current = gameStore.getState().gameState;
-        if (current && current.roundPhase === "DRAWING" &&
+        if (
+          current &&
+          current.roundPhase === "DRAWING" &&
           (!payload.gameId || payload.gameId === current.gameId) &&
-          Number(payload.roundNumber || payload.currentRound) === current.currentRound) {
+          Number(payload.roundNumber || payload.currentRound) ===
+            current.currentRound
+        ) {
           reactionStore.add({
             playerId: payload.playerId || "",
-            displayName: payload.displayName || payload.username || "Người chơi",
+            displayName:
+              payload.displayName || payload.username || "Người chơi",
             reactionType: payload.reactionType || "",
             gameId: payload.gameId || current.gameId || "",
             roundNumber: Number(payload.roundNumber || payload.currentRound),
@@ -601,6 +683,13 @@ export function setupMessageHandlers(
         const myPlayerId = playerStore.getState().playerId;
         const reconnectedId = response.playerId;
         const reconnectedUser = response.username || "Một người chơi";
+        const currentRoom = roomStore.getState().room;
+        if (currentRoom && reconnectedId) {
+          const updated = currentRoom.players.map((p) =>
+            p.playerId === reconnectedId ? { ...p, connected: true } : p,
+          );
+          roomStore.updatePlayers(updated);
+        }
         if (reconnectedId !== myPlayerId) {
           noticeStore.pushNotice({
             type: "INFO",
@@ -616,6 +705,13 @@ export function setupMessageHandlers(
         const myPlayerId = playerStore.getState().playerId;
         const disconnectedId = response.playerId;
         const disconnectedUser = response.username || "Một người chơi";
+        const currentRoom = roomStore.getState().room;
+        if (currentRoom && disconnectedId) {
+          const updated = currentRoom.players.map((p) =>
+            p.playerId === disconnectedId ? { ...p, connected: false } : p,
+          );
+          roomStore.updatePlayers(updated);
+        }
         if (disconnectedId !== myPlayerId) {
           noticeStore.pushNotice({
             type: "WARNING",
@@ -643,7 +739,11 @@ export function setupMessageHandlers(
             status: "FINISHED",
             roundPhase: "",
             gameId: response.gameId || current.gameId,
-            awards: response.awards || response.payload?.awards || current.awards || [],
+            awards:
+              response.awards ||
+              response.payload?.awards ||
+              current.awards ||
+              [],
             scores:
               formattedScores.length > 0 ? formattedScores : current.scores,
           });
@@ -672,9 +772,15 @@ export function setupMessageHandlers(
       }
 
       case MessageType.ERROR: {
-        const errMsg =
+        const rawErr =
           response.message || response.error?.message || "Error from server";
-        connectionStore.setLastError(errMsg);
+        const friendly = translateError(rawErr);
+        connectionStore.setLastError(friendly);
+        noticeStore.pushNotice({
+          type: "ERROR",
+          message: friendly,
+          durationMs: 4000,
+        });
         break;
       }
     }

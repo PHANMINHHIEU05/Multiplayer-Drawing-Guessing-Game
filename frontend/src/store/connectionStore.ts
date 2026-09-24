@@ -1,6 +1,12 @@
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from "react";
 
-export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING' | 'FAILING_OVER';
+export type ConnectionStatus =
+  | "DISCONNECTED"
+  | "CONNECTING"
+  | "CONNECTED"
+  | "RECONNECTING"
+  | "FAILING_OVER"
+  | "RECOVERING";
 
 interface ConnectionState {
   status: ConnectionStatus;
@@ -8,7 +14,7 @@ interface ConnectionState {
 }
 
 let state: ConnectionState = {
-  status: 'DISCONNECTED',
+  status: "DISCONNECTED",
   lastError: null,
 };
 
@@ -21,7 +27,11 @@ function notify() {
 export const connectionStore = {
   getState: () => state,
   setStatus: (status: ConnectionStatus) => {
-    state = { ...state, status, lastError: status === 'CONNECTED' ? null : state.lastError };
+    state = {
+      ...state,
+      status,
+      lastError: status === "CONNECTED" ? null : state.lastError,
+    };
     notify();
   },
   setLastError: (error: string | null) => {
@@ -34,10 +44,12 @@ export const connectionStore = {
   },
 };
 
-export function useConnectionStore<T>(selector: (state: ConnectionState) => T): T {
+export function useConnectionStore<T>(
+  selector: (state: ConnectionState) => T,
+): T {
   return useSyncExternalStore(
     connectionStore.subscribe,
     () => selector(connectionStore.getState()),
-    () => selector(connectionStore.getState())
+    () => selector(connectionStore.getState()),
   );
 }

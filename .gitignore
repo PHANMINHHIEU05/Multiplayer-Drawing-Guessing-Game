@@ -1,8 +1,10 @@
 # Environment & Secrets
 .env
+.env.production
 .env.local
 .env.*.local
 *.env
+*.pem
 
 # Dependencies & Local Cache
 **/node_modules/

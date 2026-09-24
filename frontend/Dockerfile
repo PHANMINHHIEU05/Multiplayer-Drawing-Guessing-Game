@@ -16,6 +16,8 @@ ENV VITE_WS_URL=$VITE_WS_URL
 # TV10 failover: optional comma-separated endpoint pool (defaults to both local gateways)
 ARG VITE_WS_URLS=ws://localhost:8080/ws,ws://localhost:8090/ws
 ENV VITE_WS_URLS=$VITE_WS_URLS
+ARG VITE_WS_SAME_ORIGIN=false
+ENV VITE_WS_SAME_ORIGIN=$VITE_WS_SAME_ORIGIN
 
 # Build production bundle
 RUN npm run build

@@ -1,0 +1,6 @@
+services:
+  caddy:
+    ports: !override
+      - "${HTTP_TEST_ADDRESS:-80}:80"
+    volumes: !override
+      - ./infra/caddy/Caddyfile.http:/etc/caddy/Caddyfile:ro,z

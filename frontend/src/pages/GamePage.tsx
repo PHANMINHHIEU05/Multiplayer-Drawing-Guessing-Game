@@ -11,7 +11,10 @@ import { DrawingToolbar } from "../features/drawing/DrawingToolbar";
 import { Scoreboard } from "../components/Scoreboard";
 import { ChatPanel } from "../features/chat/ChatPanel";
 import { GuessInput } from "../features/game/GuessInput";
-import { ReactionBar, RoundPhaseOverlay } from "../features/game/RoundPhaseOverlay";
+import {
+  ReactionBar,
+  RoundPhaseOverlay,
+} from "../features/game/RoundPhaseOverlay";
 import { ConnectionStatus } from "../components/ConnectionStatus";
 import { NetworkInspector } from "../components/NetworkInspector";
 import { wsClient, resetAllSessionState } from "../websocket/WebSocketClient";
@@ -21,6 +24,8 @@ import { metricsStore } from "../store/metricsStore";
 import { recoveryStore, useRecoveryStore } from "../store/recoveryStore";
 import { useConnectionStore } from "../store/connectionStore";
 import { reactionStore, useReactions } from "../store/reactionStore";
+import { noticeStore } from "../store/noticeStore";
+import { translateError } from "../utils/errorTranslation";
 import {
   encodeDrawStart,
   encodeDrawBatch,
@@ -41,6 +46,7 @@ export const GamePage: React.FC = () => {
   const [activeTool, setActiveTool] = useState<
     "pen" | "eraser" | "fill" | "line" | "circle" | "rect"
   >("pen");
+  const [showMobileScoreboard, setShowMobileScoreboard] = useState(false);
   const canvasHandleRef = useRef<DrawingCanvasHandle | null>(null);
 
   // Stroke Tracking for Binary Mode
@@ -69,11 +75,21 @@ export const GamePage: React.FC = () => {
     connStatus === "FAILING_OVER";
   // TV10: rematch is host-only; room.status WAITING (after ROOM_RESET) exits game screen via App routing
   const isHost = room?.hostPlayerId === playerId;
+  const [rematching, setRematching] = useState<boolean>(false);
   const handleRematch = async () => {
+    if (rematching) return;
+    setRematching(true);
     try {
       await wsClient.send("REMATCH", {});
     } catch (err: any) {
       console.error("Rematch failed:", err);
+      noticeStore.pushNotice({
+        type: "ERROR",
+        message: translateError(err),
+        durationMs: 3500,
+      });
+    } finally {
+      setRematching(false);
     }
   };
 
@@ -349,7 +365,14 @@ export const GamePage: React.FC = () => {
   /** Send a batch of draw points to the server via WebSocket according to active mode */
   const handleDrawBatch = useCallback(
     (points: DrawPoint[]) => {
-      if (!roomId || points.length === 0 || !isDrawer || (gameStore.getState().gameState?.roundPhase && gameStore.getState().gameState?.roundPhase !== "DRAWING")) return;
+      if (
+        !roomId ||
+        points.length === 0 ||
+        !isDrawer ||
+        (gameStore.getState().gameState?.roundPhase &&
+          gameStore.getState().gameState?.roundPhase !== "DRAWING")
+      )
+        return;
 
       const isEraserTool = activeTool === "eraser";
       const mode = metricsStore.getState().drawingMode;
@@ -440,12 +463,26 @@ export const GamePage: React.FC = () => {
         metricsStore.recordDrawBatchSent(pointsWithTool.length);
       }
     },
-    [roomId, playerId, currentRound, brushColor, brushSize, activeTool, isDrawer],
+    [
+      roomId,
+      playerId,
+      currentRound,
+      brushColor,
+      brushSize,
+      activeTool,
+      isDrawer,
+    ],
   );
 
   /** Send clear canvas command to the server */
   const handleClearCanvas = useCallback(() => {
-    if (!roomId || !isDrawer || (gameStore.getState().gameState?.roundPhase && gameStore.getState().gameState?.roundPhase !== "DRAWING")) return;
+    if (
+      !roomId ||
+      !isDrawer ||
+      (gameStore.getState().gameState?.roundPhase &&
+        gameStore.getState().gameState?.roundPhase !== "DRAWING")
+    )
+      return;
 
     remoteStrokeMapRef.current.clear();
     gameStore.clearDrawPoints();
@@ -474,7 +511,9 @@ export const GamePage: React.FC = () => {
   }, []);
 
   const handleSendReaction = useCallback((reactionType: string) => {
-    wsClient.send(MessageType.SEND_REACTION, { reactionType }, 3000).catch(() => {});
+    wsClient
+      .send(MessageType.SEND_REACTION, { reactionType }, 3000)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -526,19 +565,31 @@ export const GamePage: React.FC = () => {
     <div className="h-screen w-screen flex flex-col p-2 sm:p-3 md:p-4 gap-2 sm:gap-3 overflow-hidden text-slate-100 select-none">
       {/* TV7: reconnect / recovery banners — small, non-blocking */}
       {showReconnectBanner && (
-        <div className="shrink-0 px-4 py-2 rounded-2xl bg-rose-500/25 border border-rose-300/50 backdrop-blur-md text-rose-100 text-xs font-bold flex items-center gap-2 animate-pulse">
-          <span className="w-2 h-2 rounded-full bg-rose-400" />
-          {connStatus === "DISCONNECTED"
-            ? "Mất kết nối..."
-            : connStatus === "FAILING_OVER"
-              ? "Đang chuyển máy chủ..."
-              : "Đang kết nối lại..."}
+        <div className="shrink-0 px-4 py-2 rounded-2xl bg-rose-500/25 border border-rose-300/50 backdrop-blur-md text-rose-100 text-xs font-bold flex items-center justify-between gap-2 animate-pulse">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-rose-400" />
+            <span>
+              {connStatus === "DISCONNECTED"
+                ? "Mất kết nối mạng..."
+                : connStatus === "FAILING_OVER"
+                  ? "Đang chuyển sang máy chủ dự phòng..."
+                  : "Mất kết nối — đang thử kết nối lại..."}
+            </span>
+          </div>
+          {connStatus === "DISCONNECTED" && (
+            <button
+              onClick={() => resetAllSessionState()}
+              className="text-[10px] bg-white/20 hover:bg-white/30 text-white font-extrabold px-2.5 py-1 rounded-xl transition-all"
+            >
+              Về trang chủ
+            </button>
+          )}
         </div>
       )}
       {showRecoveryBanner && (
         <div className="shrink-0 px-4 py-2 rounded-2xl bg-amber-400/25 border border-amber-300/50 backdrop-blur-md text-amber-100 text-xs font-bold flex items-center gap-2 animate-pulse">
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-          Đang khôi phục ván chơi...
+          Đang đồng bộ lại ván chơi...
         </div>
       )}
       {/* Top Bar Header */}
@@ -550,6 +601,7 @@ export const GamePage: React.FC = () => {
             roomId={roomId}
           />
         </div>
+        {/* Desktop actions */}
         <div className="hidden md:flex items-center gap-2">
           <button className="btn-3d bg-white/20 hover:bg-white/30 text-white p-2 rounded-2xl border border-white/30 shadow-md">
             <span className="material-symbols-outlined text-lg">volume_up</span>
@@ -577,18 +629,75 @@ export const GamePage: React.FC = () => {
           </button>
           <ConnectionStatus />
         </div>
+
+        {/* Mobile actions */}
+        <div className="flex md:hidden items-center gap-1.5 shrink-0">
+          <button
+            onClick={() => setShowMobileScoreboard(true)}
+            className="btn-3d bg-white/20 hover:bg-white/30 text-white p-2 rounded-2xl border border-white/30 shadow-md text-sm"
+            title="Xem bảng xếp hạng"
+          >
+            🏆
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm("Bạn có chắc muốn rời phòng?")) {
+                wsClient
+                  .send("LEAVE_ROOM", {
+                    roomId,
+                    playerId,
+                    username: playerStore.getState().username || "Người chơi",
+                  })
+                  .catch(() => {});
+                resetAllSessionState();
+              }
+            }}
+            title="Rời phòng"
+            className="btn-3d bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 p-2 rounded-2xl border border-rose-400/40 shadow-md"
+          >
+            <span className="material-symbols-outlined text-base leading-none">
+              logout
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Main Game Arena Workspace */}
       <main className="flex-1 flex gap-2 sm:gap-3 min-h-0 relative">
-        {/* Left Column 1: Leaderboard (Bảng Xếp Hạng) */}
-        <div className="w-48 sm:w-56 h-full shrink-0">
+        {/* Left Column 1: Leaderboard (Bảng Xếp Hạng) - hidden on mobile, visible on md+ */}
+        <div className="hidden md:block w-48 sm:w-56 h-full shrink-0">
           <Scoreboard
             scores={gameState.scores}
             currentPlayerId={playerId}
             currentDrawerId={gameState.drawerId}
           />
         </div>
+
+        {/* Mobile Scoreboard Modal Overlay */}
+        {showMobileScoreboard && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="glass-panel-dark max-w-sm w-full rounded-3xl p-4 max-h-[80vh] flex flex-col gap-3 shadow-2xl border border-white/20">
+              <div className="flex justify-between items-center pb-2 border-b border-white/15">
+                <h3 className="font-black text-sm text-white flex items-center gap-1.5">
+                  <span>🏆</span> BẢNG XẾP HẠNG
+                </h3>
+                <button
+                  onClick={() => setShowMobileScoreboard(false)}
+                  className="text-white/70 hover:text-white font-black text-sm p-1 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <Scoreboard
+                  scores={gameState.scores}
+                  currentPlayerId={playerId}
+                  currentDrawerId={gameState.drawerId}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Left Column 2: Vertical Drawing Toolbar (Drawer Only) */}
         {canDraw && (
@@ -618,14 +727,34 @@ export const GamePage: React.FC = () => {
               externalPoints={isDrawer ? undefined : drawPoints}
               hideInternalToolbar={true}
             />
-            <RoundPhaseOverlay gameState={gameState} isDrawer={isDrawer} onSelectWord={handleSelectWord} />
-            {canGuess && !isGameOver && <ReactionBar onSend={handleSendReaction} />}
-            {reactions.filter((reaction) => reaction.gameId === gameState.gameId && reaction.roundNumber === gameState.currentRound).map((reaction) => (
-              <div key={reaction.id} className="pointer-events-none absolute z-20 motion-safe:animate-bounce" style={{ left: `${reaction.x}%`, top: `${reaction.y}%` }}>
-                <span className="text-4xl drop-shadow-lg">{reaction.reactionType}</span>
-                <span className="mt-1 block rounded-full bg-slate-900/75 px-2 py-0.5 text-center text-[10px] font-bold text-white">{reaction.displayName}</span>
-              </div>
-            ))}
+            <RoundPhaseOverlay
+              gameState={gameState}
+              isDrawer={isDrawer}
+              onSelectWord={handleSelectWord}
+            />
+            {canGuess && !isGameOver && (
+              <ReactionBar onSend={handleSendReaction} />
+            )}
+            {reactions
+              .filter(
+                (reaction) =>
+                  reaction.gameId === gameState.gameId &&
+                  reaction.roundNumber === gameState.currentRound,
+              )
+              .map((reaction) => (
+                <div
+                  key={reaction.id}
+                  className="pointer-events-none absolute z-20 motion-safe:animate-bounce"
+                  style={{ left: `${reaction.x}%`, top: `${reaction.y}%` }}
+                >
+                  <span className="text-4xl drop-shadow-lg">
+                    {reaction.reactionType}
+                  </span>
+                  <span className="mt-1 block rounded-full bg-slate-900/75 px-2 py-0.5 text-center text-[10px] font-bold text-white">
+                    {reaction.displayName}
+                  </span>
+                </div>
+              ))}
             {/* Floating NET chip / Network Inspector — anchored inside the canvas
                 area so it never covers the chat panel or the guess input. */}
             <NetworkInspector />
@@ -692,9 +821,10 @@ export const GamePage: React.FC = () => {
             {isHost ? (
               <button
                 onClick={handleRematch}
-                className="bouncy-btn w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#059669] transition-all"
+                disabled={rematching}
+                className="bouncy-btn w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#059669] transition-all disabled:opacity-50"
               >
-                CHƠI LẠI 🔁
+                {rematching ? "ĐANG BẮT ĐẦU LẠI..." : "CHƠI LẠI 🔁"}
               </button>
             ) : (
               <p className="text-xs font-bold text-slate-300 animate-pulse">
@@ -704,19 +834,33 @@ export const GamePage: React.FC = () => {
 
             {(gameState.awards || []).length > 0 && (
               <div className="rounded-2xl border border-amber-300/30 bg-white/5 p-3 text-left">
-                <p className="mb-2 text-xs font-black tracking-widest text-amber-200">GIẢI THƯỞNG</p>
+                <p className="mb-2 text-xs font-black tracking-widest text-amber-200">
+                  GIẢI THƯỞNG
+                </p>
                 <div className="space-y-1.5">
                   {gameState.awards?.map((award) => (
-                    <div key={`${award.type}-${award.playerId}`} className="flex justify-between gap-3 text-xs">
-                      <span className="font-bold text-white/80">{award.label}</span>
+                    <div
+                      key={`${award.type}-${award.playerId}`}
+                      className="flex justify-between gap-3 text-xs"
+                    >
+                      <span className="font-bold text-white/80">
+                        {award.label}
+                      </span>
                       <span className="text-right font-black text-amber-100">
                         {award.username}
-                        {award.type === "FASTEST_GUESS" && typeof award.elapsedMillis === "number" && award.elapsedMillis > 0
+                        {award.type === "FASTEST_GUESS" &&
+                        typeof award.elapsedMillis === "number" &&
+                        award.elapsedMillis > 0
                           ? ` · ${(award.elapsedMillis / 1000).toFixed(1)}s`
-                          : award.type === "WINNER" ? ` · ${award.value} điểm`
-                            : award.type === "BEST_ARTIST" ? ` · ${award.value} điểm vẽ`
-                              : award.type === "MOST_CORRECT" ? ` · ${award.value} lượt`
-                                : award.type === "BEST_STREAK" ? ` · ${award.value} vòng liên tiếp` : ""}
+                          : award.type === "WINNER"
+                            ? ` · ${award.value} điểm`
+                            : award.type === "BEST_ARTIST"
+                              ? ` · ${award.value} điểm vẽ`
+                              : award.type === "MOST_CORRECT"
+                                ? ` · ${award.value} lượt`
+                                : award.type === "BEST_STREAK"
+                                  ? ` · ${award.value} vòng liên tiếp`
+                                  : ""}
                       </span>
                     </div>
                   ))}
