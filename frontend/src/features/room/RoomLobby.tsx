@@ -10,6 +10,7 @@ import { PlayerList } from "../../components/PlayerList";
 import { ChatPanel } from "../chat/ChatPanel";
 import { noticeStore } from "../../store/noticeStore";
 import { translateError } from "../../utils/errorTranslation";
+import { copyToClipboard } from "../../utils/clipboard";
 
 const CATEGORY_OPTIONS = [
   { id: "ANIMALS", label: "Động vật", icon: "🐾" },
@@ -62,14 +63,14 @@ export const RoomLobby: React.FC = () => {
   );
 
   const handleCopyRoomCode = async () => {
-    try {
-      await navigator.clipboard.writeText(room.roomId);
+    const ok = await copyToClipboard(room.roomId);
+    if (ok) {
       noticeStore.pushNotice({
         type: "SUCCESS",
         message: "Đã sao chép mã phòng",
         durationMs: 2500,
       });
-    } catch {
+    } else {
       noticeStore.pushNotice({
         type: "INFO",
         message: `Mã phòng: ${room.roomId}`,
