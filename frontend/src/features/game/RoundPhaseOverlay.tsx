@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { GameState } from "../../types/game";
+import { audioManager } from "../../audio/AudioManager";
 
 interface Props {
   gameState: GameState;
@@ -35,6 +36,23 @@ export const RoundPhaseOverlay: React.FC<Props> = ({
     () => setSelected(false),
     [gameState.gameId, gameState.currentRound, phase],
   );
+
+  // Audio: Countdown tick and go SFX
+  const prevCountdownSecRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (phase === "COUNTDOWN") {
+      if (prevCountdownSecRef.current !== seconds) {
+        prevCountdownSecRef.current = seconds;
+        if (seconds > 0) {
+          audioManager.playSFX("countdown_tick");
+        } else if (seconds === 0) {
+          audioManager.playSFX("countdown_go");
+        }
+      }
+    } else {
+      prevCountdownSecRef.current = null;
+    }
+  }, [phase, seconds]);
 
   const drawerPlayer = gameState.scores?.find(
     (s) => s.playerId === gameState.drawerId,
@@ -115,7 +133,7 @@ export const RoundPhaseOverlay: React.FC<Props> = ({
           )}
           <div
             key={seconds}
-            className="mt-2 text-7xl font-black tabular-nums text-white motion-safe:animate-pulse"
+            className="mt-2 text-7xl font-black tabular-nums text-white animate-count-pulse inline-block drop-shadow-md"
           >
             {seconds > 0 ? seconds : isDrawer ? "VẼ!" : "ĐOÁN!"}
           </div>

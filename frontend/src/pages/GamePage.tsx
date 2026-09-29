@@ -33,6 +33,8 @@ import {
   generateStrokeId,
   decodeDrawingFrame,
 } from "../features/drawing/binaryCodec";
+import { SoundToggle } from "../components/SoundToggle";
+import { audioManager } from "../audio/AudioManager";
 
 export const GamePage: React.FC = () => {
   const gameState = useGameStore((s) => s.gameState);
@@ -561,6 +563,24 @@ export const GamePage: React.FC = () => {
   const isGameOver =
     gameState.status === "GAME_OVER" || gameState.status === "FINISHED";
 
+  // Audio: Background Music during gameplay & Game Over victory fanfare
+  const prevGameOverRef = useRef(false);
+  useEffect(() => {
+    if (isGameOver) {
+      if (!prevGameOverRef.current) {
+        prevGameOverRef.current = true;
+        audioManager.stopBGM();
+        audioManager.playSFX("gameover");
+      }
+    } else {
+      prevGameOverRef.current = false;
+      audioManager.playBGM("game");
+    }
+    return () => {
+      audioManager.stopBGM();
+    };
+  }, [isGameOver]);
+
   return (
     <div className="h-screen w-screen flex flex-col p-2 sm:p-3 md:p-4 gap-2 sm:gap-3 overflow-hidden text-slate-100 select-none">
       {/* TV7: reconnect / recovery banners — small, non-blocking */}
@@ -603,9 +623,7 @@ export const GamePage: React.FC = () => {
         </div>
         {/* Desktop actions */}
         <div className="hidden md:flex items-center gap-2">
-          <button className="btn-3d bg-white/20 hover:bg-white/30 text-white p-2 rounded-2xl border border-white/30 shadow-md">
-            <span className="material-symbols-outlined text-lg">volume_up</span>
-          </button>
+          <SoundToggle />
           <button className="btn-3d bg-white/20 hover:bg-white/30 text-white p-2 rounded-2xl border border-white/30 shadow-md">
             <span className="material-symbols-outlined text-lg">help</span>
           </button>
@@ -632,6 +650,7 @@ export const GamePage: React.FC = () => {
 
         {/* Mobile actions */}
         <div className="flex md:hidden items-center gap-1.5 shrink-0">
+          <SoundToggle size="sm" />
           <button
             onClick={() => setShowMobileScoreboard(true)}
             className="btn-3d bg-white/20 hover:bg-white/30 text-white p-2 rounded-2xl border border-white/30 shadow-md text-sm"
@@ -721,6 +740,7 @@ export const GamePage: React.FC = () => {
               isDrawer={canDraw}
               color={brushColor}
               size={brushSize}
+              activeTool={activeTool}
               isEraser={activeTool === "eraser"}
               onDrawBatch={handleDrawBatch}
               onClearCanvas={handleClearCanvas}

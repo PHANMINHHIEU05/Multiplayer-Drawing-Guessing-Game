@@ -8,6 +8,7 @@ import {
   GuessEntry,
   GuessResultStatus,
 } from "../../store/guessStore";
+import { audioManager } from "../../audio/AudioManager";
 
 interface GuessInputProps {
   roomId: string;
@@ -140,13 +141,20 @@ export const GuessInput: React.FC<GuessInputProps> = ({
         username,
         guess: val,
       });
+      const isCorrect = response.status === "CORRECT";
       guessStore.updateGuess(entryId, {
         result: (response.status as GuessResultStatus) || "WRONG",
         scoreDelta: response.scoreAwarded ?? 0,
-        isCorrect: response.status === "CORRECT",
+        isCorrect,
       });
+      if (isCorrect) {
+        audioManager.playSFX("correct");
+      } else {
+        audioManager.playSFX("wrong");
+      }
     } catch (err: any) {
       console.error("Submit guess error:", err);
+      audioManager.playSFX("wrong");
       // TV10: friendly copy for the common rate-limit case
       guessStore.updateGuess(entryId, {
         result:

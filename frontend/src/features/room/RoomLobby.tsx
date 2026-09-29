@@ -11,6 +11,8 @@ import { ChatPanel } from "../chat/ChatPanel";
 import { noticeStore } from "../../store/noticeStore";
 import { translateError } from "../../utils/errorTranslation";
 import { copyToClipboard } from "../../utils/clipboard";
+import { SoundToggle } from "../../components/SoundToggle";
+import { audioManager } from "../../audio/AudioManager";
 
 const CATEGORY_OPTIONS = [
   { id: "ANIMALS", label: "Động vật", icon: "🐾" },
@@ -53,6 +55,10 @@ export const RoomLobby: React.FC = () => {
   useEffect(() => {
     if (room?.selectedCategories) setCategoryDraft(room.selectedCategories);
   }, [room?.selectedCategories]);
+
+  useEffect(() => {
+    audioManager.playBGM("lobby");
+  }, []);
 
   if (!room) return null;
 
@@ -185,6 +191,7 @@ export const RoomLobby: React.FC = () => {
               <span className="text-xs px-2.5 py-1 rounded-xl bg-sky-100 text-sky-800 font-extrabold">
                 {room.playerCount} / {room.maxPlayers} Người
               </span>
+              <SoundToggle size="sm" />
             </div>
             <h1 className="text-2xl font-black text-slate-800 mt-2">
               {room.name || `Phòng #${room.roomId}`}
@@ -199,11 +206,12 @@ export const RoomLobby: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            {/* Nút rời phòng: căn phải, bên trên nút bắt đầu game, kích thước bằng 1/2 */}
             <button
               onClick={handleLeaveRoom}
               disabled={leaving}
-              className="bouncy-btn px-4 py-2.5 bg-white/80 hover:bg-white text-rose-600 border border-rose-200 font-extrabold text-xs rounded-2xl transition-all shadow-sm disabled:opacity-50"
+              className="bouncy-btn py-1.5 px-3 bg-white/80 hover:bg-white text-rose-600 border border-rose-200 font-extrabold text-xs rounded-xl transition-all shadow-sm disabled:opacity-50 w-28 sm:w-32 text-center"
             >
               {leaving ? "Đang rời..." : "Rời phòng"}
             </button>
@@ -213,7 +221,7 @@ export const RoomLobby: React.FC = () => {
               <button
                 onClick={handleToggleReady}
                 disabled={togglingReady}
-                className={`bouncy-btn px-5 py-2.5 font-black text-xs rounded-2xl transition-all border disabled:opacity-50 ${
+                className={`bouncy-btn py-2.5 px-4 font-black text-xs rounded-2xl transition-all border disabled:opacity-50 w-56 sm:w-64 text-center flex items-center justify-center gap-1.5 ${
                   myReady
                     ? "bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-400 shadow-[0_4px_0_0_#059669]"
                     : "bg-white/90 hover:bg-white text-emerald-700 border-emerald-300 shadow-sm"
@@ -239,23 +247,23 @@ export const RoomLobby: React.FC = () => {
                 let disabledReason = "";
                 if (room.players.length < 2) {
                   disabledReason =
-                    "Cần ít nhất 2 người chơi để bắt đầu (tối thiểu 2 người)";
+                    "Cần ít nhất 2 người chơi để bắt đầu\n(tối thiểu 2 người)";
                 } else if (!allReady) {
                   disabledReason =
                     unreadyCount === 1
-                      ? "Đang chờ 1 người sẵn sàng"
-                      : `Đang chờ ${unreadyCount} người sẵn sàng`;
+                      ? "Đang chờ 1 người\nsẵn sàng"
+                      : `Đang chờ ${unreadyCount} người\nsẵn sàng`;
                 } else if (!hasCategories) {
-                  disabledReason = "Vui lòng chọn ít nhất 1 chủ đề từ khóa";
+                  disabledReason = "Vui lòng chọn ít nhất\n1 chủ đề từ khóa";
                 }
 
                 return (
-                  <div className="flex flex-col items-end gap-1">
+                  <div className="flex flex-col items-end gap-1.5">
                     <button
                       onClick={handleStartGame}
                       disabled={starting || !canStart}
-                      title={canStart ? "" : disabledReason}
-                      className="bouncy-btn px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#059669] transition-all disabled:opacity-50 flex items-center gap-1.5"
+                      title={canStart ? "" : disabledReason.replace("\n", " ")}
+                      className="bouncy-btn py-2.5 px-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#059669] transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 w-56 sm:w-64"
                     >
                       <span>🚀</span>
                       <span>
@@ -263,7 +271,7 @@ export const RoomLobby: React.FC = () => {
                       </span>
                     </button>
                     {!canStart && (
-                      <span className="text-[11px] font-bold text-amber-600 max-w-xs text-right">
+                      <span className="text-[11px] font-bold text-amber-600 w-56 sm:w-64 text-center leading-tight whitespace-pre-line">
                         {disabledReason}
                       </span>
                     )}

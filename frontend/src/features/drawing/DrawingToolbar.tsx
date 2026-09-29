@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ColorWheelModal } from './ColorWheelModal';
+import { audioManager } from '../../audio/AudioManager';
 
 interface DrawingToolbarProps {
   color: string;
@@ -36,60 +37,101 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
   onColorChange,
   onSizeChange,
   onToolChange,
-  onUndo,
   onClearCanvas,
 }) => {
   const [showColorWheel, setShowColorWheel] = useState(false);
 
+  const handleToolSelect = (tool: 'pen' | 'eraser' | 'fill' | 'line' | 'circle' | 'rect') => {
+    audioManager.playSFX('tool_click');
+    onToolChange?.(tool);
+  };
+
   return (
     <>
-      <div className="glass-panel-game w-16 sm:w-20 flex flex-col items-center py-3 px-1.5 h-full shrink-0 gap-2 overflow-y-auto custom-scrollbar select-none">
-        {/* Tool Actions */}
-        <div className="flex flex-col gap-1.5 w-full">
+      <div className="glass-panel-game w-16 sm:w-20 flex flex-col items-center py-2.5 px-1.5 h-full shrink-0 gap-2 overflow-y-auto custom-scrollbar select-none">
+        {/* Tool Actions in 2-Column Grid */}
+        <div className="grid grid-cols-2 gap-1.5 w-full">
+          {/* Bút vẽ */}
           <button
             type="button"
-            title="Bút vẽ"
-            onClick={() => onToolChange && onToolChange('pen')}
+            title="Bút vẽ tự do"
+            onClick={() => handleToolSelect('pen')}
             className={`btn-3d w-full aspect-square rounded-xl flex items-center justify-center font-bold transition-all ${
               activeTool === 'pen'
                 ? 'bg-amber-400 text-slate-900 shadow-[0_3px_0_0_#d97706]'
                 : 'bg-white/20 text-white hover:bg-white/30'
             }`}
           >
-            <span className="material-symbols-outlined text-lg sm:text-xl">edit</span>
+            <span className="material-symbols-outlined text-base sm:text-lg">edit</span>
           </button>
 
+          {/* Tẩy nét */}
           <button
             type="button"
-            title="Tẩy nét"
-            onClick={() => onToolChange && onToolChange('eraser')}
+            title="Tẩy nét vẽ"
+            onClick={() => handleToolSelect('eraser')}
             className={`btn-3d w-full aspect-square rounded-xl flex items-center justify-center font-bold transition-all ${
               activeTool === 'eraser'
                 ? 'bg-amber-400 text-slate-900 shadow-[0_3px_0_0_#d97706]'
                 : 'bg-white/20 text-white hover:bg-white/30'
             }`}
           >
-            <span className="material-symbols-outlined text-lg sm:text-xl">ink_eraser</span>
+            <span className="material-symbols-outlined text-base sm:text-lg">ink_eraser</span>
           </button>
 
-          {onUndo && (
-            <button
-              type="button"
-              title="Hoàn tác"
-              onClick={onUndo}
-              className="btn-3d w-full aspect-square rounded-xl bg-white/20 text-white hover:bg-white/30 flex items-center justify-center transition-all"
-            >
-              <span className="material-symbols-outlined text-lg sm:text-xl">undo</span>
-            </button>
-          )}
-
+          {/* Hình chữ nhật */}
           <button
             type="button"
-            title="Xóa trắng bảng"
-            onClick={onClearCanvas}
+            title="Vẽ hình chữ nhật"
+            onClick={() => handleToolSelect('rect')}
+            className={`btn-3d w-full aspect-square rounded-xl flex items-center justify-center font-bold transition-all ${
+              activeTool === 'rect'
+                ? 'bg-amber-400 text-slate-900 shadow-[0_3px_0_0_#d97706]'
+                : 'bg-white/20 text-white hover:bg-white/30'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base sm:text-lg">rectangle</span>
+          </button>
+
+          {/* Hình tròn */}
+          <button
+            type="button"
+            title="Vẽ hình tròn"
+            onClick={() => handleToolSelect('circle')}
+            className={`btn-3d w-full aspect-square rounded-xl flex items-center justify-center font-bold transition-all ${
+              activeTool === 'circle'
+                ? 'bg-amber-400 text-slate-900 shadow-[0_3px_0_0_#d97706]'
+                : 'bg-white/20 text-white hover:bg-white/30'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base sm:text-lg">circle</span>
+          </button>
+
+          {/* Thùng sơn đổ màu */}
+          <button
+            type="button"
+            title="Thùng sơn đổ màu"
+            onClick={() => handleToolSelect('fill')}
+            className={`btn-3d w-full aspect-square rounded-xl flex items-center justify-center font-bold transition-all ${
+              activeTool === 'fill'
+                ? 'bg-amber-400 text-slate-900 shadow-[0_3px_0_0_#d97706]'
+                : 'bg-white/20 text-white hover:bg-white/30'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base sm:text-lg">format_color_fill</span>
+          </button>
+
+          {/* Xóa trắng bảng */}
+          <button
+            type="button"
+            title="Xóa trắng bảng vẽ"
+            onClick={() => {
+              audioManager.playSFX('tool_click');
+              onClearCanvas();
+            }}
             className="btn-3d w-full aspect-square rounded-xl bg-rose-500/80 hover:bg-rose-500 text-white flex items-center justify-center transition-all shadow-[0_2px_0_0_#9f1239]"
           >
-            <span className="material-symbols-outlined text-lg sm:text-xl">delete</span>
+            <span className="material-symbols-outlined text-base sm:text-lg">delete</span>
           </button>
         </div>
 
@@ -102,6 +144,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
               key={c}
               type="button"
               onClick={() => {
+                audioManager.playSFX('tool_click');
                 onColorChange(c);
                 if (activeTool === 'eraser' && onToolChange) {
                   onToolChange('pen');

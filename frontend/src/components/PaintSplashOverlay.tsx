@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { audioManager } from '../audio/AudioManager';
 
 interface PaintSplashOverlayProps {
   forcePlay?: boolean;
@@ -28,6 +29,18 @@ export const PaintSplashOverlay: React.FC<PaintSplashOverlayProps> = ({ forcePla
       setIsFading(false);
     }
   }, [forcePlay]);
+
+  // Audio: Play intro BGM while visible, stop when hidden
+  useEffect(() => {
+    if (isVisible) {
+      audioManager.playBGM('intro');
+    } else {
+      audioManager.stopBGM();
+    }
+    return () => {
+      audioManager.stopBGM();
+    };
+  }, [isVisible]);
 
   useEffect(() => {
     if (!isVisible) return;
@@ -416,6 +429,7 @@ export const PaintSplashOverlay: React.FC<PaintSplashOverlayProps> = ({ forcePla
   if (!isVisible) return null;
 
   const handleSkip = () => {
+    audioManager.stopBGM();
     setIsFading(true);
     onCompleteRef.current?.();
     setTimeout(() => {

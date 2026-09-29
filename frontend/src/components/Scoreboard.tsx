@@ -79,11 +79,6 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
                       Bạn
                     </span>
                   )}
-                  {isDrawer && (
-                    <span className="text-[9px] font-black text-amber-300 bg-amber-500/30 px-1 rounded border border-amber-400/40">
-                      Đang vẽ ✏️
-                    </span>
-                  )}
                 </div>
                 <div className="text-[11px] font-black text-amber-300">
                   {s.score}{" "}

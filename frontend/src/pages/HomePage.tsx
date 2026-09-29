@@ -1,9 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { usePlayerStore, playerStore } from '../store/playerStore';
 import { CreateRoomForm } from '../features/room/CreateRoomForm';
 import { JoinRoomForm } from '../features/room/JoinRoomForm';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { PaintSplashOverlay } from '../components/PaintSplashOverlay';
+import { SoundToggle } from '../components/SoundToggle';
+import { audioManager } from '../audio/AudioManager';
 
 const AVATAR_SEEDS = ['Dopamine', 'Felix', 'Luna', 'Oscar', 'Milo', 'Coco', 'Pepper', 'Simba', 'Gizmo'];
 
@@ -38,13 +40,22 @@ export const HomePage: React.FC = () => {
       ...prev,
       { sender: inputName || 'Bạn', text: chatInput.trim(), color: 'text-emerald-600' },
     ]);
+    audioManager.playSFX('chat');
     setChatInput('');
   };
 
   const handleIntroComplete = useCallback(() => {
     setHasRevealed(true);
     setReplayIntro(false);
+    audioManager.playBGM('lobby');
   }, []);
+
+  useEffect(() => {
+    // If revealed already (e.g. navigation back to home), ensure lobby BGM is playing
+    if (hasRevealed && !replayIntro) {
+      audioManager.playBGM('lobby');
+    }
+  }, [hasRevealed, replayIntro]);
 
   const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${AVATAR_SEEDS[avatarIndex]}`;
 
@@ -70,6 +81,7 @@ export const HomePage: React.FC = () => {
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => {
+                audioManager.stopBGM();
                 setHasRevealed(false);
                 setReplayIntro(true);
               }}
@@ -79,9 +91,7 @@ export const HomePage: React.FC = () => {
               <span>🎬</span>
               <span className="hidden sm:inline">Xem Intro Cọ Vẽ</span>
             </button>
-            <button className="bg-white/20 hover:bg-white/30 text-white p-2 sm:p-2.5 rounded-2xl backdrop-blur-md transition-all shadow-md">
-              <span className="material-symbols-outlined text-lg sm:text-xl">volume_up</span>
-            </button>
+            <SoundToggle />
             <button className="bg-white/20 hover:bg-white/30 text-white p-2 sm:p-2.5 rounded-2xl backdrop-blur-md transition-all shadow-md">
               <span className="material-symbols-outlined text-lg sm:text-xl">help</span>
             </button>
