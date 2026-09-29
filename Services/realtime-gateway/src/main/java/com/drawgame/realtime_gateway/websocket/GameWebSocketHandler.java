@@ -125,7 +125,12 @@ public class GameWebSocketHandler implements WebSocketHandler {
                     String boundPlayerId = connectionManager.getPlayerId(sessionId);
                     String boundUsername = connectionManager.getUsername(sessionId);
                     if (boundRoomId != null && boundPlayerId != null) {
-                        commandHandler.broadcastDisconnect(boundRoomId, sessionId, boundPlayerId, boundUsername);
+                        commandHandler.handleDisconnect(boundRoomId, sessionId, boundPlayerId, boundUsername)
+                                .subscribe(
+                                        ignored -> { },
+                                        error -> log.error(
+                                                "Unexpected disconnect cleanup failure: room={} player={}",
+                                                boundRoomId, boundPlayerId, error));
                     }
                     connectionManager.remove(sessionId);
                     rateLimiter.removeSession(sessionId); // TV8: drop limiter buckets

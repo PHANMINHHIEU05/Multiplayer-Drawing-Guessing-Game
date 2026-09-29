@@ -535,6 +535,36 @@ public class GameCommandHandler {
         final String resolvedLeavingUsername = !leavingUsername.isBlank() ? leavingUsername
                 : (storedUsername != null && !storedUsername.isBlank() ? storedUsername : "Người chơi");
 
+        return removePlayerFromRoomAndGame(roomId, playerId)
+                .map(response -> {
+                    publishPlayerLeft(response, roomId, sessionId, playerId, resolvedLeavingUsername);
+                    // Explicit leave keeps the socket open, so remove its room authorization.
+                    connectionManager.unbindSession(sessionId);
+                    return createRoomSuccessJson("ROOM_LEFT", response, requestId);
+                })
+                .onErrorResume(e -> Mono.just(createErrorJson(requestId, "LEAVE_ROOM_FAILED", e.getMessage())));
+    }
+
+    /**
+     * A closed WebSocket is a permanent leave. Removing Room membership makes any
+     * later RESUME fail instead of adding the disconnected player back to the roster.
+     */
+    public Mono<Void> handleDisconnect(String roomId, String sessionId, String playerId, String username) {
+        String resolvedUsername = username != null && !username.isBlank() ? username : "Người chơi";
+        return removePlayerFromRoomAndGame(roomId, playerId)
+                .doOnNext(response -> publishPlayerLeft(
+                        response, roomId, sessionId, playerId, resolvedUsername))
+                .doOnSuccess(ignored -> log.info(
+                        "Disconnected player permanently removed: room={} player={}", roomId, playerId))
+                .onErrorResume(e -> {
+                    log.error("Could not permanently remove disconnected player: room={} player={}",
+                            roomId, playerId, e);
+                    return Mono.empty();
+                })
+                .then();
+    }
+
+    private Mono<RoomResponse> removePlayerFromRoomAndGame(String roomId, String playerId) {
         return roomGrpcClient.leaveRoom(roomId, playerId)
                 .flatMap(response -> gameGrpcClient.removePlayer(roomId, playerId)
                         .doOnNext(gameState -> {
@@ -546,47 +576,41 @@ public class GameCommandHandler {
                             }
                         })
                         .onErrorResume(e -> {
-                            // Leaving the room must still complete even if Game Service is
-                            // temporarily unavailable. Its persisted state can be reconciled
-                            // independently; do not leave the WebSocket identity bound.
+                            // Room membership is authoritative for resume. Keep the leave successful
+                            // even if Game Service is temporarily unavailable.
                             log.error("Could not remove leaving player from game state: room={} player={}",
                                     roomId, playerId, e);
                             return Mono.empty();
                         })
-                        .then(Mono.fromSupplier(() -> {
-                            String responseJson = createRoomSuccessJson("ROOM_LEFT", response, requestId);
+                        .thenReturn(response));
+    }
 
-                            // TV6 + QA fix: PLAYER_LEFT control event — broadcast BEFORE unbinding
-                            // so other local room members still receive it, and fan out to remote Gateways.
-                            // Payload carries leaving username, updated hostPlayerId, and remaining players list.
-                            Map<String, Object> leftPayload = new HashMap<>();
-                            leftPayload.put("type", "PLAYER_LEFT");
-                            leftPayload.put("roomId", roomId);
-                            leftPayload.put("playerId", playerId);
-                            leftPayload.put("username", resolvedLeavingUsername);
-                            leftPayload.put("hostPlayerId", response.getHostId());
-                            leftPayload.put("players", response.getPlayersList().stream()
-                                    .map(p -> Map.of(
-                                            "playerId", p.getPlayerId(),
-                                            "username", p.getUsername(),
-                                            "ready", p.getReady()
-                                    ))
-                                    .collect(java.util.stream.Collectors.toList()));
-                            String leftBroadcastJson = toJson(leftPayload);
-                            controlBroadcast(roomId, sessionId, "PLAYER_LEFT", leftBroadcastJson);
+    private void publishPlayerLeft(
+            RoomResponse response,
+            String roomId,
+            String sessionId,
+            String playerId,
+            String username
+    ) {
+        Map<String, Object> leftPayload = new HashMap<>();
+        leftPayload.put("type", "PLAYER_LEFT");
+        leftPayload.put("roomId", roomId);
+        leftPayload.put("playerId", playerId);
+        leftPayload.put("username", username);
+        leftPayload.put("hostPlayerId", response.getHostId());
+        leftPayload.put("players", response.getPlayersList().stream()
+                .map(p -> Map.of(
+                        "playerId", p.getPlayerId(),
+                        "username", p.getUsername(),
+                        "ready", p.getReady()
+                ))
+                .collect(java.util.stream.Collectors.toList()));
+        controlBroadcast(roomId, sessionId, "PLAYER_LEFT", toJson(leftPayload));
 
-                            // TV3 Stabilization (GW-07): unbind session from room routing so this session
-                            // no longer receives drawing events or passes drawing authorization checks.
-                            connectionManager.unbindSession(sessionId);
-                            // TV3 Stabilization: evict drawing cache if room is now empty or game ended.
-                            // Safe to call even if cache entry doesn't exist.
-                            if (response.getPlayersList().isEmpty()) {
-                                drawingRoomStateCache.remove(roomId);
-                                log.info("DrawingRoomStateCache evicted — last player left room={}", roomId);
-                            }
-                            return responseJson;
-                        })))
-                .onErrorResume(e -> Mono.just(createErrorJson(requestId, "LEAVE_ROOM_FAILED", e.getMessage())));
+        if (response.getPlayersList().isEmpty()) {
+            drawingRoomStateCache.remove(roomId);
+            log.info("DrawingRoomStateCache evicted - last player left room={}", roomId);
+        }
     }
 
     private Mono<String> handleStartGame(String sessionId, JsonNode json, String requestId) {
@@ -991,15 +1015,6 @@ public class GameCommandHandler {
                 connectionManager.broadcastToRoom(roomId, payloadJson);
             }
         }
-    }
-
-    public void broadcastDisconnect(String roomId, String sessionId, String playerId, String username) {
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("type", "PLAYER_DISCONNECTED");
-        payload.put("roomId", roomId);
-        payload.put("playerId", playerId);
-        payload.put("username", username != null && !username.isBlank() ? username : "Người chơi");
-        controlBroadcast(roomId, sessionId, "PLAYER_DISCONNECTED", toJson(payload));
     }
 
     private String extractRequestId(JsonNode json) {

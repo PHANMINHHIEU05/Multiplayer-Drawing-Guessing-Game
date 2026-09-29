@@ -78,3 +78,43 @@ describe("PLAYER_GUESSED_CORRECTLY display name", () => {
     expect(guessStore.getState().guesses[0].username).toBe("Minh");
   });
 });
+
+describe("PLAYER_LEFT for the current player", () => {
+  afterEach(() => {
+    playerStore.clearSessionToken();
+    roomStore.clearRoom();
+    gameStore.clearGame();
+    guessStore.clearGuesses();
+  });
+
+  it("clears stale room membership so a fast reconnect cannot keep the player inside", () => {
+    playerStore.setPlayer("Dũng 2", "player-2");
+    playerStore.setSessionToken("stale-resume-token");
+    roomStore.setRoom({
+      roomId: "ROOM1",
+      status: "PLAYING",
+      hostPlayerId: "player-1",
+      players: [
+        { playerId: "player-1", username: "Dũng" },
+        { playerId: "player-2", username: "Dũng 2" },
+      ],
+      maxPlayers: 4,
+      roundCount: 3,
+      roundDuration: 60,
+      playerCount: 2,
+      selectedCategories: ["ANIMALS"],
+    });
+
+    setupMessageHandlers()({
+      type: MessageType.PLAYER_LEFT,
+      roomId: "ROOM1",
+      playerId: "player-2",
+      username: "Dũng 2",
+      players: [{ playerId: "player-1", username: "Dũng" }],
+    });
+
+    expect(roomStore.getState().room).toBeNull();
+    expect(playerStore.getSessionToken()).toBeNull();
+    expect(gameStore.getState().gameState).toBeNull();
+  });
+});

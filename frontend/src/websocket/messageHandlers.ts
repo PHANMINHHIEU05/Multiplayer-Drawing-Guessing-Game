@@ -98,6 +98,19 @@ export function setupMessageHandlers(
         const leftPlayerId = response.playerId;
         const leftUsername = response.username || "Người chơi";
 
+        // A disconnect is now a permanent leave. If a fast reconnect briefly resumes
+        // before server-side cleanup finishes, this authoritative event must still
+        // eject that same player locally and discard the stale resume credential.
+        if (leftPlayerId && leftPlayerId === myPlayerId) {
+          playerStore.clearSessionToken();
+          roomStore.clearRoom();
+          gameStore.clearGame();
+          chatStore.clearMessages();
+          guessStore.clearGuesses();
+          metricsStore.resetStrokeSequence();
+          break;
+        }
+
         if (response.players && Array.isArray(response.players)) {
           const updatedPlayers: Player[] = response.players.map((p: any) => ({
             playerId: p.playerId,

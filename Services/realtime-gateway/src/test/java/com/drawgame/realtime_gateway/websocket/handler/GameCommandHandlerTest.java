@@ -305,6 +305,33 @@ class GameCommandHandlerTest {
     }
 
     @Test
+    void handleDisconnect_RemovesMembershipGameStateAndBroadcastsPlayerLeft() {
+        RoomResponse remainingRoom = RoomResponse.newBuilder()
+                .setRoomId("room-1")
+                .setHostId("player-1")
+                .setStatus("PLAYING")
+                .addPlayers(PlayerMessage.newBuilder()
+                        .setPlayerId("player-1")
+                        .setUsername("Dũng")
+                        .setReady(true)
+                        .build())
+                .build();
+        when(roomGrpcClient.leaveRoom("room-1", "player-2")).thenReturn(Mono.just(remainingRoom));
+
+        StepVerifier.create(handler.handleDisconnect("room-1", "session-2", "player-2", "Dũng 2"))
+                .verifyComplete();
+
+        verify(roomGrpcClient).leaveRoom("room-1", "player-2");
+        verify(gameGrpcClient).removePlayer("room-1", "player-2");
+        verify(connectionManager).broadcastToRoomExcept(
+                eq("room-1"),
+                eq("session-2"),
+                argThat(message -> message.contains("PLAYER_LEFT")
+                        && message.contains("Dũng 2")
+                        && !message.contains("PLAYER_DISCONNECTED")));
+    }
+
+    @Test
     void handleSubmitGuess_WrongGuess_DoesNotForwardToChatService() throws Exception {
         String jsonStr = """
             {
