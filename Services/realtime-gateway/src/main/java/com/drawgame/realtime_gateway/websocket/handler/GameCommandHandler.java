@@ -536,39 +536,56 @@ public class GameCommandHandler {
                 : (storedUsername != null && !storedUsername.isBlank() ? storedUsername : "Người chơi");
 
         return roomGrpcClient.leaveRoom(roomId, playerId)
-                .map(response -> {
-                    String responseJson = createRoomSuccessJson("ROOM_LEFT", response, requestId);
+                .flatMap(response -> gameGrpcClient.removePlayer(roomId, playerId)
+                        .doOnNext(gameState -> {
+                            if ("PLAYING".equalsIgnoreCase(gameState.getStatus())
+                                    && !gameState.getDrawerId().isBlank()) {
+                                updateDrawingCache(roomId, gameState);
+                            } else if ("FINISHED".equalsIgnoreCase(gameState.getStatus())) {
+                                drawingRoomStateCache.remove(roomId);
+                            }
+                        })
+                        .onErrorResume(e -> {
+                            // Leaving the room must still complete even if Game Service is
+                            // temporarily unavailable. Its persisted state can be reconciled
+                            // independently; do not leave the WebSocket identity bound.
+                            log.error("Could not remove leaving player from game state: room={} player={}",
+                                    roomId, playerId, e);
+                            return Mono.empty();
+                        })
+                        .then(Mono.fromSupplier(() -> {
+                            String responseJson = createRoomSuccessJson("ROOM_LEFT", response, requestId);
 
-                    // TV6 + QA fix: PLAYER_LEFT control event — broadcast BEFORE unbinding
-                    // so other local room members still receive it, and fan out to remote Gateways.
-                    // Payload carries leaving username, updated hostPlayerId, and remaining players list.
-                    Map<String, Object> leftPayload = new HashMap<>();
-                    leftPayload.put("type", "PLAYER_LEFT");
-                    leftPayload.put("roomId", roomId);
-                    leftPayload.put("playerId", playerId);
-                    leftPayload.put("username", resolvedLeavingUsername);
-                    leftPayload.put("hostPlayerId", response.getHostId());
-                    leftPayload.put("players", response.getPlayersList().stream()
-                            .map(p -> Map.of(
-                                    "playerId", p.getPlayerId(),
-                                    "username", p.getUsername(),
-                                    "ready", p.getReady()
-                            ))
-                            .collect(java.util.stream.Collectors.toList()));
-                    String leftBroadcastJson = toJson(leftPayload);
-                    controlBroadcast(roomId, sessionId, "PLAYER_LEFT", leftBroadcastJson);
+                            // TV6 + QA fix: PLAYER_LEFT control event — broadcast BEFORE unbinding
+                            // so other local room members still receive it, and fan out to remote Gateways.
+                            // Payload carries leaving username, updated hostPlayerId, and remaining players list.
+                            Map<String, Object> leftPayload = new HashMap<>();
+                            leftPayload.put("type", "PLAYER_LEFT");
+                            leftPayload.put("roomId", roomId);
+                            leftPayload.put("playerId", playerId);
+                            leftPayload.put("username", resolvedLeavingUsername);
+                            leftPayload.put("hostPlayerId", response.getHostId());
+                            leftPayload.put("players", response.getPlayersList().stream()
+                                    .map(p -> Map.of(
+                                            "playerId", p.getPlayerId(),
+                                            "username", p.getUsername(),
+                                            "ready", p.getReady()
+                                    ))
+                                    .collect(java.util.stream.Collectors.toList()));
+                            String leftBroadcastJson = toJson(leftPayload);
+                            controlBroadcast(roomId, sessionId, "PLAYER_LEFT", leftBroadcastJson);
 
-                    // TV3 Stabilization (GW-07): unbind session from room routing so this session
-                    // no longer receives drawing events or passes drawing authorization checks.
-                    connectionManager.unbindSession(sessionId);
-                    // TV3 Stabilization: evict drawing cache if room is now empty or game ended.
-                    // Safe to call even if cache entry doesn't exist.
-                    if (response.getPlayersList().isEmpty()) {
-                        drawingRoomStateCache.remove(roomId);
-                        log.info("DrawingRoomStateCache evicted — last player left room={}", roomId);
-                    }
-                    return responseJson;
-                })
+                            // TV3 Stabilization (GW-07): unbind session from room routing so this session
+                            // no longer receives drawing events or passes drawing authorization checks.
+                            connectionManager.unbindSession(sessionId);
+                            // TV3 Stabilization: evict drawing cache if room is now empty or game ended.
+                            // Safe to call even if cache entry doesn't exist.
+                            if (response.getPlayersList().isEmpty()) {
+                                drawingRoomStateCache.remove(roomId);
+                                log.info("DrawingRoomStateCache evicted — last player left room={}", roomId);
+                            }
+                            return responseJson;
+                        })))
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "LEAVE_ROOM_FAILED", e.getMessage())));
     }
 

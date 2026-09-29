@@ -457,6 +457,90 @@ public class GameCoreService {
                 state.getRoomId(), state.getGameId(), round, drawerId);
     }
 
+    /**
+     * Removes a player who explicitly left the room from the authoritative match.
+     * Transient WebSocket disconnects do not call this method so reconnect remains possible.
+     */
+    public synchronized GameStateData removePlayer(String roomId, String playerId) {
+        GameStateData state = redisGameRepository.findState(roomId).orElse(null);
+        if (state == null) {
+            return GameStateData.builder().roomId(roomId).status("NO_GAME").roundPhase("").build();
+        }
+
+        List<String> oldOrder = new ArrayList<>(state.getPlayerOrder());
+        int leavingIndex = oldOrder.indexOf(playerId);
+        if (leavingIndex < 0) return state;
+
+        boolean currentDrawerLeft = Objects.equals(playerId, state.getDrawerId());
+        List<String> activePlayers = new ArrayList<>(oldOrder);
+        activePlayers.remove(playerId);
+        redisGameRepository.removePlayer(roomId, playerId, state.getCurrentRound());
+
+        Map<String, Integer> roundStartScores = new LinkedHashMap<>(state.getRoundStartScores());
+        roundStartScores.remove(playerId);
+        state.setRoundStartScores(roundStartScores);
+        state.setScores(redisGameRepository.getScores(roomId));
+
+        if (activePlayers.size() < 2) {
+            state.setPlayerOrder(activePlayers);
+            redisGameRepository.saveState(state);
+            log.info("GAME_FINISH_INSUFFICIENT_PLAYERS roomId={} leavingPlayer={} remaining={}",
+                    roomId, playerId, activePlayers.size());
+            return finishGame(roomId);
+        }
+
+        String nextActiveDrawer = activePlayers.get(leavingIndex % activePlayers.size());
+        if (currentDrawerLeft && !"ROUND_RECAP".equals(state.getRoundPhase())) {
+            roundScheduler.cancelAll(roomId);
+            if (state.getCurrentRound() >= state.getTotalRounds()) {
+                state.setPlayerOrder(alignPlayerOrder(activePlayers, nextActiveDrawer, state.getCurrentRound()));
+                redisGameRepository.saveState(state);
+                return finishGame(roomId);
+            }
+
+            int nextRound = state.getCurrentRound() + 1;
+            state.setPlayerOrder(alignPlayerOrder(activePlayers, nextActiveDrawer, nextRound));
+            log.info("ROUND_SKIPPED_DRAWER_LEFT roomId={} round={} leavingDrawer={} nextDrawer={}",
+                    roomId, state.getCurrentRound(), playerId, nextActiveDrawer);
+            prepareWordSelection(state, nextRound, nextActiveDrawer);
+            return state;
+        }
+
+        if (currentDrawerLeft) {
+            int nextRound = state.getCurrentRound() + 1;
+            state.setPlayerOrder(alignPlayerOrder(activePlayers, nextActiveDrawer, nextRound));
+        } else {
+            state.setPlayerOrder(alignPlayerOrder(
+                    activePlayers, state.getDrawerId(), state.getCurrentRound()));
+        }
+        redisGameRepository.saveState(state);
+
+        // If the only player who had not guessed left, do not keep the round waiting.
+        if ("DRAWING".equals(state.getRoundPhase())) {
+            int eligibleGuessers = state.getPlayerOrder().size() - 1;
+            if (eligibleGuessers > 0 && redisGameRepository.getGuessedCount(roomId) >= eligibleGuessers) {
+                endRound(roomId, state.getGameId(), state.getCurrentRound());
+                return redisGameRepository.findState(roomId).orElse(state);
+            }
+        }
+
+        return state;
+    }
+
+    /** Places the active drawer at the slot implied by the current round number. */
+    private List<String> alignPlayerOrder(List<String> cyclicOrder, String drawerId, int round) {
+        if (cyclicOrder.isEmpty()) return List.of();
+        int drawerIndex = cyclicOrder.indexOf(drawerId);
+        if (drawerIndex < 0) return List.copyOf(cyclicOrder);
+        int targetIndex = Math.floorMod(round - 1, cyclicOrder.size());
+        int shift = Math.floorMod(drawerIndex - targetIndex, cyclicOrder.size());
+        List<String> aligned = new ArrayList<>(cyclicOrder.size());
+        for (int index = 0; index < cyclicOrder.size(); index++) {
+            aligned.add(cyclicOrder.get((index + shift) % cyclicOrder.size()));
+        }
+        return aligned;
+    }
+
     @Transactional
     public synchronized GameStateData finishGame(String roomId) {
         GameStateData state = redisGameRepository.findState(roomId).orElse(null);

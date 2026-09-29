@@ -104,6 +104,21 @@ public class GameGrpcService extends GameServiceGrpc.GameServiceImplBase {
         }
     }
 
+    @Override
+    public void removePlayer(RemovePlayerRequest request, StreamObserver<GameStateResponse> responseObserver) {
+        try {
+            GameStateData state = gameCoreService.removePlayer(request.getRoomId(), request.getPlayerId());
+            responseObserver.onNext(mapToResponse(state));
+            responseObserver.onCompleted();
+        } catch (IllegalArgumentException e) {
+            responseObserver.onError(Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException());
+        } catch (Exception e) {
+            log.error("Error removing player {} from game in room {}",
+                    request.getPlayerId(), request.getRoomId(), e);
+            responseObserver.onError(Status.INTERNAL.withDescription("Internal error").asRuntimeException());
+        }
+    }
+
     private GameStateResponse mapToResponse(GameStateData state) {
         GameStateResponse.Builder builder = GameStateResponse.newBuilder()
                 .setRoomId(state.getRoomId())

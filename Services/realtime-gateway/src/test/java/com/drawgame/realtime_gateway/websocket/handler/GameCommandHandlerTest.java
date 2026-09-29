@@ -70,6 +70,8 @@ class GameCommandHandlerTest {
         // every test (unbound sessions are rejected by design now).
         lenient().when(connectionManager.getRoomId("session-1")).thenReturn("room-1");
         lenient().when(connectionManager.getPlayerId("session-1")).thenReturn("player-1");
+        lenient().when(gameGrpcClient.removePlayer(anyString(), anyString())).thenReturn(Mono.just(
+                GameStateResponse.newBuilder().setRoomId("room-1").setStatus("NO_GAME").build()));
     }
 
 
@@ -299,6 +301,7 @@ class GameCommandHandlerTest {
 
         verify(connectionManager).unbindSession("session-1");
         verify(drawingRoomStateCache).remove("room-1");
+        verify(gameGrpcClient).removePlayer("room-1", "player-1");
     }
 
     @Test

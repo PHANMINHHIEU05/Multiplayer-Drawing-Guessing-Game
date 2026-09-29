@@ -280,6 +280,14 @@ public class RedisGameRepository {
         redisTemplate.delete(List.of(guessedKey(roomId), guessTimesKey(roomId, round)));
     }
 
+    /** Remove a departed player from every live scoreboard/guess structure. */
+    public void removePlayer(String roomId, String playerId, int currentRound) {
+        redisTemplate.opsForHash().delete(scoresKey(roomId), playerId);
+        redisTemplate.opsForHash().delete(namesKey(roomId), playerId);
+        redisTemplate.opsForSet().remove(guessedKey(roomId), playerId);
+        redisTemplate.opsForHash().delete(guessTimesKey(roomId, currentRound), playerId);
+    }
+
     public void deleteGame(String roomId) {
         int rounds = findState(roomId).map(GameStateData::getCurrentRound).orElse(0);
         List<String> keys = new ArrayList<>(List.of(stateKey(roomId), scoresKey(roomId), guessedKey(roomId), namesKey(roomId)));
