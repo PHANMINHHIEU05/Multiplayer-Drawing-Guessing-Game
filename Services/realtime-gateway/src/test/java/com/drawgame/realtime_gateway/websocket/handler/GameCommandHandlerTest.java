@@ -211,12 +211,14 @@ class GameCommandHandlerTest {
 
     @Test
     void handleSubmitGuess_CorrectGuess_BroadcastsSafeEventWithoutSecretWord() throws Exception {
+        when(connectionManager.getUsername("session-1")).thenReturn("Minh");
         String jsonStr = """
             {
                 "type": "SUBMIT_GUESS",
                 "payload": {
                     "roomId": "room-1",
                     "playerId": "player-1",
+                    "username": "FakeName",
                     "guess": "máy bay"
                 }
             }
@@ -253,8 +255,14 @@ class GameCommandHandlerTest {
                 })
                 .verifyComplete();
 
-        // Broadcasts PLAYER_GUESSED_CORRECTLY without secret word
-        verify(connectionManager).broadcastToRoomExcept(eq("room-1"), eq("session-1"), contains("PLAYER_GUESSED_CORRECTLY"));
+        // Broadcasts the authoritative nickname without leaking the secret word.
+        verify(connectionManager).broadcastToRoomExcept(
+                eq("room-1"),
+                eq("session-1"),
+                argThat(message -> message.contains("PLAYER_GUESSED_CORRECTLY")
+                        && message.contains("\"username\":\"Minh\"")
+                        && !message.contains("FakeName")
+                        && !message.contains("máy bay")));
         // Drawing cache refreshed on correct guess
         verify(drawingRoomStateCache).update(eq("room-1"), any());
         // Chat service MUST NOT be called for correct guess

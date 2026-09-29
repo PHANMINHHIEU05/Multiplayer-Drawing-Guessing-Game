@@ -471,11 +471,22 @@ export function setupMessageHandlers(
       }
 
       case MessageType.PLAYER_GUESSED_CORRECTLY: {
+        const playerId = response.playerId || "";
+        const roomPlayer = roomStore
+          .getState()
+          .room?.players.find((player) => player.playerId === playerId);
+        const currentPlayer = playerStore.getState();
+        const username =
+          response.username?.trim() ||
+          roomPlayer?.username ||
+          (playerId === currentPlayer.playerId ? currentPlayer.username : "") ||
+          "Người chơi";
+
         guessStore.addGuess({
           id: `guess_${Date.now()}_${Math.random()}`,
           roomId: response.roomId || "",
-          playerId: response.playerId || "",
-          username: response.username || response.playerId || "Người chơi",
+          playerId,
+          username,
           guess: `đã đoán đúng từ khóa! (+${response.scoreAwarded || 0} điểm)`,
           isCorrect: true,
           timestamp: Date.now(),

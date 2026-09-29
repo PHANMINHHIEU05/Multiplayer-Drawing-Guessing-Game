@@ -717,7 +717,9 @@ public class GameCommandHandler {
         if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
             return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
         }
-        final String username = extractString(node, "username", ""); // display only, never identity
+        // Use the nickname bound during CREATE/JOIN/RESUME. The nickname in the
+        // request payload is intentionally ignored because it can be spoofed.
+        final String username = connectionManager.getUsername(sessionId);
         String guess = extractString(node, "guess", extractString(node, "content", ""));
 
         // TV8: guess input bounds (Vietnamese Unicode preserved; Game Service matching unchanged)
@@ -736,8 +738,10 @@ public class GameCommandHandler {
                     String status = response.getGuessStatus();
                     if ("CORRECT".equalsIgnoreCase(status)) {
                         // TV6: PLAYER_GUESSED_CORRECTLY is room-scoped — local + Redis fanout.
-                        // Payload intentionally contains NO answer text (only playerId + score).
-                        String broadcastMsg = createGuessCorrectBroadcastJson(roomId, playerId, response.getScoreAwarded());
+                        // Payload intentionally contains no answer text. It does include the
+                        // authoritative bound nickname so clients never have to display playerId.
+                        String broadcastMsg = createGuessCorrectBroadcastJson(
+                                roomId, playerId, username, response.getScoreAwarded());
                         controlBroadcast(roomId, sessionId, "PLAYER_GUESSED_CORRECTLY", broadcastMsg);
 
                         Map<String, Object> map = createGuessResultMap(roomId, playerId, status, response.getScoreAwarded(), requestId);
@@ -1132,11 +1136,13 @@ public class GameCommandHandler {
         return toJson(map);
     }
 
-    private String createGuessCorrectBroadcastJson(String roomId, String playerId, int scoreAwarded) {
+    private String createGuessCorrectBroadcastJson(
+            String roomId, String playerId, String username, int scoreAwarded) {
         Map<String, Object> map = new HashMap<>();
         map.put("type", "PLAYER_GUESSED_CORRECTLY");
         map.put("roomId", roomId);
         map.put("playerId", playerId);
+        map.put("username", username);
         map.put("scoreAwarded", scoreAwarded);
         return toJson(map);
     }
