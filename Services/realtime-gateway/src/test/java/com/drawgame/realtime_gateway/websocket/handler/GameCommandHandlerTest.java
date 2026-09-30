@@ -7,6 +7,7 @@ import com.drawgame.game.grpc.generated.GuessResponse;
 import com.drawgame.room.grpc.generated.PlayerMessage;
 import com.drawgame.room.grpc.generated.RoomResponse;
 import com.drawgame.realtime_gateway.connection.ConnectionManager;
+import com.drawgame.realtime_gateway.drawing.routing.DrawingRoomState;
 import com.drawgame.realtime_gateway.drawing.routing.DrawingRoomStateCache;
 import com.drawgame.realtime_gateway.grpc.ChatGrpcClient;
 import com.drawgame.realtime_gateway.grpc.GameGrpcClient;
@@ -22,6 +23,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -209,6 +212,39 @@ class GameCommandHandlerTest {
                     assertTrue(res.contains("Hi"));
                 })
                 .verifyComplete();
+    }
+
+    @Test
+    void handleDrawPoint_Fill_BroadcastsOperationUnchangedToOtherPlayers() throws Exception {
+        when(drawingRoomStateCache.get("room-1"))
+                .thenReturn(Optional.of(DrawingRoomState.playing("player-1", 1)));
+        JsonNode command = objectMapper.readTree("""
+                {
+                    "type": "DRAW_POINT",
+                    "payload": {
+                        "roomId": "room-1",
+                        "drawerId": "player-1",
+                        "point": {
+                            "x": 0.25,
+                            "y": 0.75,
+                            "color": "#ef4444",
+                            "size": 1,
+                            "isNewPath": true,
+                            "tool": "FILL"
+                        }
+                    }
+                }
+                """);
+
+        StepVerifier.create(handler.handleCommand("session-1", command))
+                .verifyComplete();
+
+        verify(connectionManager).broadcastToRoomExcept(
+                eq("room-1"),
+                eq("session-1"),
+                argThat(message -> message.contains("\"type\":\"DRAW_EVENT\"")
+                        && message.contains("\"tool\":\"FILL\"")
+                        && message.contains("\"color\":\"#ef4444\"")));
     }
 
     @Test

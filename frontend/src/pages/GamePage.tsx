@@ -379,6 +379,19 @@ export const GamePage: React.FC = () => {
       const isEraserTool = activeTool === "eraser";
       const mode = metricsStore.getState().drawingMode;
 
+      // Fill is a one-shot semantic operation. Binary drawing protocol v1 only
+      // supports strokes, so fills use the authorized JSON drawing path in all modes.
+      if (points.length === 1 && points[0].tool === "FILL") {
+        const req = createWSRequest(MessageType.DRAW_POINT, {
+          roomId,
+          drawerId: playerId,
+          point: points[0],
+        });
+        wsClient.sendRaw(JSON.stringify(req));
+        metricsStore.recordDrawBatchSent(1);
+        return;
+      }
+
       if (mode === "BINARY_BATCH") {
         const hasNewPath = points.some((p) => p.isNewPath);
         if (hasNewPath) {

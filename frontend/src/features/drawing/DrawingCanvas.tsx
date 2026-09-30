@@ -3,6 +3,7 @@ import { DrawPoint } from '../../types/game';
 import { usePointBatcher } from './usePointBatcher';
 import { generateStrokeId } from './binaryCodec';
 import { audioManager } from '../../audio/AudioManager';
+import { floodFillPixels, hexToRgbColor } from './floodFill';
 
 export interface DrawingCanvasHandle {
   clear: () => void;
@@ -23,104 +24,6 @@ interface DrawingCanvasProps {
 }
 
 const CANVAS_BG = '#ffffff';
-
-/**
- * Fast BFS Flood Fill using 32-bit pixel buffer comparison
- */
-function fastFloodFill(
-  ctx: CanvasRenderingContext2D,
-  startX: number,
-  startY: number,
-  fillColorHex: string
-) {
-  const width = ctx.canvas.width;
-  const height = ctx.canvas.height;
-  if (width === 0 || height === 0) return;
-
-  const startXInt = Math.floor(startX);
-  const startYInt = Math.floor(startY);
-  if (startXInt < 0 || startXInt >= width || startYInt < 0 || startYInt >= height) return;
-
-  const imgData = ctx.getImageData(0, 0, width, height);
-  const data = new Uint32Array(imgData.data.buffer);
-
-  // Convert hex color to 32-bit Little-Endian ABGR: (A << 24) | (B << 16) | (G << 8) | R
-  const cleanHex = fillColorHex.replace('#', '');
-  const r = parseInt(cleanHex.substring(0, 2), 16) || 0;
-  const g = parseInt(cleanHex.substring(2, 4), 16) || 0;
-  const b = parseInt(cleanHex.substring(4, 6), 16) || 0;
-  const fillVal = (255 << 24) | (b << 16) | (g << 8) | r;
-
-  const startIdx = startYInt * width + startXInt;
-  const targetVal = data[startIdx];
-
-  // If clicked color already matches target color
-  if (targetVal === fillVal) return;
-
-  const targetR = targetVal & 0xff;
-  const targetG = (targetVal >> 8) & 0xff;
-  const targetB = (targetVal >> 16) & 0xff;
-
-  const matches = (color: number) => {
-    if (color === fillVal) return false;
-    const cr = color & 0xff;
-    const cg = (color >> 8) & 0xff;
-    const cb = (color >> 16) & 0xff;
-    return (
-      Math.abs(cr - targetR) <= 32 &&
-      Math.abs(cg - targetG) <= 32 &&
-      Math.abs(cb - targetB) <= 32
-    );
-  };
-
-  const queue = new Int32Array(width * height);
-  let head = 0;
-  let tail = 0;
-
-  queue[tail++] = startIdx;
-  data[startIdx] = fillVal;
-
-  while (head < tail) {
-    const idx = queue[head++];
-    const x = idx % width;
-    const y = Math.floor(idx / width);
-
-    // North
-    if (y > 0) {
-      const up = idx - width;
-      if (matches(data[up])) {
-        data[up] = fillVal;
-        queue[tail++] = up;
-      }
-    }
-    // South
-    if (y < height - 1) {
-      const down = idx + width;
-      if (matches(data[down])) {
-        data[down] = fillVal;
-        queue[tail++] = down;
-      }
-    }
-    // West
-    if (x > 0) {
-      const left = idx - 1;
-      if (matches(data[left])) {
-        data[left] = fillVal;
-        queue[tail++] = left;
-      }
-    }
-    // East
-    if (x < width - 1) {
-      const right = idx + 1;
-      if (matches(data[right])) {
-        data[right] = fillVal;
-        queue[tail++] = right;
-      }
-    }
-  }
-
-  ctx.putImageData(imgData, 0, 0);
-}
 
 export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(({
   isDrawer,
@@ -148,7 +51,8 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   const [internalSize] = useState(4);
 
   const activeColor = controlledColor ?? internalColor;
-  const activeSize = isEraser ? (controlledSize ?? internalSize) * 2.5 : (controlledSize ?? internalSize);
+  const activeTool = tool ?? (isEraser ? 'eraser' : 'pen');
+  const activeSize = activeTool === 'eraser' ? (controlledSize ?? internalSize) * 2.5 : (controlledSize ?? internalSize);
 
   // Track the last rendered external point index to avoid re-rendering everything
   const lastRenderedIndexRef = useRef(0);
@@ -201,6 +105,14 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     const { x, y } = denormalizeCoords(point.x, point.y);
 
+    if (point.tool === 'FILL') {
+      const image = context.getImageData(0, 0, canvas.width, canvas.height);
+      if (floodFillPixels(image, x, y, hexToRgbColor(point.color))) {
+        context.putImageData(image, 0, 0);
+      }
+      return;
+    }
+
     const isEraserTool = point.tool === 'ERASER';
     if (isEraserTool) {
       context.globalCompositeOperation = 'destination-out';
@@ -241,6 +153,14 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     for (const point of points) {
       const x = point.x * width;
       const y = point.y * height;
+
+      if (point.tool === 'FILL') {
+        const image = ctx.getImageData(0, 0, width, height);
+        if (floodFillPixels(image, x, y, hexToRgbColor(point.color))) {
+          ctx.putImageData(image, 0, 0);
+        }
+        continue;
+      }
 
       if (point.tool === 'ERASER') {
         ctx.globalCompositeOperation = 'destination-out';
@@ -346,7 +266,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       }
       lastRenderedIndexRef.current = externalPoints.length;
     });
-  }, [externalPoints, drawPointOnCanvas]);
+  }, [externalPoints, drawPointOnCanvas, isDrawer]);
 
   // ─── Pointer Event Handlers (Drawer only) ──────────────────────────
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -365,9 +285,27 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     audioManager.playSFX('draw_start');
 
-    // Fill Tool (Flood Fill)
+    // Fill is rendered locally and sent as a one-shot semantic operation so
+    // every other client can run the same flood-fill at normalized coordinates.
     if (activeTool === 'fill') {
-      fastFloodFill(ctx, pixelX, pixelY, activeColor);
+      isDrawing.current = false;
+      const point: DrawPoint = {
+        x,
+        y,
+        color: activeColor,
+        size: 1,
+        isNewPath: true,
+        tool: 'FILL',
+        strokeId: generateStrokeId(),
+        timestamp: Date.now(),
+      };
+
+      drawPointOnCanvas(point);
+      if (onDrawBatch) {
+        onDrawBatch([point]);
+      } else if (onDrawPoint) {
+        onDrawPoint(point);
+      }
       return;
     }
 
@@ -385,12 +323,12 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     isDrawing.current = true;
     const strokeId = generateStrokeId();
     currentStrokeIdRef.current = strokeId;
-    const currentTool = isEraser ? 'ERASER' : 'BRUSH';
+    const currentTool = activeTool === 'eraser' ? 'ERASER' : 'BRUSH';
 
     const point: DrawPoint = {
       x,
       y,
-      color: isEraser ? '#ffffff' : activeColor,
+      color: activeTool === 'eraser' ? '#ffffff' : activeColor,
       size: activeSize,
       isNewPath: true,
       tool: currentTool,
@@ -403,7 +341,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawer || !isDrawing.current) return;
+    if (!isDrawer || !isDrawing.current || activeTool === 'fill') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -448,12 +386,12 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     }
 
     // Pen or Eraser
-    const currentTool = isEraser ? 'ERASER' : 'BRUSH';
+    const currentTool = activeTool === 'eraser' ? 'ERASER' : 'BRUSH';
 
     const point: DrawPoint = {
       x,
       y,
-      color: isEraser ? '#ffffff' : activeColor,
+      color: activeTool === 'eraser' ? '#ffffff' : activeColor,
       size: activeSize,
       isNewPath: false,
       tool: currentTool,
@@ -600,7 +538,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
           className={`w-full h-full touch-none ${
             !isDrawer
               ? 'cursor-not-allowed'
-              : isEraser
+              : activeTool === 'eraser'
               ? 'cursor-eraser'
               : activeTool === 'fill'
               ? 'cursor-bucket'

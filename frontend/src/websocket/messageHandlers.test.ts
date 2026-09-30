@@ -118,3 +118,33 @@ describe("PLAYER_LEFT for the current player", () => {
     expect(gameStore.getState().gameState).toBeNull();
   });
 });
+
+describe("DRAW_EVENT fill synchronization", () => {
+  afterEach(() => {
+    gameStore.clearGame();
+  });
+
+  it("preserves a remote paint-bucket operation instead of converting it to a brush point", () => {
+    setupMessageHandlers()({
+      type: MessageType.DRAW_EVENT,
+      roomId: "ROOM1",
+      point: {
+        x: 0.25,
+        y: 0.75,
+        color: "#ef4444",
+        size: 1,
+        isNewPath: true,
+        tool: "FILL",
+      },
+    });
+
+    expect(gameStore.getState().drawPoints).toEqual([
+      expect.objectContaining({
+        x: 0.25,
+        y: 0.75,
+        color: "#ef4444",
+        tool: "FILL",
+      }),
+    ]);
+  });
+});
