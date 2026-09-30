@@ -14,7 +14,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Manages active WebSocket client sessions and outbound bounded queues.
  *
- * <p>TV3 Stabilization:
+ * <p>
+ * TV3 Stabilization:
  * - unbindSession(): called on LEAVE_ROOM (GW-07)
  * - playerRoomToSession reverse map: duplicate session guard (GW-10)
  * - Dead-sink cleanup in broadcast loops (GW-09)
@@ -22,24 +23,21 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class ConnectionManager {
 
-    private static final Logger log =
-            LoggerFactory.getLogger(ConnectionManager.class);
+    private static final Logger log = LoggerFactory.getLogger(ConnectionManager.class);
 
-    private final Map<String, BoundedOutboundQueue> clients =
-            new ConcurrentHashMap<>();
+    private final Map<String, BoundedOutboundQueue> clients = new ConcurrentHashMap<>();
 
-    private final Map<String, String> sessionToRoom =
-            new ConcurrentHashMap<>();
+    private final Map<String, String> sessionToRoom = new ConcurrentHashMap<>();
 
-    private final Map<String, String> sessionToPlayer =
-            new ConcurrentHashMap<>();
+    private final Map<String, String> sessionToPlayer = new ConcurrentHashMap<>();
 
-    private final Map<String, String> sessionToUsername =
-            new ConcurrentHashMap<>();
+    private final Map<String, String> sessionToUsername = new ConcurrentHashMap<>();
 
-    /** TV3: "{playerId}:{roomId}" -> sessionId. Prevents duplicate logical player on reconnect (GW-10). */
-    private final Map<String, String> playerRoomToSession =
-            new ConcurrentHashMap<>();
+    /**
+     * TV3: "{playerId}:{roomId}" -> sessionId. Prevents duplicate logical player on
+     * reconnect (GW-10).
+     */
+    private final Map<String, String> playerRoomToSession = new ConcurrentHashMap<>();
 
     private final GatewayMetrics gatewayMetrics;
     private final int defaultMaxQueueCapacity;
@@ -51,8 +49,7 @@ public class ConnectionManager {
     @org.springframework.beans.factory.annotation.Autowired
     public ConnectionManager(
             GatewayMetrics gatewayMetrics,
-            @Value("${gateway.queue.max-capacity:256}") int defaultMaxQueueCapacity
-    ) {
+            @Value("${gateway.queue.max-capacity:256}") int defaultMaxQueueCapacity) {
         this.gatewayMetrics = gatewayMetrics;
         this.defaultMaxQueueCapacity = defaultMaxQueueCapacity;
     }
@@ -73,9 +70,12 @@ public class ConnectionManager {
     /**
      * Bind a WebSocket session to a room and player.
      *
-     * <p>TV3 Stabilization (GW-10): If the same player is already bound to the same room
+     * <p>
+     * TV3 Stabilization (GW-10): If the same player is already bound to the same
+     * room
      * via a different session, the old session's routing state is evicted silently.
-     * The old WebSocket connection is NOT closed here — it cleans itself up via doFinally.
+     * The old WebSocket connection is NOT closed here — it cleans itself up via
+     * doFinally.
      */
     public void bindSession(String sessionId, String roomId, String playerId) {
         bindSession(sessionId, roomId, playerId, null);
@@ -107,7 +107,8 @@ public class ConnectionManager {
 
     /**
      * TV3 Stabilization (GW-07): unbind routing state after explicit LEAVE_ROOM.
-     * The WebSocket connection stays open; the session no longer receives drawing events.
+     * The WebSocket connection stays open; the session no longer receives drawing
+     * events.
      */
     public void unbindSession(String sessionId) {
         String roomId = sessionToRoom.remove(sessionId);
@@ -177,6 +178,14 @@ public class ConnectionManager {
         broadcastFrameToRoomExcept(roomId, senderSessionId, new OutboundFrame.BinaryFrame(bytes));
     }
 
+    public void broadcastToLobby(String message) {
+        broadcastFrameToLobby(new OutboundFrame.TextFrame(message));
+    }
+
+    public void broadcastToLobbyExcept(String senderSessionId, String message) {
+        broadcastFrameToLobbyExcept(senderSessionId, new OutboundFrame.TextFrame(message));
+    }
+
     public void broadcastExcept(String senderSessionId, String message) {
         OutboundFrame frame = new OutboundFrame.TextFrame(message);
         clients.forEach((sessionId, queue) -> {
@@ -193,7 +202,39 @@ public class ConnectionManager {
         }
     }
 
-    /** TV3 Stabilization (GW-09): OVERFLOW means dead sink; remove after broadcast. */
+    private void broadcastFrameToLobby(OutboundFrame frame) {
+        Set<String> toRemove = ConcurrentHashMap.newKeySet();
+        clients.forEach((sessionId, queue) -> {
+            String boundRoom = sessionToRoom.get(sessionId);
+            if (boundRoom == null || boundRoom.isBlank()) {
+                if (queue.enqueue(frame) == BoundedOutboundQueue.EmitStatus.OVERFLOW) {
+                    log.warn("Dead sink — scheduling cleanup: session={}", sessionId);
+                    toRemove.add(sessionId);
+                }
+            }
+        });
+        toRemove.forEach(this::remove);
+    }
+
+    private void broadcastFrameToLobbyExcept(String senderSessionId, OutboundFrame frame) {
+        Set<String> toRemove = ConcurrentHashMap.newKeySet();
+        clients.forEach((sessionId, queue) -> {
+            if (sessionId.equals(senderSessionId))
+                return;
+            String boundRoom = sessionToRoom.get(sessionId);
+            if (boundRoom == null || boundRoom.isBlank()) {
+                if (queue.enqueue(frame) == BoundedOutboundQueue.EmitStatus.OVERFLOW) {
+                    log.warn("Dead sink — scheduling cleanup: session={}", sessionId);
+                    toRemove.add(sessionId);
+                }
+            }
+        });
+        toRemove.forEach(this::remove);
+    }
+
+    /**
+     * TV3 Stabilization (GW-09): OVERFLOW means dead sink; remove after broadcast.
+     */
     private void broadcastFrameToRoom(String roomId, OutboundFrame frame) {
         Set<String> toRemove = ConcurrentHashMap.newKeySet();
         clients.forEach((sessionId, queue) -> {
@@ -211,7 +252,8 @@ public class ConnectionManager {
     private void broadcastFrameToRoomExcept(String roomId, String senderSessionId, OutboundFrame frame) {
         Set<String> toRemove = ConcurrentHashMap.newKeySet();
         clients.forEach((sessionId, queue) -> {
-            if (sessionId.equals(senderSessionId)) return;
+            if (sessionId.equals(senderSessionId))
+                return;
             String boundRoom = sessionToRoom.get(sessionId);
             if (boundRoom != null && boundRoom.equals(roomId)) {
                 if (queue.enqueue(frame) == BoundedOutboundQueue.EmitStatus.OVERFLOW) {

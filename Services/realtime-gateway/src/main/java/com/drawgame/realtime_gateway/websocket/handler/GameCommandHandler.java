@@ -5,6 +5,7 @@ import com.drawgame.game.grpc.generated.GameStateResponse;
 import com.drawgame.game.grpc.generated.PlayerScoreMessage;
 import com.drawgame.game.grpc.generated.WordChoiceMessage;
 import com.drawgame.game.grpc.generated.RoundRecapMessage;
+import com.drawgame.realtime_gateway.chat.LobbyChatRepository;
 import com.drawgame.realtime_gateway.connection.BoundedOutboundQueue;
 import com.drawgame.realtime_gateway.connection.ConnectionManager;
 import com.drawgame.realtime_gateway.control.ControlEventRouter;
@@ -45,9 +46,13 @@ public class GameCommandHandler {
     private final DrawingRoomStateCache drawingRoomStateCache;
     private final ControlEventRouter controlEventRouter;
     private final DrawingRecoveryRepository recoveryRepository;
+    private final LobbyChatRepository lobbyChatRepository;
     private final ObjectMapper objectMapper;
     private final String gatewayInstanceId;
-    /** TV8 security: signed game-session credentials, per-session rate limits, input bounds. */
+    /**
+     * TV8 security: signed game-session credentials, per-session rate limits, input
+     * bounds.
+     */
     private final GameSessionTokenService tokenService;
     private final SessionRateLimiter rateLimiter;
     private final InputValidator inputValidator;
@@ -57,10 +62,9 @@ public class GameCommandHandler {
             RoomGrpcClient roomGrpcClient,
             ChatGrpcClient chatGrpcClient,
             ConnectionManager connectionManager,
-            DrawingRoomStateCache drawingRoomStateCache
-    ) {
+            DrawingRoomStateCache drawingRoomStateCache) {
         this(gameGrpcClient, roomGrpcClient, chatGrpcClient, connectionManager, drawingRoomStateCache,
-                null, null, null, null, null, "gateway-default");
+                null, null, null, null, null, null, "gateway-default");
     }
 
     public GameCommandHandler(
@@ -69,10 +73,9 @@ public class GameCommandHandler {
             ChatGrpcClient chatGrpcClient,
             ConnectionManager connectionManager,
             DrawingRoomStateCache drawingRoomStateCache,
-            @org.springframework.beans.factory.annotation.Value("${gateway.instance-id:gateway-1}") String gatewayInstanceId
-    ) {
+            @org.springframework.beans.factory.annotation.Value("${gateway.instance-id:gateway-1}") String gatewayInstanceId) {
         this(gameGrpcClient, roomGrpcClient, chatGrpcClient, connectionManager, drawingRoomStateCache,
-                null, null, null, null, null, gatewayInstanceId);
+                null, null, null, null, null, null, gatewayInstanceId);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -84,11 +87,11 @@ public class GameCommandHandler {
             DrawingRoomStateCache drawingRoomStateCache,
             ControlEventRouter controlEventRouter,
             DrawingRecoveryRepository recoveryRepository,
+            LobbyChatRepository lobbyChatRepository,
             GameSessionTokenService tokenService,
             SessionRateLimiter rateLimiter,
             InputValidator inputValidator,
-            @org.springframework.beans.factory.annotation.Value("${gateway.instance-id:gateway-1}") String gatewayInstanceId
-    ) {
+            @org.springframework.beans.factory.annotation.Value("${gateway.instance-id:gateway-1}") String gatewayInstanceId) {
         this.gameGrpcClient = gameGrpcClient;
         this.roomGrpcClient = roomGrpcClient;
         this.chatGrpcClient = chatGrpcClient;
@@ -96,6 +99,7 @@ public class GameCommandHandler {
         this.drawingRoomStateCache = drawingRoomStateCache;
         this.controlEventRouter = controlEventRouter;
         this.recoveryRepository = recoveryRepository;
+        this.lobbyChatRepository = lobbyChatRepository;
         this.tokenService = tokenService;
         this.rateLimiter = rateLimiter;
         this.inputValidator = inputValidator;
@@ -113,10 +117,11 @@ public class GameCommandHandler {
         }
 
         // TV8: per-session abuse protection. Heartbeats are never limited (2s cadence,
-        // tiny payload). Drawing binary frames are limited in the binary transport path.
+        // tiny payload). Drawing binary frames are limited in the binary transport
+        // path.
         if (rateLimiter != null && !"PING".equalsIgnoreCase(type) && !"APP_PING".equalsIgnoreCase(type)) {
             SessionRateLimiter.Bucket bucket = switch (type) {
-                case "SUBMIT_GUESS", "SEND_CHAT" -> SessionRateLimiter.Bucket.GUESS;
+                case "SUBMIT_GUESS", "SEND_CHAT", "SEND_LOBBY_CHAT" -> SessionRateLimiter.Bucket.GUESS;
                 case "SEND_REACTION" -> SessionRateLimiter.Bucket.REACTION;
                 case "DRAW_POINT", "DRAW_BATCH", "CLEAR_CANVAS" -> SessionRateLimiter.Bucket.DRAW;
                 default -> SessionRateLimiter.Bucket.CONTROL;
@@ -146,6 +151,8 @@ public class GameCommandHandler {
             case "REMATCH" -> handleRematch(sessionId, json, requestId);
             case "KICK_PLAYER" -> handleKickPlayer(sessionId, json, requestId);
             case "SEND_CHAT" -> handleSendChat(sessionId, json, requestId);
+            case "SEND_LOBBY_CHAT" -> handleSendLobbyChat(sessionId, json, requestId);
+            case "GET_LOBBY_CHAT" -> handleGetLobbyChat(sessionId, json, requestId);
             case "SEND_REACTION" -> handleSendReaction(sessionId, json, requestId);
             case "GET_RECENT_CHAT" -> handleGetRecentChat(sessionId, json, requestId);
             case "DRAW_POINT" -> handleDrawPoint(sessionId, json);
@@ -201,9 +208,12 @@ public class GameCommandHandler {
                 "Player-" + sessionId.substring(0, Math.min(6, sessionId.length())));
         String roomName = sanitizeOr(inputValidator, extractString(node, "roomName", extractString(node, "name", "")),
                 username + "'s Room");
-        int maxPlayers = node.has("maxPlayers") ? node.get("maxPlayers").asInt() : (node.has("max_players") ? node.get("max_players").asInt() : 4);
-        int totalRounds = node.has("totalRounds") ? node.get("totalRounds").asInt() : (node.has("roundCount") ? node.get("roundCount").asInt() : 5);
-        int roundDuration = node.has("roundDuration") ? node.get("roundDuration").asInt() : (node.has("drawTime") ? node.get("drawTime").asInt() : 60);
+        int maxPlayers = node.has("maxPlayers") ? node.get("maxPlayers").asInt()
+                : (node.has("max_players") ? node.get("max_players").asInt() : 4);
+        int totalRounds = node.has("totalRounds") ? node.get("totalRounds").asInt()
+                : (node.has("roundCount") ? node.get("roundCount").asInt() : 5);
+        int roundDuration = node.has("roundDuration") ? node.get("roundDuration").asInt()
+                : (node.has("drawTime") ? node.get("drawTime").asInt() : 60);
         // TV8: bound room configuration (2..12 players, 1..20 rounds, 15..300s rounds)
         maxPlayers = Math.max(2, Math.min(12, maxPlayers));
         totalRounds = Math.max(1, Math.min(20, totalRounds));
@@ -219,12 +229,15 @@ public class GameCommandHandler {
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "ROOM_CREATE_FAILED", e.getMessage())));
     }
 
-    /** Null-safe sanitizer helper — falls back to the default when input is invalid. */
+    /**
+     * Null-safe sanitizer helper — falls back to the default when input is invalid.
+     */
     private String sanitizeOr(InputValidator validator, String raw, String fallback) {
         if (validator == null) {
             return (raw == null || raw.isBlank()) ? fallback : raw;
         }
-        if (raw == null || raw.isBlank()) return fallback;
+        if (raw == null || raw.isBlank())
+            return fallback;
         return validator.sanitizeNickname(raw) != null ? raw.strip() : fallback;
     }
 
@@ -237,7 +250,8 @@ public class GameCommandHandler {
         // TV8: input validation before any gRPC call
         if (inputValidator != null) {
             if (!inputValidator.isValidRoomCode(roomId)) {
-                return Mono.just(createErrorJson(requestId, "INVALID_ROOM_CODE", "Room code must be 4-32 uppercase letters/digits"));
+                return Mono.just(createErrorJson(requestId, "INVALID_ROOM_CODE",
+                        "Room code must be 4-32 uppercase letters/digits"));
             }
             String sanitized = inputValidator.sanitizeNickname(username);
             if (sanitized == null) {
@@ -254,7 +268,8 @@ public class GameCommandHandler {
                     String responseJson = createRoomSuccessJson("ROOM_JOINED", response, requestId);
                     // TV8: issue signed game-session credential after membership succeeds
                     responseJson = withSessionToken(responseJson, playerId, response.getRoomId());
-                    // TV6: room-scoped control event — local broadcast + Redis fanout to other Gateways
+                    // TV6: room-scoped control event — local broadcast + Redis fanout to other
+                    // Gateways
                     controlBroadcast(response.getRoomId(), sessionId, "PLAYER_JOINED",
                             createBroadcastJson("PLAYER_JOINED", response.getRoomId(), playerId, validatedUsername));
                     return responseJson;
@@ -312,8 +327,7 @@ public class GameCommandHandler {
                         return createErrorJson(
                                 requestId,
                                 "PLAYER_NOT_IN_ROOM",
-                                "Player is not a member of room: " + roomId
-                        );
+                                "Player is not a member of room: " + roomId);
                     }
 
                     String resumedUsername = room.getPlayersList().stream()
@@ -362,13 +376,14 @@ public class GameCommandHandler {
                 .onErrorResume(e -> Mono.just(createErrorJson(
                         requestId,
                         mapResumeErrorCode(e),
-                        e.getMessage() != null ? e.getMessage() : "Unable to resume session"
-                )));
+                        e.getMessage() != null ? e.getMessage() : "Unable to resume session")));
     }
 
     /**
-     * TV8: attach a freshly issued signed game-session token to a CREATE/JOIN response.
-     * The token is the resume credential — claims sub=playerId, room=roomId, purpose=GAME_SESSION.
+     * TV8: attach a freshly issued signed game-session token to a CREATE/JOIN
+     * response.
+     * The token is the resume credential — claims sub=playerId, room=roomId,
+     * purpose=GAME_SESSION.
      */
     private String withSessionToken(String responseJson, String playerId, String roomId) {
         if (tokenService == null) {
@@ -411,7 +426,10 @@ public class GameCommandHandler {
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "SET_READY_FAILED", e.getMessage())));
     }
 
-    /** Host identity is taken only from the authenticated, room-bound WebSocket session. */
+    /**
+     * Host identity is taken only from the authenticated, room-bound WebSocket
+     * session.
+     */
     private Mono<String> handleSetCategories(String sessionId, JsonNode json, String requestId) {
         JsonNode node = getPayloadOrRoot(json);
         final String roomId = connectionManager.getRoomId(sessionId);
@@ -426,7 +444,8 @@ public class GameCommandHandler {
         List<String> categories = new ArrayList<>();
         for (JsonNode category : categoryNodes) {
             if (!category.isTextual()) {
-                return Mono.just(createErrorJson(requestId, "INVALID_CATEGORIES", "Category identifiers must be strings"));
+                return Mono
+                        .just(createErrorJson(requestId, "INVALID_CATEGORIES", "Category identifiers must be strings"));
             }
             categories.add(category.asText());
         }
@@ -498,7 +517,8 @@ public class GameCommandHandler {
                     kickEvent.put("targetPlayerId", targetPlayerId);
                     kickEvent.put("byHost", requesterId);
                     kickEvent.put("players", room.getPlayersList().stream()
-                            .map(p -> Map.of("playerId", p.getPlayerId(), "username", p.getUsername(), "ready", p.getReady()))
+                            .map(p -> Map.of("playerId", p.getPlayerId(), "username", p.getUsername(), "ready",
+                                    p.getReady()))
                             .collect(java.util.stream.Collectors.toList()));
                     controlBroadcast(roomId, null, "PLAYER_KICKED", toJson(kickEvent));
                     // updated room state for remaining members
@@ -577,7 +597,8 @@ public class GameCommandHandler {
 
     /**
      * A closed WebSocket is a permanent leave. Removing Room membership makes any
-     * later RESUME fail instead of adding the disconnected player back to the roster.
+     * later RESUME fail instead of adding the disconnected player back to the
+     * roster.
      */
     public Mono<Void> handleDisconnect(String roomId, String sessionId, String playerId, String username) {
         String resolvedUsername = username != null && !username.isBlank() ? username : "Người chơi";
@@ -620,8 +641,7 @@ public class GameCommandHandler {
             String roomId,
             String sessionId,
             String playerId,
-            String username
-    ) {
+            String username) {
         Map<String, Object> leftPayload = new HashMap<>();
         leftPayload.put("type", "PLAYER_LEFT");
         leftPayload.put("roomId", roomId);
@@ -632,8 +652,7 @@ public class GameCommandHandler {
                 .map(p -> Map.of(
                         "playerId", p.getPlayerId(),
                         "username", p.getUsername(),
-                        "ready", p.getReady()
-                ))
+                        "ready", p.getReady()))
                 .collect(java.util.stream.Collectors.toList()));
         controlBroadcast(roomId, sessionId, "PLAYER_LEFT", toJson(leftPayload));
 
@@ -666,7 +685,8 @@ public class GameCommandHandler {
     }
 
     private Mono<String> handleGetGameState(String sessionId, JsonNode json, String requestId) {
-        // TV8: bound room + AUTHENTICATED session identity — viewer identity cannot be spoofed
+        // TV8: bound room + AUTHENTICATED session identity — viewer identity cannot be
+        // spoofed
         final String roomId = connectionManager.getRoomId(sessionId);
         final String playerId = connectionManager.getPlayerId(sessionId);
         if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
@@ -675,7 +695,8 @@ public class GameCommandHandler {
 
         return gameGrpcClient.getGameState(roomId, playerId)
                 .map(gameState -> {
-                    // TV3: sync drawing fast-path cache on GET_GAME_STATE (handles cache miss after restart)
+                    // TV3: sync drawing fast-path cache on GET_GAME_STATE (handles cache miss after
+                    // restart)
                     if ("PLAYING".equalsIgnoreCase(gameState.getStatus())
                             && "DRAWING".equals(gameState.getRoundPhase())) {
                         updateDrawingCache(roomId, gameState);
@@ -687,7 +708,10 @@ public class GameCommandHandler {
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "GET_GAME_STATE_FAILED", e.getMessage())));
     }
 
-    /** Private drawer command; player identity comes exclusively from the bound session. */
+    /**
+     * Private drawer command; player identity comes exclusively from the bound
+     * session.
+     */
     private Mono<String> handleSelectWord(String sessionId, JsonNode json, String requestId) {
         JsonNode node = getPayloadOrRoot(json);
         String roomId = connectionManager.getRoomId(sessionId);
@@ -707,10 +731,15 @@ public class GameCommandHandler {
     /**
      * TV7 — current-round Canvas recovery (doc/reconnect-canvas-recovery.md §6).
      *
-     * <p>Validates: session bound to a room+player (via RESUME_SESSION/JOIN), an active
-     * PLAYING game, and the requested round matching the authoritative current round.
-     * Reads the shared Redis Stream so ANY Gateway can serve recovery. Responds with
-     * SYNC_CANVAS_STATE carrying drawing events ONLY (never secretWord/game internals).
+     * <p>
+     * Validates: session bound to a room+player (via RESUME_SESSION/JOIN), an
+     * active
+     * PLAYING game, and the requested round matching the authoritative current
+     * round.
+     * Reads the shared Redis Stream so ANY Gateway can serve recovery. Responds
+     * with
+     * SYNC_CANVAS_STATE carrying drawing events ONLY (never secretWord/game
+     * internals).
      */
     private Mono<String> handleGetCanvasState(String sessionId, JsonNode json, String requestId) {
         if (recoveryRepository == null) {
@@ -719,7 +748,8 @@ public class GameCommandHandler {
         }
 
         JsonNode node = getPayloadOrRoot(json);
-        // Identity comes from the BOUND session context — client-supplied ids are ignored
+        // Identity comes from the BOUND session context — client-supplied ids are
+        // ignored
         final String roomId = connectionManager.getRoomId(sessionId);
         final String playerId = connectionManager.getPlayerId(sessionId);
         if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
@@ -731,7 +761,8 @@ public class GameCommandHandler {
             return Mono.just(createErrorJson(requestId, "INVALID_RECOVERY_REQUEST", "round is required"));
         }
 
-        // Authoritative round check via Game Service (cache may be stale on this Gateway)
+        // Authoritative round check via Game Service (cache may be stale on this
+        // Gateway)
         return gameGrpcClient.getGameState(roomId, playerId)
                 .flatMap(gameState -> {
                     if (!"PLAYING".equalsIgnoreCase(gameState.getStatus())) {
@@ -759,9 +790,12 @@ public class GameCommandHandler {
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "GET_GAME_STATE_FAILED", e.getMessage())));
     }
 
-    /** SYNC_CANVAS_STATE response — drawing events only, never secret word or game internals. */
+    /**
+     * SYNC_CANVAS_STATE response — drawing events only, never secret word or game
+     * internals.
+     */
     private String createCanvasStateJson(String requestId, String roomId, int round,
-                                         DrawingRecoveryRepository.RecoveryResult result) {
+            DrawingRecoveryRepository.RecoveryResult result) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("roomId", roomId);
         payload.put("round", round);
@@ -793,7 +827,8 @@ public class GameCommandHandler {
         final String username = connectionManager.getUsername(sessionId);
         String guess = extractString(node, "guess", extractString(node, "content", ""));
 
-        // TV8: guess input bounds (Vietnamese Unicode preserved; Game Service matching unchanged)
+        // TV8: guess input bounds (Vietnamese Unicode preserved; Game Service matching
+        // unchanged)
         if (inputValidator != null) {
             String sanitized = inputValidator.sanitizeGuess(guess);
             if (sanitized == null) {
@@ -815,35 +850,42 @@ public class GameCommandHandler {
                                 roomId, playerId, username, response.getScoreAwarded());
                         controlBroadcast(roomId, sessionId, "PLAYER_GUESSED_CORRECTLY", broadcastMsg);
 
-                        Map<String, Object> map = createGuessResultMap(roomId, playerId, status, response.getScoreAwarded(), requestId);
+                        Map<String, Object> map = createGuessResultMap(roomId, playerId, status,
+                                response.getScoreAwarded(), requestId);
 
-                        // TV3 Stabilization (GW-05/GW-06): a correct guess may trigger round transition.
+                        // TV3 Stabilization (GW-05/GW-06): a correct guess may trigger round
+                        // transition.
                         // Refresh drawing cache so new drawer/round is authoritative without delay.
                         // Failure to refresh is non-fatal — next GET_GAME_STATE will re-sync.
                         return gameGrpcClient.getGameState(roomId, playerId)
                                 .doOnNext(gameState -> {
                                     if ("PLAYING".equalsIgnoreCase(gameState.getStatus())) {
                                         updateDrawingCache(roomId, gameState);
-                                        log.info("DrawingRoomStateCache refreshed after CORRECT guess: room={} drawer={} round={}",
+                                        log.info(
+                                                "DrawingRoomStateCache refreshed after CORRECT guess: room={} drawer={} round={}",
                                                 roomId, gameState.getDrawerId(), gameState.getCurrentRound());
                                     } else {
                                         // Game finished after last round
                                         drawingRoomStateCache.remove(roomId);
-                                        log.info("DrawingRoomStateCache evicted — game ended after CORRECT guess: room={} status={}",
+                                        log.info(
+                                                "DrawingRoomStateCache evicted — game ended after CORRECT guess: room={} status={}",
                                                 roomId, gameState.getStatus());
                                     }
                                 })
                                 .onErrorResume(e -> {
-                                    log.warn("Failed to refresh drawing cache after CORRECT guess: room={} — will resync on next GET_GAME_STATE: {}",
+                                    log.warn(
+                                            "Failed to refresh drawing cache after CORRECT guess: room={} — will resync on next GET_GAME_STATE: {}",
                                             roomId, e.getMessage());
                                     return reactor.core.publisher.Mono.empty();
                                 })
                                 .thenReturn(toJson(map));
                     } else {
                         // BUG-1 fix: Guess input and Chat must remain completely separate.
-                        // Non-CORRECT guesses (WRONG, CLOSE, etc.) are private feedback to the submitter
+                        // Non-CORRECT guesses (WRONG, CLOSE, etc.) are private feedback to the
+                        // submitter
                         // and MUST NOT be forwarded to Chat Service or broadcast as CHAT_MESSAGE.
-                        Map<String, Object> map = createGuessResultMap(roomId, playerId, status, response.getScoreAwarded(), requestId);
+                        Map<String, Object> map = createGuessResultMap(roomId, playerId, status,
+                                response.getScoreAwarded(), requestId);
                         return Mono.just(toJson(map));
                     }
                 })
@@ -860,7 +902,8 @@ public class GameCommandHandler {
             return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
         }
         final String content = extractString(node, "content", "");
-        // TV8: chat length is bounded server-side; Chat Service re-validates + rate-limits
+        // TV8: chat length is bounded server-side; Chat Service re-validates +
+        // rate-limits
 
         return chatGrpcClient.sendMessage(roomId, playerId, "", content)
                 .map(chatRes -> {
@@ -872,9 +915,94 @@ public class GameCommandHandler {
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, mapGrpcErrorCode(e), e.getMessage())));
     }
 
+    private Mono<String> handleSendLobbyChat(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        String playerId = extractString(node, "playerId", connectionManager.getPlayerId(sessionId));
+        if (playerId == null || playerId.isBlank()) {
+            playerId = "guest_" + sessionId.substring(0, Math.min(6, sessionId.length()));
+        }
+
+        String rawUsername = extractString(node, "username", connectionManager.getUsername(sessionId));
+        String username = sanitizeOr(inputValidator, rawUsername, "Người chơi");
+
+        String content = extractString(node, "content", "").trim();
+        if (content.isEmpty()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_CHAT_MESSAGE", "Chat content cannot be empty"));
+        }
+        if (content.length() > 300) {
+            content = content.substring(0, 300);
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("messageId", java.util.UUID.randomUUID().toString());
+        payload.put("roomId", "lobby");
+        payload.put("playerId", playerId);
+        payload.put("username", username);
+        payload.put("content", content);
+        payload.put("type", "USER");
+        payload.put("createdAt", System.currentTimeMillis());
+
+        Map<String, Object> event = new HashMap<>();
+        event.put("type", "LOBBY_CHAT_MESSAGE");
+        event.put("payload", payload);
+        String broadcastJson = toJson(event);
+
+        // Fanout to all lobby users across gateways
+        controlBroadcast("lobby", null, "LOBBY_CHAT_MESSAGE", broadcastJson);
+
+        // Persist message asynchronously
+        if (lobbyChatRepository != null) {
+            lobbyChatRepository.appendMessage(payload).subscribe();
+        }
+
+        Map<String, Object> ack = new HashMap<>(event);
+        if (requestId != null && !requestId.isBlank()) {
+            ack.put("requestId", requestId);
+        }
+        return Mono.just(toJson(ack));
+    }
+
+    private Mono<String> handleGetLobbyChat(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        int limit = Math.max(1, Math.min(50, node.has("limit") ? node.get("limit").asInt() : 30));
+
+        if (lobbyChatRepository == null) {
+            Map<String, Object> emptyMap = new HashMap<>();
+            emptyMap.put("type", "LOBBY_CHAT_HISTORY");
+            if (requestId != null && !requestId.isBlank()) {
+                emptyMap.put("requestId", requestId);
+            }
+            emptyMap.put("messages", new ArrayList<>());
+            return Mono.just(toJson(emptyMap));
+        }
+
+        return lobbyChatRepository.getRecentMessages(limit)
+                .collectList()
+                .map(messages -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("type", "LOBBY_CHAT_HISTORY");
+                    if (requestId != null && !requestId.isBlank()) {
+                        map.put("requestId", requestId);
+                    }
+                    map.put("messages", messages);
+                    return toJson(map);
+                })
+                .onErrorResume(e -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("type", "LOBBY_CHAT_HISTORY");
+                    if (requestId != null && !requestId.isBlank()) {
+                        map.put("requestId", requestId);
+                    }
+                    map.put("messages", new ArrayList<>());
+                    return Mono.just(toJson(map));
+                });
+    }
+
     private static final java.util.Set<String> ALLOWED_REACTIONS = java.util.Set.of("😂", "👍", "🔥", "😮", "🤔", "❤️");
 
-    /** Ephemeral, room-scoped reaction: never persisted to chat or drawing recovery. */
+    /**
+     * Ephemeral, room-scoped reaction: never persisted to chat or drawing recovery.
+     */
     private Mono<String> handleSendReaction(String sessionId, JsonNode json, String requestId) {
         JsonNode node = getPayloadOrRoot(json);
         String roomId = connectionManager.getRoomId(sessionId);
@@ -888,12 +1016,15 @@ public class GameCommandHandler {
         }
         return gameGrpcClient.getGameState(roomId, playerId)
                 .flatMap(state -> {
-                    boolean member = state.getScoresList().stream().anyMatch(score -> playerId.equals(score.getPlayerId()));
+                    boolean member = state.getScoresList().stream()
+                            .anyMatch(score -> playerId.equals(score.getPlayerId()));
                     if (!member) {
-                        return Mono.just(createErrorJson(requestId, "ROOM_MEMBERSHIP_REQUIRED", "Player is not an active match member"));
+                        return Mono.just(createErrorJson(requestId, "ROOM_MEMBERSHIP_REQUIRED",
+                                "Player is not an active match member"));
                     }
                     if (!"PLAYING".equalsIgnoreCase(state.getStatus()) || !"DRAWING".equals(state.getRoundPhase())) {
-                        return Mono.just(createErrorJson(requestId, "REACTION_NOT_ALLOWED", "Reactions are available during drawing only"));
+                        return Mono.just(createErrorJson(requestId, "REACTION_NOT_ALLOWED",
+                                "Reactions are available during drawing only"));
                     }
                     Map<String, Object> event = new HashMap<>();
                     event.put("type", "REACTION");
@@ -964,7 +1095,8 @@ public class GameCommandHandler {
         event.put("roomId", roomId);
         event.put("playerId", extractString(node, "drawerId", connectionManager.getPlayerId(sessionId)));
         event.put("point", node.get("point"));
-        // TV6: JSON drawing fallback path — room-scoped control fanout (binary path uses
+        // TV6: JSON drawing fallback path — room-scoped control fanout (binary path
+        // uses
         // DrawingRedisPublisher and is unchanged).
         controlBroadcast(roomId, sessionId, "DRAW_EVENT", toJson(event));
         return Mono.empty();
@@ -998,7 +1130,8 @@ public class GameCommandHandler {
         // TV6 (D7b fix): CLEAR_CANVAS over JSON must be authorized the same way as the
         // binary fast path — only the current drawer may clear the canvas.
         if (!isAuthorizedDrawer(sessionId, roomId)) {
-            log.info("CLEAR_CANVAS (JSON) rejected — session={} is not the current drawer in room={}", sessionId, roomId);
+            log.info("CLEAR_CANVAS (JSON) rejected — session={} is not the current drawer in room={}", sessionId,
+                    roomId);
             return Mono.empty();
         }
 
@@ -1028,8 +1161,10 @@ public class GameCommandHandler {
     }
 
     /**
-     * TV6: room-scoped control broadcast — local fanout + Redis Pub/Sub for cross-Gateway
-     * delivery. Falls back to local-only when the router is absent (legacy unit tests).
+     * TV6: room-scoped control broadcast — local fanout + Redis Pub/Sub for
+     * cross-Gateway
+     * delivery. Falls back to local-only when the router is absent (legacy unit
+     * tests).
      */
     private void controlBroadcast(String roomId, String senderSessionId, String eventType, String payloadJson) {
         if (controlEventRouter != null) {
@@ -1057,12 +1192,14 @@ public class GameCommandHandler {
     private String extractString(JsonNode node, String fieldName, String defaultValue) {
         if (node.has(fieldName) && !node.get(fieldName).isNull()) {
             String val = node.get(fieldName).asText();
-            if (!val.isBlank()) return val;
+            if (!val.isBlank())
+                return val;
         }
         return defaultValue;
     }
 
-    private Map<String, Object> createGuessResultMap(String roomId, String playerId, String status, int scoreAwarded, String requestId) {
+    private Map<String, Object> createGuessResultMap(String roomId, String playerId, String status, int scoreAwarded,
+            String requestId) {
         Map<String, Object> map = new HashMap<>();
         map.put("type", "GUESS_RESULT");
         if (requestId != null && !requestId.isBlank()) {
@@ -1212,14 +1349,16 @@ public class GameCommandHandler {
     /**
      * TV8: strip internal details from exception messages before sending to the
      * browser — keep a short safe line, drop everything after the first line and
-     * remove obvious internal signatures (class names, "because the return value…").
+     * remove obvious internal signatures (class names, "because the return
+     * value…").
      */
     private static String sanitizeErrorMessage(String message) {
         if (message == null || message.isBlank()) {
             return "Request failed";
         }
         String firstLine = message.split("\n", 2)[0].trim();
-        if (firstLine.isEmpty()) return "Request failed";
+        if (firstLine.isEmpty())
+            return "Request failed";
         // Internal exception signatures (NPE/class references) → generic safe text
         if (firstLine.contains("Cannot invoke") || firstLine.contains("Exception")
                 || firstLine.contains("java.") || firstLine.length() > 200) {
@@ -1283,18 +1422,21 @@ public class GameCommandHandler {
 
     /**
      * TV3 — update the drawing fast-path cache from a Game Service response.
-     * Called on GAME_STARTED and GET_GAME_STATE (when PLAYING) to keep the cache consistent.
+     * Called on GAME_STARTED and GET_GAME_STATE (when PLAYING) to keep the cache
+     * consistent.
      *
-     * <p>TODO (phase 2): also handle ROUND_STARTED / ROUND_ENDED events pushed by Game Service
-     * to keep cache in sync across round transitions without requiring GET_GAME_STATE per round.
+     * <p>
+     * TODO (phase 2): also handle ROUND_STARTED / ROUND_ENDED events pushed by Game
+     * Service
+     * to keep cache in sync across round transitions without requiring
+     * GET_GAME_STATE per round.
      */
     private void updateDrawingCache(String roomId, GameStateResponse gameState) {
         if ("DRAWING".equals(gameState.getRoundPhase())
                 && gameState.getDrawerId() != null && !gameState.getDrawerId().isBlank()) {
             DrawingRoomState state = DrawingRoomState.playing(
                     gameState.getDrawerId(),
-                    gameState.getCurrentRound()
-            );
+                    gameState.getCurrentRound());
             drawingRoomStateCache.update(roomId, state);
             log.debug("DrawingRoomStateCache updated via game event: room={} drawer={} round={}",
                     roomId, gameState.getDrawerId(), gameState.getCurrentRound());
@@ -1304,11 +1446,15 @@ public class GameCommandHandler {
     /**
      * TV3 — handle GAME_FINISHED event.
      *
-     * <p>Clears the drawing fast-path cache for the room so stale state doesn't
-     * accumulate for next game. Also broadcasts the event to all players in the room.
+     * <p>
+     * Clears the drawing fast-path cache for the room so stale state doesn't
+     * accumulate for next game. Also broadcasts the event to all players in the
+     * room.
      *
-     * <p>This can be triggered by a client signal or by Game Service push (phase 2).
-     * For phase 1, the client sends GAME_FINISHED when it receives a game-over event from Game Service.
+     * <p>
+     * This can be triggered by a client signal or by Game Service push (phase 2).
+     * For phase 1, the client sends GAME_FINISHED when it receives a game-over
+     * event from Game Service.
      */
     private Mono<String> handleGameFinished(String sessionId, JsonNode json, String requestId) {
         JsonNode node = getPayloadOrRoot(json);
@@ -1326,12 +1472,14 @@ public class GameCommandHandler {
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "GAME_FINISHED");
         payload.put("roomId", roomId);
-        if (requestId != null) payload.put("requestId", requestId);
+        if (requestId != null)
+            payload.put("requestId", requestId);
         controlBroadcast(roomId, null, "GAME_FINISHED", toJson(payload));
 
         Map<String, Object> response = new HashMap<>();
         response.put("type", "GAME_FINISHED_ACK");
-        if (requestId != null) response.put("requestId", requestId);
+        if (requestId != null)
+            response.put("requestId", requestId);
         return Mono.just(toJson(response));
     }
 }

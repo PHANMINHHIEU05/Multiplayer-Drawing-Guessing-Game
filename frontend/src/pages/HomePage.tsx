@@ -1,27 +1,47 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { usePlayerStore, playerStore } from '../store/playerStore';
-import { CreateRoomForm } from '../features/room/CreateRoomForm';
-import { JoinRoomForm } from '../features/room/JoinRoomForm';
-import { ConnectionStatus } from '../components/ConnectionStatus';
-import { PaintSplashOverlay } from '../components/PaintSplashOverlay';
-import { SoundToggle } from '../components/SoundToggle';
-import { audioManager } from '../audio/AudioManager';
+import React, { useState, useCallback, useEffect, useRef } from "react";
+import { usePlayerStore, playerStore } from "../store/playerStore";
+import { useLobbyChatStore } from "../store/lobbyChatStore";
+import { wsClient } from "../websocket/WebSocketClient";
+import { MessageType } from "../websocket/protocol";
+import { CreateRoomForm } from "../features/room/CreateRoomForm";
+import { JoinRoomForm } from "../features/room/JoinRoomForm";
+import { ConnectionStatus } from "../components/ConnectionStatus";
+import { PaintSplashOverlay } from "../components/PaintSplashOverlay";
+import { SoundToggle } from "../components/SoundToggle";
+import { audioManager } from "../audio/AudioManager";
 
-const AVATAR_SEEDS = ['Dopamine', 'Felix', 'Luna', 'Oscar', 'Milo', 'Coco', 'Pepper', 'Simba', 'Gizmo'];
+const AVATAR_SEEDS = [
+  "Dopamine",
+  "Felix",
+  "Luna",
+  "Oscar",
+  "Milo",
+  "Coco",
+  "Pepper",
+  "Simba",
+  "Gizmo",
+];
 
 export const HomePage: React.FC = () => {
-  const { username } = usePlayerStore((s) => s);
+  const { username, playerId } = usePlayerStore((s) => s);
   const [inputName, setInputName] = useState(username);
-  const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
+  const [activeTab, setActiveTab] = useState<"create" | "join">("create");
   const [avatarIndex, setAvatarIndex] = useState(0);
   const [replayIntro, setReplayIntro] = useState(false);
   const [hasRevealed, setHasRevealed] = useState(false);
   const [showGlobalChat, setShowGlobalChat] = useState(false);
-  const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState<{ sender: string; text: string; color: string }[]>([
-    { sender: 'HọaSĩPro', text: 'Ai solo vẽ không? 😎', color: 'text-primary' },
-    { sender: 'NoName99', text: 'Chờ xíu đang vào phòng nè!', color: 'text-secondary' },
-  ]);
+  const [chatInput, setChatInput] = useState("");
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+
+  const lobbyMessages = useLobbyChatStore((s) => s.messages);
+
+  useEffect(() => {
+    wsClient.send(MessageType.GET_LOBBY_CHAT, { limit: 50 }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [lobbyMessages, showGlobalChat]);
 
   const handleNameBlur = () => {
     if (inputName.trim()) {
@@ -36,24 +56,28 @@ export const HomePage: React.FC = () => {
   const handleSendChat = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
-    setChatMessages((prev) => [
-      ...prev,
-      { sender: inputName || 'Bạn', text: chatInput.trim(), color: 'text-emerald-600' },
-    ]);
-    audioManager.playSFX('chat');
-    setChatInput('');
+
+    wsClient
+      .send(MessageType.SEND_LOBBY_CHAT, {
+        playerId,
+        username: inputName,
+        content: chatInput.trim(),
+      })
+      .catch((err) => console.error("Lobby chat failed:", err));
+
+    setChatInput("");
   };
 
   const handleIntroComplete = useCallback(() => {
     setHasRevealed(true);
     setReplayIntro(false);
-    audioManager.playBGM('lobby');
+    audioManager.playBGM("lobby");
   }, []);
 
   useEffect(() => {
     // If revealed already (e.g. navigation back to home), ensure lobby BGM is playing
     if (hasRevealed && !replayIntro) {
-      audioManager.playBGM('lobby');
+      audioManager.playBGM("lobby");
     }
   }, [hasRevealed, replayIntro]);
 
@@ -68,9 +92,11 @@ export const HomePage: React.FC = () => {
 
       <div className="min-h-screen flex flex-col justify-between p-4 md:p-6 text-slate-800 overflow-hidden">
         {/* Top Header Bar */}
-        <header className={`max-w-6xl w-full mx-auto flex items-center justify-between py-2 transition-all duration-700 ${
-          hasRevealed ? 'animate-pop-in' : 'opacity-0'
-        }`}>
+        <header
+          className={`max-w-6xl w-full mx-auto flex items-center justify-between py-2 transition-all duration-700 ${
+            hasRevealed ? "animate-pop-in" : "opacity-0"
+          }`}
+        >
           <div className="flex items-center gap-3">
             <span className="text-3xl animate-bounce">🎨</span>
             <span className="text-2xl font-black bubbly-logo text-white drop-shadow-md">
@@ -93,23 +119,29 @@ export const HomePage: React.FC = () => {
             </button>
             <SoundToggle />
             <button className="bg-white/20 hover:bg-white/30 text-white p-2 sm:p-2.5 rounded-2xl backdrop-blur-md transition-all shadow-md">
-              <span className="material-symbols-outlined text-lg sm:text-xl">help</span>
+              <span className="material-symbols-outlined text-lg sm:text-xl">
+                help
+              </span>
             </button>
             <ConnectionStatus />
           </div>
         </header>
 
         {/* Main Content Area */}
-        <main className={`max-w-5xl w-full mx-auto my-4 flex-1 flex flex-col items-center justify-center gap-6 transition-all duration-700 ${
-          hasRevealed ? 'animate-pop-in' : 'opacity-0 scale-90'
-        }`}>
+        <main
+          className={`max-w-5xl w-full mx-auto my-4 flex-1 flex flex-col items-center justify-center gap-6 transition-all duration-700 ${
+            hasRevealed ? "animate-pop-in" : "opacity-0 scale-90"
+          }`}
+        >
           {/* 3D Bubbly Logo Centerpiece */}
           <div className="text-center group select-none">
             <div className="inline-block relative">
               <h2 className="text-5xl sm:text-7xl md:text-8xl bubbly-logo transform group-hover:scale-105 transition-transform duration-300">
                 Dopamine<span className="text-sky-300">.io</span>
               </h2>
-              <div className="absolute -top-3 -right-6 text-3xl rotate-12">🖌️</div>
+              <div className="absolute -top-3 -right-6 text-3xl rotate-12">
+                🖌️
+              </div>
             </div>
             <p className="text-white font-bold text-sm sm:text-base md:text-lg drop-shadow-md mt-1">
               Game Vẽ & Đoán Từ Đầy Phấn Khích Cùng Bạn Bè! ⚡
@@ -126,7 +158,10 @@ export const HomePage: React.FC = () => {
                 </span>
 
                 {/* Avatar Preview with Refresh Button */}
-                <div className="relative w-24 h-24 sm:w-28 sm:h-28 mx-auto my-4 cursor-pointer group" onClick={cycleAvatar}>
+                <div
+                  className="relative w-24 h-24 sm:w-28 sm:h-28 mx-auto my-4 cursor-pointer group"
+                  onClick={cycleAvatar}
+                >
                   <img
                     src={avatarUrl}
                     alt="Avatar"
@@ -137,7 +172,9 @@ export const HomePage: React.FC = () => {
                     title="Đổi avatar ngẫu nhiên"
                     className="absolute bottom-0 right-0 bg-secondary hover:bg-secondary-dark text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform"
                   >
-                    <span className="material-symbols-outlined text-sm">refresh</span>
+                    <span className="material-symbols-outlined text-sm">
+                      refresh
+                    </span>
                   </button>
                 </div>
 
@@ -159,7 +196,6 @@ export const HomePage: React.FC = () => {
                   />
                 </div>
               </div>
-
             </div>
 
             {/* Right: Create / Join Room Tabs & Forms */}
@@ -168,22 +204,22 @@ export const HomePage: React.FC = () => {
               <div className="flex p-1.5 gap-2 bg-sky-100/90 rounded-2xl mb-4">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('create')}
+                  onClick={() => setActiveTab("create")}
                   className={`flex-1 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all ${
-                    activeTab === 'create'
-                      ? 'text-white bg-primary shadow-md scale-[1.02]'
-                      : 'text-slate-600 hover:bg-white/60'
+                    activeTab === "create"
+                      ? "text-white bg-primary shadow-md scale-[1.02]"
+                      : "text-slate-600 hover:bg-white/60"
                   }`}
                 >
                   ➕ TẠO PHÒNG MỚI
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('join')}
+                  onClick={() => setActiveTab("join")}
                   className={`flex-1 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all ${
-                    activeTab === 'join'
-                      ? 'text-white bg-primary shadow-md scale-[1.02]'
-                      : 'text-slate-600 hover:bg-white/60'
+                    activeTab === "join"
+                      ? "text-white bg-primary shadow-md scale-[1.02]"
+                      : "text-slate-600 hover:bg-white/60"
                   }`}
                 >
                   🚪 VÀO PHÒNG
@@ -191,28 +227,36 @@ export const HomePage: React.FC = () => {
               </div>
 
               {/* Form Content */}
-              {activeTab === 'create' ? <CreateRoomForm /> : <JoinRoomForm />}
+              {activeTab === "create" ? <CreateRoomForm /> : <JoinRoomForm />}
             </div>
           </div>
         </main>
 
         {/* Footer */}
-        <footer className={`text-center text-xs font-bold text-white/80 py-2 drop-shadow transition-opacity duration-700 ${
-          hasRevealed ? 'opacity-100' : 'opacity-0'
-        }`}>
+        <footer
+          className={`text-center text-xs font-bold text-white/80 py-2 drop-shadow transition-opacity duration-700 ${
+            hasRevealed ? "opacity-100" : "opacity-0"
+          }`}
+        >
           Dopamine Multiplayer Drawing & Guessing Game • Real-time Canvas Engine
         </footer>
       </div>
 
       {/* Floating Global Chat Panel */}
-      <div className={`fixed bottom-4 right-4 z-40 flex flex-col items-end transition-all duration-700 ${
-        hasRevealed ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'
-      }`}>
+      <div
+        className={`fixed bottom-4 right-4 z-40 flex flex-col items-end transition-all duration-700 ${
+          hasRevealed
+            ? "opacity-100 scale-100"
+            : "opacity-0 scale-75 pointer-events-none"
+        }`}
+      >
         {showGlobalChat && (
           <div className="glass-panel w-72 sm:w-80 rounded-2xl mb-3 overflow-hidden shadow-2xl border-2 border-white flex flex-col animate-slideUp">
             <div className="bg-primary p-3 flex justify-between items-center text-white">
               <span className="font-extrabold text-xs flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-base">chat</span>
+                <span className="material-symbols-outlined text-base">
+                  chat
+                </span>
                 Chat Phòng Chờ
               </span>
               <button
@@ -223,14 +267,27 @@ export const HomePage: React.FC = () => {
               </button>
             </div>
             <div className="h-44 p-3 overflow-y-auto space-y-2 bg-white/70 text-xs custom-scrollbar">
-              {chatMessages.map((msg, i) => (
-                <div key={i}>
-                  <strong className={msg.color}>{msg.sender}: </strong>
-                  <span className="text-slate-700">{msg.text}</span>
-                </div>
-              ))}
+              {lobbyMessages.map((msg, i) => {
+                const isCurrent = msg.playerId === playerId;
+                return (
+                  <div key={msg.messageId || i}>
+                    <strong
+                      className={
+                        isCurrent ? "text-emerald-600" : "text-sky-600"
+                      }
+                    >
+                      {msg.username || "Người chơi"}:{" "}
+                    </strong>
+                    <span className="text-slate-700">{msg.content}</span>
+                  </div>
+                );
+              })}
+              <div ref={chatBottomRef} />
             </div>
-            <form onSubmit={handleSendChat} className="p-2 bg-white/90 border-t border-sky-100 flex gap-1.5">
+            <form
+              onSubmit={handleSendChat}
+              className="p-2 bg-white/90 border-t border-sky-100 flex gap-1.5"
+            >
               <input
                 type="text"
                 placeholder="Nhắn tin..."
@@ -259,4 +316,3 @@ export const HomePage: React.FC = () => {
     </>
   );
 };
-

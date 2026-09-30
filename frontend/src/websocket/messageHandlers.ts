@@ -4,6 +4,7 @@ import { wsClient } from "./WebSocketClient";
 import { roomStore } from "../store/roomStore";
 import { gameStore } from "../store/gameStore";
 import { chatStore } from "../store/chatStore";
+import { lobbyChatStore } from "../store/lobbyChatStore";
 import { guessStore } from "../store/guessStore";
 import { connectionStore } from "../store/connectionStore";
 import { playerStore } from "../store/playerStore";
@@ -543,6 +544,40 @@ export function setupMessageHandlers(
         break;
       }
 
+      case MessageType.LOBBY_CHAT_MESSAGE: {
+        const payload = response.payload || response;
+        const msg: ChatMessage = {
+          messageId: payload.messageId,
+          roomId: payload.roomId || "lobby",
+          playerId: payload.playerId,
+          username: payload.username,
+          content: payload.content,
+          type: payload.type || "USER",
+          createdAt: payload.createdAt || Date.now(),
+        };
+        lobbyChatStore.addMessage(msg);
+        const myPlayerId = playerStore.getState().playerId;
+        if (payload.playerId !== myPlayerId) {
+          audioManager.playSFX("chat");
+        }
+        break;
+      }
+
+      case MessageType.LOBBY_CHAT_HISTORY: {
+        const rawMessages = response.messages || [];
+        const formatted: ChatMessage[] = rawMessages.map((m: any) => ({
+          messageId: m.messageId,
+          roomId: m.roomId || "lobby",
+          playerId: m.playerId,
+          username: m.username,
+          content: m.content,
+          type: m.type || "USER",
+          createdAt: m.createdAt || Date.now(),
+        }));
+        lobbyChatStore.setMessages(formatted);
+        break;
+      }
+
       // ─── Drawing Events ─────────────────────────────────────────────
       case MessageType.DRAW_EVENT: {
         const payload = response.payload || response;
@@ -552,8 +587,7 @@ export function setupMessageHandlers(
           pointData.tool === "ERASER" ||
           payload.tool === "ERASER" ||
           color.toUpperCase() === "#FFFFFF";
-        const isFill =
-          pointData.tool === "FILL" || payload.tool === "FILL";
+        const isFill = pointData.tool === "FILL" || payload.tool === "FILL";
         const point: DrawPoint = {
           x: pointData.x ?? 0,
           y: pointData.y ?? 0,

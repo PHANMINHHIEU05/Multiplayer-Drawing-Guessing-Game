@@ -52,22 +52,28 @@ class GameCommandHandlerTest {
     @Mock
     private DrawingRoomStateCache drawingRoomStateCache;
 
+    @Mock
+    private com.drawgame.realtime_gateway.chat.LobbyChatRepository lobbyChatRepository;
+
     private GameCommandHandler handler;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    /** TV8: real (test-secret) token service so resume tests exercise actual verification. */
-    private final com.drawgame.realtime_gateway.security.GameSessionTokenService tokenService =
-            new com.drawgame.realtime_gateway.security.GameSessionTokenService(
-                    "test-secret-that-is-long-enough-for-hs256-0123456789", 60);
-    private final com.drawgame.realtime_gateway.security.SessionRateLimiter rateLimiter =
-            new com.drawgame.realtime_gateway.security.SessionRateLimiter(1000, 1000, 100000, 1000, 500);
+    /**
+     * TV8: real (test-secret) token service so resume tests exercise actual
+     * verification.
+     */
+    private final com.drawgame.realtime_gateway.security.GameSessionTokenService tokenService = new com.drawgame.realtime_gateway.security.GameSessionTokenService(
+            "test-secret-that-is-long-enough-for-hs256-0123456789", 60);
+    private final com.drawgame.realtime_gateway.security.SessionRateLimiter rateLimiter = new com.drawgame.realtime_gateway.security.SessionRateLimiter(
+            1000, 1000, 100000, 1000, 500);
 
     @BeforeEach
     void setUp() {
-        // TV8: full constructor — real token service (test secret) + generous limiter so
+        // TV8: full constructor — real token service (test secret) + generous limiter
+        // so
         // existing behavioral tests stay focused on their scenarios.
         handler = new GameCommandHandler(gameGrpcClient, roomGrpcClient, chatGrpcClient,
                 connectionManager, drawingRoomStateCache, null, null,
-                tokenService, rateLimiter,
+                lobbyChatRepository, tokenService, rateLimiter,
                 new com.drawgame.realtime_gateway.security.InputValidator(32, 64, 128),
                 "test-gateway");
         // TV8: handlers derive identity from the bound session — stub the binding for
@@ -78,20 +84,19 @@ class GameCommandHandlerTest {
                 GameStateResponse.newBuilder().setRoomId("room-1").setStatus("NO_GAME").build()));
     }
 
-
     @Test
     void handleSendChat_Success_BroadcastsChatMessageToRoom() throws Exception {
         String jsonStr = """
-            {
-                "type": "SEND_CHAT",
-                "payload": {
-                    "roomId": "room-1",
-                    "playerId": "player-1",
-                    "username": "Minh",
-                    "content": "Xin chào"
+                {
+                    "type": "SEND_CHAT",
+                    "payload": {
+                        "roomId": "room-1",
+                        "playerId": "player-1",
+                        "username": "Minh",
+                        "content": "Xin chào"
+                    }
                 }
-            }
-            """;
+                """;
         JsonNode json = objectMapper.readTree(jsonStr);
 
         ChatMessageResponse chatResponse = ChatMessageResponse.newBuilder()
@@ -152,7 +157,9 @@ class GameCommandHandlerTest {
         when(connectionManager.getUsername("session-1")).thenReturn("Minh");
         when(gameGrpcClient.getGameState("room-1", "player-1")).thenReturn(Mono.just(GameStateResponse.newBuilder()
                 .setStatus("PLAYING").setRoundPhase("DRAWING").setGameId("game-1").setCurrentRound(2)
-                .addScores(com.drawgame.game.grpc.generated.PlayerScoreMessage.newBuilder().setPlayerId("player-1").build()).build()));
+                .addScores(com.drawgame.game.grpc.generated.PlayerScoreMessage.newBuilder().setPlayerId("player-1")
+                        .build())
+                .build()));
         JsonNode command = objectMapper.readTree("""
                 {"type":"SEND_REACTION","payload":{"reactionType":"🔥","playerId":"spoofed"}}
                 """);
@@ -181,19 +188,20 @@ class GameCommandHandlerTest {
     @Test
     void handleSendChat_RateLimited_ReturnsErrorJson() throws Exception {
         String jsonStr = """
-            {
-                "type": "SEND_CHAT",
-                "payload": {
-                    "roomId": "room-1",
-                    "playerId": "player-1",
-                    "content": "spam"
+                {
+                    "type": "SEND_CHAT",
+                    "payload": {
+                        "roomId": "room-1",
+                        "playerId": "player-1",
+                        "content": "spam"
+                    }
                 }
-            }
-            """;
+                """;
         JsonNode json = objectMapper.readTree(jsonStr);
 
         when(chatGrpcClient.sendMessage(anyString(), anyString(), anyString(), anyString()))
-                .thenReturn(Mono.error(new StatusRuntimeException(Status.RESOURCE_EXHAUSTED.withDescription("Rate limit"))));
+                .thenReturn(Mono
+                        .error(new StatusRuntimeException(Status.RESOURCE_EXHAUSTED.withDescription("Rate limit"))));
 
         Mono<String> resultMono = handler.handleCommand("session-1", json);
 
@@ -205,17 +213,79 @@ class GameCommandHandlerTest {
     }
 
     @Test
+    void handleSendLobbyChat_Success_BroadcastsToLobby() throws Exception {
+        when(lobbyChatRepository.appendMessage(any())).thenReturn(Mono.empty());
+
+        String jsonStr = """
+                {
+                    "type": "SEND_LOBBY_CHAT",
+                    "requestId": "req-lobby-1",
+                    "payload": {
+                        "playerId": "p-guest",
+                        "username": "HọaSĩPro",
+                        "content": "Chào cả nhà!"
+                    }
+                }
+                """;
+        JsonNode json = objectMapper.readTree(jsonStr);
+
+        Mono<String> resultMono = handler.handleCommand("unbound-session", json);
+
+        StepVerifier.create(resultMono)
+                .assertNext(res -> {
+                    assertTrue(res.contains("LOBBY_CHAT_MESSAGE"));
+                    assertTrue(res.contains("Chào cả nhà!"));
+                    assertTrue(res.contains("HọaSĩPro"));
+                    assertTrue(res.contains("req-lobby-1"));
+                })
+                .verifyComplete();
+
+        verify(connectionManager).broadcastToLobby(anyString());
+    }
+
+    @Test
+    void handleGetLobbyChat_Success_ReturnsHistory() throws Exception {
+        java.util.Map<String, Object> msg = new java.util.HashMap<>();
+        msg.put("messageId", "m1");
+        msg.put("username", "TestUser");
+        msg.put("content", "Hello");
+        when(lobbyChatRepository.getRecentMessages(anyInt())).thenReturn(reactor.core.publisher.Flux.just(msg));
+
+        String jsonStr = """
+                {
+                    "type": "GET_LOBBY_CHAT",
+                    "requestId": "req-lobby-hist",
+                    "payload": {
+                        "limit": 20
+                    }
+                }
+                """;
+        JsonNode json = objectMapper.readTree(jsonStr);
+
+        Mono<String> resultMono = handler.handleCommand("unbound-session", json);
+
+        StepVerifier.create(resultMono)
+                .assertNext(res -> {
+                    assertTrue(res.contains("LOBBY_CHAT_HISTORY"));
+                    assertTrue(res.contains("TestUser"));
+                    assertTrue(res.contains("Hello"));
+                    assertTrue(res.contains("req-lobby-hist"));
+                })
+                .verifyComplete();
+    }
+
+    @Test
     void handleGetRecentChat_Success_ReturnsHistory() throws Exception {
         String jsonStr = """
-            {
-                "type": "GET_RECENT_CHAT",
-                "payload": {
-                    "roomId": "room-1",
-                    "playerId": "player-1",
-                    "limit": 10
+                {
+                    "type": "GET_RECENT_CHAT",
+                    "payload": {
+                        "roomId": "room-1",
+                        "playerId": "player-1",
+                        "limit": 10
+                    }
                 }
-            }
-            """;
+                """;
         JsonNode json = objectMapper.readTree(jsonStr);
 
         GetRecentMessagesResponse historyRes = GetRecentMessagesResponse.newBuilder()
@@ -280,16 +350,16 @@ class GameCommandHandlerTest {
     void handleSubmitGuess_CorrectGuess_BroadcastsSafeEventWithoutSecretWord() throws Exception {
         when(connectionManager.getUsername("session-1")).thenReturn("Minh");
         String jsonStr = """
-            {
-                "type": "SUBMIT_GUESS",
-                "payload": {
-                    "roomId": "room-1",
-                    "playerId": "player-1",
-                    "username": "FakeName",
-                    "guess": "máy bay"
+                {
+                    "type": "SUBMIT_GUESS",
+                    "payload": {
+                        "roomId": "room-1",
+                        "playerId": "player-1",
+                        "username": "FakeName",
+                        "guess": "máy bay"
+                    }
                 }
-            }
-            """;
+                """;
         JsonNode json = objectMapper.readTree(jsonStr);
 
         GuessResponse guessRes = GuessResponse.newBuilder()
@@ -339,15 +409,15 @@ class GameCommandHandlerTest {
     @Test
     void handleLeaveRoom_UnbindsSession_AndEvictsCacheIfRoomEmpty() throws Exception {
         String jsonStr = """
-            {
-                "type": "LEAVE_ROOM",
-                "payload": {
-                    "roomId": "room-1",
-                    "playerId": "player-1"
-                },
-                "requestId": "req-leave"
-            }
-            """;
+                {
+                    "type": "LEAVE_ROOM",
+                    "payload": {
+                        "roomId": "room-1",
+                        "playerId": "player-1"
+                    },
+                    "requestId": "req-leave"
+                }
+                """;
         JsonNode json = objectMapper.readTree(jsonStr);
 
         RoomResponse emptyRoom = RoomResponse.newBuilder()
@@ -399,16 +469,16 @@ class GameCommandHandlerTest {
     @Test
     void handleSubmitGuess_WrongGuess_DoesNotForwardToChatService() throws Exception {
         String jsonStr = """
-            {
-                "type": "SUBMIT_GUESS",
-                "payload": {
-                    "roomId": "room-1",
-                    "playerId": "player-1",
-                    "username": "Minh",
-                    "guess": "con thỏ"
+                {
+                    "type": "SUBMIT_GUESS",
+                    "payload": {
+                        "roomId": "room-1",
+                        "playerId": "player-1",
+                        "username": "Minh",
+                        "guess": "con thỏ"
+                    }
                 }
-            }
-            """;
+                """;
         JsonNode json = objectMapper.readTree(jsonStr);
 
         GuessResponse guessRes = GuessResponse.newBuilder()
@@ -438,14 +508,14 @@ class GameCommandHandlerTest {
     @Test
     void handleGameFinished_ClearsDrawingCacheAndBroadcasts() throws Exception {
         String jsonStr = """
-            {
-                "type": "GAME_FINISHED",
-                "payload": {
-                    "roomId": "room-1"
-                },
-                "requestId": "req-999"
-            }
-            """;
+                {
+                    "type": "GAME_FINISHED",
+                    "payload": {
+                        "roomId": "room-1"
+                    },
+                    "requestId": "req-999"
+                }
+                """;
         JsonNode json = objectMapper.readTree(jsonStr);
 
         Mono<String> resultMono = handler.handleCommand("session-1", json);
@@ -466,16 +536,16 @@ class GameCommandHandlerTest {
         // TV8: valid signed token for player-1/room-1
         String token = tokenService.issue("player-1", "room-1");
         String jsonStr = """
-            {
-                "type": "RESUME_SESSION",
-                "requestId": "req-resume",
-                "payload": {
-                    "roomId": "room-1",
-                    "playerId": "player-1",
-                    "token": "%s"
+                {
+                    "type": "RESUME_SESSION",
+                    "requestId": "req-resume",
+                    "payload": {
+                        "roomId": "room-1",
+                        "playerId": "player-1",
+                        "token": "%s"
+                    }
                 }
-            }
-            """.formatted(token);
+                """.formatted(token);
         JsonNode json = objectMapper.readTree(jsonStr);
 
         RoomResponse room = RoomResponse.newBuilder()
@@ -507,16 +577,16 @@ class GameCommandHandlerTest {
         // Valid token for player-1, but membership was removed (explicit leave)
         String token = tokenService.issue("player-1", "room-1");
         String jsonStr = """
-            {
-                "type": "RESUME_SESSION",
-                "requestId": "req-resume",
-                "payload": {
-                    "roomId": "room-1",
-                    "playerId": "player-1",
-                    "token": "%s"
+                {
+                    "type": "RESUME_SESSION",
+                    "requestId": "req-resume",
+                    "payload": {
+                        "roomId": "room-1",
+                        "playerId": "player-1",
+                        "token": "%s"
+                    }
                 }
-            }
-            """.formatted(token);
+                """.formatted(token);
         JsonNode json = objectMapper.readTree(jsonStr);
 
         RoomResponse room = RoomResponse.newBuilder()
@@ -541,11 +611,11 @@ class GameCommandHandlerTest {
     @Test
     void resume_NoToken_IsRejected_NoInsecureFallback() throws Exception {
         String jsonStr = """
-            {
-                "type": "RESUME_SESSION",
-                "payload": { "roomId": "room-1", "playerId": "player-1" }
-            }
-            """;
+                {
+                    "type": "RESUME_SESSION",
+                    "payload": { "roomId": "room-1", "playerId": "player-1" }
+                }
+                """;
         JsonNode json = objectMapper.readTree(jsonStr);
 
         StepVerifier.create(handler.handleCommand("new-session", json))
@@ -562,15 +632,15 @@ class GameCommandHandlerTest {
         // claims playerId=player-1 (victim) in the payload.
         String attackerToken = tokenService.issue("player-evil", "room-1");
         String jsonStr = """
-            {
-                "type": "RESUME_SESSION",
-                "payload": {
-                    "roomId": "room-1",
-                    "playerId": "player-1",
-                    "token": "%s"
+                {
+                    "type": "RESUME_SESSION",
+                    "payload": {
+                        "roomId": "room-1",
+                        "playerId": "player-1",
+                        "token": "%s"
+                    }
                 }
-            }
-            """.formatted(attackerToken);
+                """.formatted(attackerToken);
         JsonNode json = objectMapper.readTree(jsonStr);
 
         StepVerifier.create(handler.handleCommand("attacker-session", json))
@@ -591,11 +661,11 @@ class GameCommandHandlerTest {
         String token = tokenService.issue("player-1", "room-1");
         String tampered = token.substring(0, token.length() - 4) + "AAAA";
         String jsonStr = """
-            {
-                "type": "RESUME_SESSION",
-                "payload": { "roomId": "room-1", "token": "%s" }
-            }
-            """.formatted(tampered);
+                {
+                    "type": "RESUME_SESSION",
+                    "payload": { "roomId": "room-1", "token": "%s" }
+                }
+                """.formatted(tampered);
         JsonNode json = objectMapper.readTree(jsonStr);
 
         StepVerifier.create(handler.handleCommand("new-session", json))
@@ -610,11 +680,11 @@ class GameCommandHandlerTest {
         // SEC-017: credential for room-A used against room-B
         String token = tokenService.issue("player-1", "room-A");
         String jsonStr = """
-            {
-                "type": "RESUME_SESSION",
-                "payload": { "roomId": "room-B", "token": "%s" }
-            }
-            """.formatted(token);
+                {
+                    "type": "RESUME_SESSION",
+                    "payload": { "roomId": "room-B", "token": "%s" }
+                }
+                """.formatted(token);
         JsonNode json = objectMapper.readTree(jsonStr);
 
         StepVerifier.create(handler.handleCommand("new-session", json))
@@ -627,25 +697,25 @@ class GameCommandHandlerTest {
     @Test
     void submitGuess_SpoofedPlayerId_Ignored_BoundIdentityUsed() throws Exception {
         // SEC-015: payload claims another player — bound identity (player-1) wins
-        com.drawgame.game.grpc.generated.GuessResponse guessResponse =
-                com.drawgame.game.grpc.generated.GuessResponse.newBuilder()
-                        .setRoomId("room-1")
-                        .setPlayerId("player-1")
-                        .setGuessStatus("WRONG")
-                        .setScoreAwarded(0)
-                        .build();
+        com.drawgame.game.grpc.generated.GuessResponse guessResponse = com.drawgame.game.grpc.generated.GuessResponse
+                .newBuilder()
+                .setRoomId("room-1")
+                .setPlayerId("player-1")
+                .setGuessStatus("WRONG")
+                .setScoreAwarded(0)
+                .build();
         when(gameGrpcClient.submitGuess("room-1", "player-1", "guess")).thenReturn(Mono.just(guessResponse));
 
         String jsonStr = """
-            {
-                "type": "SUBMIT_GUESS",
-                "payload": {
-                    "roomId": "room-1",
-                    "playerId": "another-player",
-                    "guess": "guess"
+                {
+                    "type": "SUBMIT_GUESS",
+                    "payload": {
+                        "roomId": "room-1",
+                        "playerId": "another-player",
+                        "guess": "guess"
+                    }
                 }
-            }
-            """;
+                """;
         JsonNode json = objectMapper.readTree(jsonStr);
 
         StepVerifier.create(handler.handleCommand("session-1", json))
@@ -671,15 +741,15 @@ class GameCommandHandlerTest {
                 .thenReturn(Mono.just(chatResponse));
 
         String jsonStr = """
-            {
-                "type": "SEND_CHAT",
-                "payload": {
-                    "playerId": "another-player",
-                    "username": "FakeName",
-                    "content": "hello"
+                {
+                    "type": "SEND_CHAT",
+                    "payload": {
+                        "playerId": "another-player",
+                        "username": "FakeName",
+                        "content": "hello"
+                    }
                 }
-            }
-            """;
+                """;
         JsonNode json = objectMapper.readTree(jsonStr);
 
         StepVerifier.create(handler.handleCommand("session-1", json))
@@ -693,11 +763,11 @@ class GameCommandHandlerTest {
     @Test
     void unboundSession_ProtectedCommand_Rejected() throws Exception {
         String jsonStr = """
-            {
-                "type": "GET_GAME_STATE",
-                "payload": { "roomId": "room-1" }
-            }
-            """;
+                {
+                    "type": "GET_GAME_STATE",
+                    "payload": { "roomId": "room-1" }
+                }
+                """;
         JsonNode json = objectMapper.readTree(jsonStr);
 
         StepVerifier.create(handler.handleCommand("unknown-session", json))
