@@ -30,7 +30,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   color: controlledColor,
   size: controlledSize,
   isEraser = false,
-  activeTool = 'pen',
+  activeTool = isEraser ? 'eraser' : 'pen',
   onDrawPoint,
   onDrawBatch,
   onClearCanvas,
