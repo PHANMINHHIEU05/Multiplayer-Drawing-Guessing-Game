@@ -70,6 +70,8 @@ class GameCommandHandlerTest {
         // every test (unbound sessions are rejected by design now).
         lenient().when(connectionManager.getRoomId("session-1")).thenReturn("room-1");
         lenient().when(connectionManager.getPlayerId("session-1")).thenReturn("player-1");
+        lenient().when(gameGrpcClient.removePlayer(anyString(), anyString())).thenReturn(Mono.just(
+                GameStateResponse.newBuilder().setRoomId("room-1").setStatus("NO_GAME").build()));
     }
 
 
@@ -211,12 +213,14 @@ class GameCommandHandlerTest {
 
     @Test
     void handleSubmitGuess_CorrectGuess_BroadcastsSafeEventWithoutSecretWord() throws Exception {
+        when(connectionManager.getUsername("session-1")).thenReturn("Minh");
         String jsonStr = """
             {
                 "type": "SUBMIT_GUESS",
                 "payload": {
                     "roomId": "room-1",
                     "playerId": "player-1",
+                    "username": "FakeName",
                     "guess": "máy bay"
                 }
             }
@@ -253,8 +257,14 @@ class GameCommandHandlerTest {
                 })
                 .verifyComplete();
 
-        // Broadcasts PLAYER_GUESSED_CORRECTLY without secret word
-        verify(connectionManager).broadcastToRoomExcept(eq("room-1"), eq("session-1"), contains("PLAYER_GUESSED_CORRECTLY"));
+        // Broadcasts the authoritative nickname without leaking the secret word.
+        verify(connectionManager).broadcastToRoomExcept(
+                eq("room-1"),
+                eq("session-1"),
+                argThat(message -> message.contains("PLAYER_GUESSED_CORRECTLY")
+                        && message.contains("\"username\":\"Minh\"")
+                        && !message.contains("FakeName")
+                        && !message.contains("máy bay")));
         // Drawing cache refreshed on correct guess
         verify(drawingRoomStateCache).update(eq("room-1"), any());
         // Chat service MUST NOT be called for correct guess
@@ -291,6 +301,34 @@ class GameCommandHandlerTest {
 
         verify(connectionManager).unbindSession("session-1");
         verify(drawingRoomStateCache).remove("room-1");
+        verify(gameGrpcClient).removePlayer("room-1", "player-1");
+    }
+
+    @Test
+    void handleDisconnect_RemovesMembershipGameStateAndBroadcastsPlayerLeft() {
+        RoomResponse remainingRoom = RoomResponse.newBuilder()
+                .setRoomId("room-1")
+                .setHostId("player-1")
+                .setStatus("PLAYING")
+                .addPlayers(PlayerMessage.newBuilder()
+                        .setPlayerId("player-1")
+                        .setUsername("Dũng")
+                        .setReady(true)
+                        .build())
+                .build();
+        when(roomGrpcClient.leaveRoom("room-1", "player-2")).thenReturn(Mono.just(remainingRoom));
+
+        StepVerifier.create(handler.handleDisconnect("room-1", "session-2", "player-2", "Dũng 2"))
+                .verifyComplete();
+
+        verify(roomGrpcClient).leaveRoom("room-1", "player-2");
+        verify(gameGrpcClient).removePlayer("room-1", "player-2");
+        verify(connectionManager).broadcastToRoomExcept(
+                eq("room-1"),
+                eq("session-2"),
+                argThat(message -> message.contains("PLAYER_LEFT")
+                        && message.contains("Dũng 2")
+                        && !message.contains("PLAYER_DISCONNECTED")));
     }
 
     @Test

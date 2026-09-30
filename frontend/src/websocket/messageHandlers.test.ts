@@ -4,6 +4,7 @@ import { MessageType } from "./protocol";
 import { gameStore } from "../store/gameStore";
 import { playerStore } from "../store/playerStore";
 import { roomStore } from "../store/roomStore";
+import { guessStore } from "../store/guessStore";
 
 const { send } = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock("./WebSocketClient", () => ({ wsClient: { send } }));
@@ -14,6 +15,7 @@ describe("GAME_STARTED viewer state refresh", () => {
     send.mockResolvedValue({});
     gameStore.clearGame();
     roomStore.clearRoom();
+    guessStore.clearGuesses();
   });
 
   it("immediately fetches drawer-private choices instead of waiting for the polling interval", () => {
@@ -40,5 +42,79 @@ describe("GAME_STARTED viewer state refresh", () => {
       { roomId: "ROOM1", playerId: "drawer-1" },
       5000,
     );
+  });
+});
+
+describe("PLAYER_GUESSED_CORRECTLY display name", () => {
+  afterEach(() => {
+    roomStore.clearRoom();
+    guessStore.clearGuesses();
+  });
+
+  it("resolves the nickname from the room instead of displaying the internal player id", () => {
+    roomStore.setRoom({
+      roomId: "ROOM1",
+      status: "PLAYING",
+      hostPlayerId: "player_host",
+      players: [
+        { playerId: "player_host", username: "Chủ phòng" },
+        { playerId: "player_abc123", username: "Minh" },
+      ],
+      maxPlayers: 4,
+      roundCount: 3,
+      roundDuration: 60,
+      playerCount: 2,
+      selectedCategories: ["ANIMALS"],
+    });
+
+    setupMessageHandlers()({
+      type: MessageType.PLAYER_GUESSED_CORRECTLY,
+      roomId: "ROOM1",
+      playerId: "player_abc123",
+      scoreAwarded: 100,
+    });
+
+    expect(guessStore.getState().guesses).toHaveLength(1);
+    expect(guessStore.getState().guesses[0].username).toBe("Minh");
+  });
+});
+
+describe("PLAYER_LEFT for the current player", () => {
+  afterEach(() => {
+    playerStore.clearSessionToken();
+    roomStore.clearRoom();
+    gameStore.clearGame();
+    guessStore.clearGuesses();
+  });
+
+  it("clears stale room membership so a fast reconnect cannot keep the player inside", () => {
+    playerStore.setPlayer("Dũng 2", "player-2");
+    playerStore.setSessionToken("stale-resume-token");
+    roomStore.setRoom({
+      roomId: "ROOM1",
+      status: "PLAYING",
+      hostPlayerId: "player-1",
+      players: [
+        { playerId: "player-1", username: "Dũng" },
+        { playerId: "player-2", username: "Dũng 2" },
+      ],
+      maxPlayers: 4,
+      roundCount: 3,
+      roundDuration: 60,
+      playerCount: 2,
+      selectedCategories: ["ANIMALS"],
+    });
+
+    setupMessageHandlers()({
+      type: MessageType.PLAYER_LEFT,
+      roomId: "ROOM1",
+      playerId: "player-2",
+      username: "Dũng 2",
+      players: [{ playerId: "player-1", username: "Dũng" }],
+    });
+
+    expect(roomStore.getState().room).toBeNull();
+    expect(playerStore.getSessionToken()).toBeNull();
+    expect(gameStore.getState().gameState).toBeNull();
   });
 });

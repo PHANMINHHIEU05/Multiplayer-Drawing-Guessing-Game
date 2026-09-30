@@ -535,41 +535,82 @@ public class GameCommandHandler {
         final String resolvedLeavingUsername = !leavingUsername.isBlank() ? leavingUsername
                 : (storedUsername != null && !storedUsername.isBlank() ? storedUsername : "Người chơi");
 
-        return roomGrpcClient.leaveRoom(roomId, playerId)
+        return removePlayerFromRoomAndGame(roomId, playerId)
                 .map(response -> {
-                    String responseJson = createRoomSuccessJson("ROOM_LEFT", response, requestId);
-
-                    // TV6 + QA fix: PLAYER_LEFT control event — broadcast BEFORE unbinding
-                    // so other local room members still receive it, and fan out to remote Gateways.
-                    // Payload carries leaving username, updated hostPlayerId, and remaining players list.
-                    Map<String, Object> leftPayload = new HashMap<>();
-                    leftPayload.put("type", "PLAYER_LEFT");
-                    leftPayload.put("roomId", roomId);
-                    leftPayload.put("playerId", playerId);
-                    leftPayload.put("username", resolvedLeavingUsername);
-                    leftPayload.put("hostPlayerId", response.getHostId());
-                    leftPayload.put("players", response.getPlayersList().stream()
-                            .map(p -> Map.of(
-                                    "playerId", p.getPlayerId(),
-                                    "username", p.getUsername(),
-                                    "ready", p.getReady()
-                            ))
-                            .collect(java.util.stream.Collectors.toList()));
-                    String leftBroadcastJson = toJson(leftPayload);
-                    controlBroadcast(roomId, sessionId, "PLAYER_LEFT", leftBroadcastJson);
-
-                    // TV3 Stabilization (GW-07): unbind session from room routing so this session
-                    // no longer receives drawing events or passes drawing authorization checks.
+                    publishPlayerLeft(response, roomId, sessionId, playerId, resolvedLeavingUsername);
+                    // Explicit leave keeps the socket open, so remove its room authorization.
                     connectionManager.unbindSession(sessionId);
-                    // TV3 Stabilization: evict drawing cache if room is now empty or game ended.
-                    // Safe to call even if cache entry doesn't exist.
-                    if (response.getPlayersList().isEmpty()) {
-                        drawingRoomStateCache.remove(roomId);
-                        log.info("DrawingRoomStateCache evicted — last player left room={}", roomId);
-                    }
-                    return responseJson;
+                    return createRoomSuccessJson("ROOM_LEFT", response, requestId);
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "LEAVE_ROOM_FAILED", e.getMessage())));
+    }
+
+    /**
+     * A closed WebSocket is a permanent leave. Removing Room membership makes any
+     * later RESUME fail instead of adding the disconnected player back to the roster.
+     */
+    public Mono<Void> handleDisconnect(String roomId, String sessionId, String playerId, String username) {
+        String resolvedUsername = username != null && !username.isBlank() ? username : "Người chơi";
+        return removePlayerFromRoomAndGame(roomId, playerId)
+                .doOnNext(response -> publishPlayerLeft(
+                        response, roomId, sessionId, playerId, resolvedUsername))
+                .doOnSuccess(ignored -> log.info(
+                        "Disconnected player permanently removed: room={} player={}", roomId, playerId))
+                .onErrorResume(e -> {
+                    log.error("Could not permanently remove disconnected player: room={} player={}",
+                            roomId, playerId, e);
+                    return Mono.empty();
+                })
+                .then();
+    }
+
+    private Mono<RoomResponse> removePlayerFromRoomAndGame(String roomId, String playerId) {
+        return roomGrpcClient.leaveRoom(roomId, playerId)
+                .flatMap(response -> gameGrpcClient.removePlayer(roomId, playerId)
+                        .doOnNext(gameState -> {
+                            if ("PLAYING".equalsIgnoreCase(gameState.getStatus())
+                                    && !gameState.getDrawerId().isBlank()) {
+                                updateDrawingCache(roomId, gameState);
+                            } else if ("FINISHED".equalsIgnoreCase(gameState.getStatus())) {
+                                drawingRoomStateCache.remove(roomId);
+                            }
+                        })
+                        .onErrorResume(e -> {
+                            // Room membership is authoritative for resume. Keep the leave successful
+                            // even if Game Service is temporarily unavailable.
+                            log.error("Could not remove leaving player from game state: room={} player={}",
+                                    roomId, playerId, e);
+                            return Mono.empty();
+                        })
+                        .thenReturn(response));
+    }
+
+    private void publishPlayerLeft(
+            RoomResponse response,
+            String roomId,
+            String sessionId,
+            String playerId,
+            String username
+    ) {
+        Map<String, Object> leftPayload = new HashMap<>();
+        leftPayload.put("type", "PLAYER_LEFT");
+        leftPayload.put("roomId", roomId);
+        leftPayload.put("playerId", playerId);
+        leftPayload.put("username", username);
+        leftPayload.put("hostPlayerId", response.getHostId());
+        leftPayload.put("players", response.getPlayersList().stream()
+                .map(p -> Map.of(
+                        "playerId", p.getPlayerId(),
+                        "username", p.getUsername(),
+                        "ready", p.getReady()
+                ))
+                .collect(java.util.stream.Collectors.toList()));
+        controlBroadcast(roomId, sessionId, "PLAYER_LEFT", toJson(leftPayload));
+
+        if (response.getPlayersList().isEmpty()) {
+            drawingRoomStateCache.remove(roomId);
+            log.info("DrawingRoomStateCache evicted - last player left room={}", roomId);
+        }
     }
 
     private Mono<String> handleStartGame(String sessionId, JsonNode json, String requestId) {
@@ -717,7 +758,9 @@ public class GameCommandHandler {
         if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
             return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
         }
-        final String username = extractString(node, "username", ""); // display only, never identity
+        // Use the nickname bound during CREATE/JOIN/RESUME. The nickname in the
+        // request payload is intentionally ignored because it can be spoofed.
+        final String username = connectionManager.getUsername(sessionId);
         String guess = extractString(node, "guess", extractString(node, "content", ""));
 
         // TV8: guess input bounds (Vietnamese Unicode preserved; Game Service matching unchanged)
@@ -736,8 +779,10 @@ public class GameCommandHandler {
                     String status = response.getGuessStatus();
                     if ("CORRECT".equalsIgnoreCase(status)) {
                         // TV6: PLAYER_GUESSED_CORRECTLY is room-scoped — local + Redis fanout.
-                        // Payload intentionally contains NO answer text (only playerId + score).
-                        String broadcastMsg = createGuessCorrectBroadcastJson(roomId, playerId, response.getScoreAwarded());
+                        // Payload intentionally contains no answer text. It does include the
+                        // authoritative bound nickname so clients never have to display playerId.
+                        String broadcastMsg = createGuessCorrectBroadcastJson(
+                                roomId, playerId, username, response.getScoreAwarded());
                         controlBroadcast(roomId, sessionId, "PLAYER_GUESSED_CORRECTLY", broadcastMsg);
 
                         Map<String, Object> map = createGuessResultMap(roomId, playerId, status, response.getScoreAwarded(), requestId);
@@ -972,15 +1017,6 @@ public class GameCommandHandler {
         }
     }
 
-    public void broadcastDisconnect(String roomId, String sessionId, String playerId, String username) {
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("type", "PLAYER_DISCONNECTED");
-        payload.put("roomId", roomId);
-        payload.put("playerId", playerId);
-        payload.put("username", username != null && !username.isBlank() ? username : "Người chơi");
-        controlBroadcast(roomId, sessionId, "PLAYER_DISCONNECTED", toJson(payload));
-    }
-
     private String extractRequestId(JsonNode json) {
         if (json.has("requestId") && !json.get("requestId").isNull()) {
             return json.get("requestId").asText();
@@ -1132,11 +1168,13 @@ public class GameCommandHandler {
         return toJson(map);
     }
 
-    private String createGuessCorrectBroadcastJson(String roomId, String playerId, int scoreAwarded) {
+    private String createGuessCorrectBroadcastJson(
+            String roomId, String playerId, String username, int scoreAwarded) {
         Map<String, Object> map = new HashMap<>();
         map.put("type", "PLAYER_GUESSED_CORRECTLY");
         map.put("roomId", roomId);
         map.put("playerId", playerId);
+        map.put("username", username);
         map.put("scoreAwarded", scoreAwarded);
         return toJson(map);
     }

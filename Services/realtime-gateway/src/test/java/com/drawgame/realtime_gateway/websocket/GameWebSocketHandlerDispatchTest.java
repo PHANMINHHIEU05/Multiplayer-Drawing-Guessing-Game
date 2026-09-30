@@ -105,6 +105,21 @@ class GameWebSocketHandlerDispatchTest {
     }
 
     @Test
+    void handle_ClosedSocket_PermanentlyRemovesBoundPlayer() {
+        when(session.receive()).thenReturn(Flux.empty());
+        when(connectionManager.getRoomId("session-abc")).thenReturn("room-1");
+        when(connectionManager.getPlayerId("session-abc")).thenReturn("player-2");
+        when(connectionManager.getUsername("session-abc")).thenReturn("Dũng 2");
+        when(commandHandler.handleDisconnect("room-1", "session-abc", "player-2", "Dũng 2"))
+                .thenReturn(Mono.empty());
+
+        StepVerifier.create(handler.handle(session)).verifyComplete();
+
+        verify(commandHandler).handleDisconnect("room-1", "session-abc", "player-2", "Dũng 2");
+        verify(connectionManager).remove("session-abc");
+    }
+
+    @Test
     void handle_BinaryMessages_PreservesInboundOrder() {
         DataBuffer firstBuffer = bufferFactory.wrap(new byte[]{0x01, 0x04, 0x00, 0x01});
         DataBuffer secondBuffer = bufferFactory.wrap(new byte[]{0x01, 0x04, 0x00, 0x01});

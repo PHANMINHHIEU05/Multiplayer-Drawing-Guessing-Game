@@ -99,6 +99,19 @@ export function setupMessageHandlers(
         const leftPlayerId = response.playerId;
         const leftUsername = response.username || "Người chơi";
 
+        // A disconnect is now a permanent leave. If a fast reconnect briefly resumes
+        // before server-side cleanup finishes, this authoritative event must still
+        // eject that same player locally and discard the stale resume credential.
+        if (leftPlayerId && leftPlayerId === myPlayerId) {
+          playerStore.clearSessionToken();
+          roomStore.clearRoom();
+          gameStore.clearGame();
+          chatStore.clearMessages();
+          guessStore.clearGuesses();
+          metricsStore.resetStrokeSequence();
+          break;
+        }
+
         if (response.players && Array.isArray(response.players)) {
           const updatedPlayers: Player[] = response.players.map((p: any) => ({
             playerId: p.playerId,
@@ -472,11 +485,22 @@ export function setupMessageHandlers(
       }
 
       case MessageType.PLAYER_GUESSED_CORRECTLY: {
+        const playerId = response.playerId || "";
+        const roomPlayer = roomStore
+          .getState()
+          .room?.players.find((player) => player.playerId === playerId);
+        const currentPlayer = playerStore.getState();
+        const username =
+          response.username?.trim() ||
+          roomPlayer?.username ||
+          (playerId === currentPlayer.playerId ? currentPlayer.username : "") ||
+          "Người chơi";
+
         guessStore.addGuess({
           id: `guess_${Date.now()}_${Math.random()}`,
           roomId: response.roomId || "",
-          playerId: response.playerId || "",
-          username: response.username || response.playerId || "Người chơi",
+          playerId,
+          username,
           guess: `đã đoán đúng từ khóa! (+${response.scoreAwarded || 0} điểm)`,
           isCorrect: true,
           timestamp: Date.now(),

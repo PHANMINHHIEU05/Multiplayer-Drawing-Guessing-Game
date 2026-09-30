@@ -18,6 +18,9 @@ service GameService {
 
   rpc SelectWord(SelectWordRequest)
       returns (GameStateResponse);
+
+  rpc RemovePlayer(RemovePlayerRequest)
+      returns (GameStateResponse);
 }
 
 message StartGameRequest {
@@ -40,6 +43,11 @@ message SelectWordRequest {
   string room_id = 1;
   string player_id = 2;
   string choice_id = 3;
+}
+
+message RemovePlayerRequest {
+  string room_id = 1;
+  string player_id = 2;
 }
 
 message WordChoiceMessage {
