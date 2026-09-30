@@ -51,7 +51,6 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   const [internalSize] = useState(4);
 
   const activeColor = controlledColor ?? internalColor;
-  const activeTool = tool ?? (isEraser ? 'eraser' : 'pen');
   const activeSize = activeTool === 'eraser' ? (controlledSize ?? internalSize) * 2.5 : (controlledSize ?? internalSize);
 
   // Track the last rendered external point index to avoid re-rendering everything
