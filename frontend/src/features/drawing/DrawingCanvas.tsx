@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, f
 import { DrawPoint } from '../../types/game';
 import { usePointBatcher } from './usePointBatcher';
 import { generateStrokeId } from './binaryCodec';
+import { audioManager } from '../../audio/AudioManager';
 
 export interface DrawingCanvasHandle {
   clear: () => void;
@@ -13,6 +14,7 @@ interface DrawingCanvasProps {
   color?: string;
   size?: number;
   isEraser?: boolean;
+  activeTool?: 'pen' | 'eraser' | 'fill' | 'line' | 'circle' | 'rect';
   onDrawPoint?: (point: DrawPoint) => void;
   onDrawBatch?: (points: DrawPoint[]) => void;
   onClearCanvas?: () => void;
@@ -22,11 +24,110 @@ interface DrawingCanvasProps {
 
 const CANVAS_BG = '#ffffff';
 
+/**
+ * Fast BFS Flood Fill using 32-bit pixel buffer comparison
+ */
+function fastFloodFill(
+  ctx: CanvasRenderingContext2D,
+  startX: number,
+  startY: number,
+  fillColorHex: string
+) {
+  const width = ctx.canvas.width;
+  const height = ctx.canvas.height;
+  if (width === 0 || height === 0) return;
+
+  const startXInt = Math.floor(startX);
+  const startYInt = Math.floor(startY);
+  if (startXInt < 0 || startXInt >= width || startYInt < 0 || startYInt >= height) return;
+
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = new Uint32Array(imgData.data.buffer);
+
+  // Convert hex color to 32-bit Little-Endian ABGR: (A << 24) | (B << 16) | (G << 8) | R
+  const cleanHex = fillColorHex.replace('#', '');
+  const r = parseInt(cleanHex.substring(0, 2), 16) || 0;
+  const g = parseInt(cleanHex.substring(2, 4), 16) || 0;
+  const b = parseInt(cleanHex.substring(4, 6), 16) || 0;
+  const fillVal = (255 << 24) | (b << 16) | (g << 8) | r;
+
+  const startIdx = startYInt * width + startXInt;
+  const targetVal = data[startIdx];
+
+  // If clicked color already matches target color
+  if (targetVal === fillVal) return;
+
+  const targetR = targetVal & 0xff;
+  const targetG = (targetVal >> 8) & 0xff;
+  const targetB = (targetVal >> 16) & 0xff;
+
+  const matches = (color: number) => {
+    if (color === fillVal) return false;
+    const cr = color & 0xff;
+    const cg = (color >> 8) & 0xff;
+    const cb = (color >> 16) & 0xff;
+    return (
+      Math.abs(cr - targetR) <= 32 &&
+      Math.abs(cg - targetG) <= 32 &&
+      Math.abs(cb - targetB) <= 32
+    );
+  };
+
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+
+  queue[tail++] = startIdx;
+  data[startIdx] = fillVal;
+
+  while (head < tail) {
+    const idx = queue[head++];
+    const x = idx % width;
+    const y = Math.floor(idx / width);
+
+    // North
+    if (y > 0) {
+      const up = idx - width;
+      if (matches(data[up])) {
+        data[up] = fillVal;
+        queue[tail++] = up;
+      }
+    }
+    // South
+    if (y < height - 1) {
+      const down = idx + width;
+      if (matches(data[down])) {
+        data[down] = fillVal;
+        queue[tail++] = down;
+      }
+    }
+    // West
+    if (x > 0) {
+      const left = idx - 1;
+      if (matches(data[left])) {
+        data[left] = fillVal;
+        queue[tail++] = left;
+      }
+    }
+    // East
+    if (x < width - 1) {
+      const right = idx + 1;
+      if (matches(data[right])) {
+        data[right] = fillVal;
+        queue[tail++] = right;
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+}
+
 export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(({
   isDrawer,
   color: controlledColor,
   size: controlledSize,
   isEraser = false,
+  activeTool = 'pen',
   onDrawPoint,
   onDrawBatch,
   onClearCanvas,
@@ -37,6 +138,11 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isDrawing = useRef(false);
   const currentStrokeIdRef = useRef<string>('');
+
+  // Shape drawing state
+  const shapeStartRef = useRef<{ pixelX: number; pixelY: number; normX: number; normY: number } | null>(null);
+  const currentPosRef = useRef<{ pixelX: number; pixelY: number; normX: number; normY: number } | null>(null);
+  const snapshotRef = useRef<ImageData | null>(null);
 
   const [internalColor, setInternalColor] = useState('#000000');
   const [internalSize] = useState(4);
@@ -245,18 +351,38 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   // ─── Pointer Event Handlers (Drawer only) ──────────────────────────
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawer) return;
-    isDrawing.current = true;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
+    const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     const pixelX = (e.clientX - rect.left) * scaleX;
     const pixelY = (e.clientY - rect.top) * scaleY;
-
     const { x, y } = normalizeCoords(pixelX, pixelY);
 
+    audioManager.playSFX('draw_start');
+
+    // Fill Tool (Flood Fill)
+    if (activeTool === 'fill') {
+      fastFloodFill(ctx, pixelX, pixelY, activeColor);
+      return;
+    }
+
+    // Rectangle or Circle Tool
+    if (activeTool === 'rect' || activeTool === 'circle') {
+      isDrawing.current = true;
+      shapeStartRef.current = { pixelX, pixelY, normX: x, normY: y };
+      currentPosRef.current = { pixelX, pixelY, normX: x, normY: y };
+      snapshotRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      currentStrokeIdRef.current = generateStrokeId();
+      return;
+    }
+
+    // Pen or Eraser Tool
+    isDrawing.current = true;
     const strokeId = generateStrokeId();
     currentStrokeIdRef.current = strokeId;
     const currentTool = isEraser ? 'ERASER' : 'BRUSH';
@@ -280,15 +406,48 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     if (!isDrawer || !isDrawing.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
+    const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     const pixelX = (e.clientX - rect.left) * scaleX;
     const pixelY = (e.clientY - rect.top) * scaleY;
-
     const { x, y } = normalizeCoords(pixelX, pixelY);
 
+    currentPosRef.current = { pixelX, pixelY, normX: x, normY: y };
+
+    // Shape Preview
+    if (activeTool === 'rect' || activeTool === 'circle') {
+      if (!shapeStartRef.current || !snapshotRef.current) return;
+      ctx.putImageData(snapshotRef.current, 0, 0);
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = activeColor;
+      ctx.lineWidth = activeSize;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      const startX = shapeStartRef.current.pixelX;
+      const startY = shapeStartRef.current.pixelY;
+
+      if (activeTool === 'rect') {
+        ctx.strokeRect(startX, startY, pixelX - startX, pixelY - startY);
+      } else {
+        const cx = (startX + pixelX) / 2;
+        const cy = (startY + pixelY) / 2;
+        const rx = Math.max(1, Math.abs(pixelX - startX) / 2);
+        const ry = Math.max(1, Math.abs(pixelY - startY) / 2);
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+      return;
+    }
+
+    // Pen or Eraser
     const currentTool = isEraser ? 'ERASER' : 'BRUSH';
 
     const point: DrawPoint = {
@@ -307,15 +466,96 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   };
 
   const handlePointerUp = () => {
-    if (isDrawing.current) {
-      isDrawing.current = false;
-      batcher.flush();
+    if (!isDrawing.current) return;
+    isDrawing.current = false;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+
+    if ((activeTool === 'rect' || activeTool === 'circle') && shapeStartRef.current && currentPosRef.current && ctx && canvas) {
+      if (snapshotRef.current) {
+        ctx.putImageData(snapshotRef.current, 0, 0);
+      }
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = activeColor;
+      ctx.lineWidth = activeSize;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      const strokeId = currentStrokeIdRef.current || generateStrokeId();
+      const startNormX = shapeStartRef.current.normX;
+      const startNormY = shapeStartRef.current.normY;
+      const endNormX = currentPosRef.current.normX;
+      const endNormY = currentPosRef.current.normY;
+
+      const startPX = shapeStartRef.current.pixelX;
+      const startPY = shapeStartRef.current.pixelY;
+      const endPX = currentPosRef.current.pixelX;
+      const endPY = currentPosRef.current.pixelY;
+
+      if (activeTool === 'rect') {
+        ctx.strokeRect(startPX, startPY, endPX - startPX, endPY - startPY);
+
+        // Synchronize rectangle boundary to other players
+        const rectPoints: DrawPoint[] = [
+          { x: startNormX, y: startNormY, isNewPath: true, color: activeColor, size: activeSize, tool: 'BRUSH', strokeId, timestamp: Date.now() },
+          { x: endNormX, y: startNormY, isNewPath: false, color: activeColor, size: activeSize, tool: 'BRUSH', strokeId, timestamp: Date.now() },
+          { x: endNormX, y: endNormY, isNewPath: false, color: activeColor, size: activeSize, tool: 'BRUSH', strokeId, timestamp: Date.now() },
+          { x: startNormX, y: endNormY, isNewPath: false, color: activeColor, size: activeSize, tool: 'BRUSH', strokeId, timestamp: Date.now() },
+          { x: startNormX, y: startNormY, isNewPath: false, color: activeColor, size: activeSize, tool: 'BRUSH', strokeId, timestamp: Date.now() },
+        ];
+        handleFlushBatch(rectPoints);
+      } else {
+        const cx = (startPX + endPX) / 2;
+        const cy = (startPY + endPY) / 2;
+        const rx = Math.max(1, Math.abs(endPX - startPX) / 2);
+        const ry = Math.max(1, Math.abs(endPY - startPY) / 2);
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Synchronize circle boundary to other players (36 segments for smooth circle)
+        const normCX = (startNormX + endNormX) / 2;
+        const normCY = (startNormY + endNormY) / 2;
+        const normRX = Math.abs(endNormX - startNormX) / 2;
+        const normRY = Math.abs(endNormY - startNormY) / 2;
+        const circlePoints: DrawPoint[] = [];
+        const STEPS = 36;
+        for (let i = 0; i <= STEPS; i++) {
+          const angle = (i / STEPS) * 2 * Math.PI;
+          const px = normCX + normRX * Math.cos(angle);
+          const py = normCY + normRY * Math.sin(angle);
+          circlePoints.push({
+            x: px,
+            y: py,
+            isNewPath: i === 0,
+            color: activeColor,
+            size: activeSize,
+            tool: 'BRUSH',
+            strokeId,
+            timestamp: Date.now(),
+          });
+        }
+        handleFlushBatch(circlePoints);
+      }
+
+      ctx.restore();
+      shapeStartRef.current = null;
+      currentPosRef.current = null;
+      snapshotRef.current = null;
+      return;
     }
+
+    batcher.flush();
   };
 
   // ─── Clear & Cancellation Handlers ─────────────────────────────────
   const cancelActiveStroke = useCallback(() => {
     isDrawing.current = false;
+    shapeStartRef.current = null;
+    currentPosRef.current = null;
+    snapshotRef.current = null;
     batcher.cancelActiveStroke();
   }, [batcher]);
 
@@ -362,6 +602,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
               ? 'cursor-not-allowed'
               : isEraser
               ? 'cursor-eraser'
+              : activeTool === 'fill'
+              ? 'cursor-bucket'
+              : activeTool === 'rect' || activeTool === 'circle'
+              ? 'cursor-crosshair'
               : 'cursor-pencil'
           }`}
         />

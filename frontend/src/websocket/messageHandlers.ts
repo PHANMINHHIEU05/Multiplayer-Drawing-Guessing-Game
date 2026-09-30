@@ -15,6 +15,7 @@ import { metricsStore } from "../store/metricsStore";
 import { noticeStore } from "../store/noticeStore";
 import { reactionStore } from "../store/reactionStore";
 import { translateError } from "../utils/errorTranslation";
+import { audioManager } from "../audio/AudioManager";
 
 export function setupMessageHandlers(
   onResponse?: (response: WSResponse) => void,
@@ -480,6 +481,7 @@ export function setupMessageHandlers(
           isCorrect: true,
           timestamp: Date.now(),
         });
+        audioManager.playSFX("correct");
         break;
       }
 
@@ -495,6 +497,10 @@ export function setupMessageHandlers(
           createdAt: payload.createdAt || Date.now(),
         };
         chatStore.addMessage(msg);
+        const myPlayerId = playerStore.getState().playerId;
+        if (payload.playerId !== myPlayerId) {
+          audioManager.playSFX("chat");
+        }
         break;
       }
 
