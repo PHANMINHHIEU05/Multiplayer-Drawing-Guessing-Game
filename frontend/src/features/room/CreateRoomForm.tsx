@@ -15,7 +15,6 @@ export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({
   const [maxPlayers, setMaxPlayers] = useState<number>(8);
   const [totalRounds, setTotalRounds] = useState<number>(5);
   const [drawTime, setDrawTime] = useState<number>(60);
-  const [selectedPack, setSelectedPack] = useState<string>("vi");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,34 +100,6 @@ export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({
               </button>
             ))}
           </div>
-        </div>
-      </div>
-
-      {/* Word Packs Chips */}
-      <div className="bg-white/80 p-3 rounded-2xl border border-sky-200/80 shadow-sm">
-        <label className="text-xs font-extrabold text-slate-700 block mb-1.5">
-          Gói Từ Khóa Chủ Đề
-        </label>
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { id: "vi", label: "Tiếng Việt", icon: "🇻🇳" },
-            { id: "anime", label: "Anime & Game", icon: "🎮" },
-            { id: "food", label: "Đồ Ăn & Vật", icon: "🍕" },
-          ].map((pack) => (
-            <button
-              key={pack.id}
-              type="button"
-              onClick={() => setSelectedPack(pack.id)}
-              className={`p-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition-all ${
-                selectedPack === pack.id
-                  ? "bg-sky-100 border-2 border-primary text-primary shadow-sm"
-                  : "bg-slate-100/80 border border-slate-200 text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              <span>{pack.icon}</span>
-              <span className="truncate">{pack.label}</span>
-            </button>
-          ))}
         </div>
       </div>
 

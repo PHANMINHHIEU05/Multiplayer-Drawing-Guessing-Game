@@ -9,6 +9,8 @@ import com.drawgame.room.grpc.generated.CreateRoomRequest;
 import com.drawgame.room.grpc.generated.GetRoomRequest;
 import com.drawgame.room.grpc.generated.JoinRoomRequest;
 import com.drawgame.room.grpc.generated.LeaveRoomRequest;
+import com.drawgame.room.grpc.generated.ListRoomsRequest;
+import com.drawgame.room.grpc.generated.ListRoomsResponse;
 import com.drawgame.room.grpc.generated.RoomResponse;
 import com.drawgame.room.grpc.generated.RoomServiceGrpc;
 import com.drawgame.room.service.RoomManagementService;
@@ -68,6 +70,24 @@ public class RoomGrpcService extends RoomServiceGrpc.RoomServiceImplBase {
         try {
             Room room = roomService.getRoom(request.getRoomId());
             RoomResponse response = mapper.toResponse(room);
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            handleException(e, responseObserver);
+        }
+    }
+
+    @Override
+    public void listRooms(
+            ListRoomsRequest request,
+            StreamObserver<ListRoomsResponse> responseObserver
+    ) {
+        try {
+            ListRoomsResponse response = ListRoomsResponse.newBuilder()
+                    .addAllRooms(roomService.listJoinableRooms(request.getLimit()).stream()
+                            .map(mapper::toResponse)
+                            .toList())
+                    .build();
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         } catch (Exception e) {

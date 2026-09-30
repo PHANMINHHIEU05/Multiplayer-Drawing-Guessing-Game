@@ -15,6 +15,9 @@ service RoomService {
   rpc GetRoom(GetRoomRequest)
       returns (RoomResponse);
 
+  rpc ListRooms(ListRoomsRequest)
+      returns (ListRoomsResponse);
+
   rpc JoinRoom(JoinRoomRequest)
       returns (RoomResponse);
 
@@ -66,6 +69,14 @@ message CreateRoomRequest {
 
 message GetRoomRequest {
   string room_id = 1;
+}
+
+message ListRoomsRequest {
+  int32 limit = 1;
+}
+
+message ListRoomsResponse {
+  repeated RoomResponse rooms = 1;
 }
 
 message JoinRoomRequest {

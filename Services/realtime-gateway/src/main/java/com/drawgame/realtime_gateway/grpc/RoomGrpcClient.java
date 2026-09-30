@@ -82,6 +82,14 @@ public class RoomGrpcClient {
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
+    public Mono<ListRoomsResponse> listRooms(int limit) {
+        return Mono.fromCallable(() -> blockingStub.listRooms(
+                ListRoomsRequest.newBuilder()
+                        .setLimit(limit > 0 ? Math.min(limit, 50) : 10)
+                        .build()
+        )).subscribeOn(Schedulers.boundedElastic());
+    }
+
     public Mono<RoomResponse> leaveRoom(String roomId, String playerId) {
         return Mono.fromCallable(() -> {
             LeaveRoomRequest request = LeaveRoomRequest.newBuilder()

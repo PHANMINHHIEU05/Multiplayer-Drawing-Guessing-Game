@@ -11,6 +11,8 @@ import com.drawgame.room.exception.RoomNotFoundException;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Repository;
@@ -246,6 +248,34 @@ public class RedisRoomRepository implements RoomRepository {
         );
 
         return Optional.of(room);
+    }
+
+    @Override
+    public List<Room> findJoinableRooms(int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        List<Room> rooms = new ArrayList<>();
+        ScanOptions options = ScanOptions.scanOptions().match("room:*").count(100).build();
+
+        try (Cursor<String> cursor = redis.scan(options)) {
+            while (cursor.hasNext()) {
+                String key = cursor.next();
+                String roomId = key.substring("room:".length());
+                if (roomId.contains(":")) {
+                    continue;
+                }
+                findById(roomId)
+                        .filter(room -> room.status() == RoomStatus.WAITING)
+                        .filter(room -> room.players().size() < room.maxPlayers())
+                        .ifPresent(rooms::add);
+            }
+        }
+
+        return rooms.stream()
+                .sorted(java.util.Comparator
+                        .comparingInt((Room room) -> room.players().size()).reversed()
+                        .thenComparing(Room::id))
+                .limit(safeLimit)
+                .toList();
     }
 
     @Override

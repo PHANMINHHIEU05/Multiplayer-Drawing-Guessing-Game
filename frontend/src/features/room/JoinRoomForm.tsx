@@ -1,8 +1,17 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { wsClient } from "../../websocket/WebSocketClient";
 import { MessageType } from "../../websocket/protocol";
 import { usePlayerStore } from "../../store/playerStore";
 import { translateError } from "../../utils/errorTranslation";
+import { useConnectionStore } from "../../store/connectionStore";
+
+interface PublicRoom {
+  roomId: string;
+  name: string;
+  status: string;
+  playerCount: number;
+  maxPlayers: number;
+}
 
 interface JoinRoomFormProps {
   onSuccess?: () => void;
@@ -10,12 +19,46 @@ interface JoinRoomFormProps {
 
 export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
   const { playerId, username } = usePlayerStore((s) => s);
+  const connectionStatus = useConnectionStore((s) => s.status);
   const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const fullRoomId = digits.join("").toUpperCase();
+
+  useEffect(() => {
+    if (connectionStatus !== "CONNECTED") {
+      setPublicRooms([]);
+      return;
+    }
+
+    let active = true;
+    const loadRooms = async () => {
+      setRoomsLoading(true);
+      try {
+        const response = await wsClient.send(MessageType.LIST_ROOMS, {
+          limit: 10,
+        });
+        if (active) {
+          setPublicRooms(Array.isArray(response.rooms) ? response.rooms : []);
+        }
+      } catch {
+        if (active) setPublicRooms([]);
+      } finally {
+        if (active) setRoomsLoading(false);
+      }
+    };
+
+    void loadRooms();
+    const timer = window.setInterval(loadRooms, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [connectionStatus]);
 
   const handleDigitChange = (index: number, val: string) => {
     const char = val.slice(-1).toUpperCase();
@@ -140,24 +183,21 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
           </span>
         </div>
         <div className="space-y-2 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
-          {[
-            {
-              id: "VM5CZD",
-              name: "Phòng Vui Vẻ #VM5CZD",
-              players: "4/8 ng",
-              topic: "Tiếng Việt",
-            },
-            {
-              id: "DANK99",
-              name: "Hội Họa Sĩ Pro #DANK99",
-              players: "6/8 ng",
-              topic: "Anime",
-            },
-          ].map((room) => (
+          {roomsLoading && publicRooms.length === 0 && (
+            <div className="py-3 text-center text-xs font-semibold text-slate-400">
+              Đang tải danh sách phòng...
+            </div>
+          )}
+          {!roomsLoading && publicRooms.length === 0 && (
+            <div className="py-3 text-center text-xs font-semibold text-slate-400">
+              Chưa có phòng chờ nào.
+            </div>
+          )}
+          {publicRooms.map((room) => (
             <div
-              key={room.id}
+              key={room.roomId}
               onClick={() => {
-                const chars = room.id.split("");
+                const chars = room.roomId.split("");
                 const newDigits = ["", "", "", "", "", ""];
                 chars.forEach((c, idx) => (newDigits[idx] = c));
                 setDigits(newDigits);
@@ -171,13 +211,13 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
                     {room.name}
                   </div>
                   <div className="text-[10px] text-slate-400 font-semibold">
-                    {room.topic}
+                    Mã phòng: {room.roomId}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-extrabold text-primary bg-sky-100 px-2 py-0.5 rounded-lg">
-                  {room.players}
+                  {room.playerCount}/{room.maxPlayers} ng
                 </span>
                 <span className="material-symbols-outlined text-primary text-sm opacity-0 group-hover:opacity-100 transition-opacity">
                   chevron_right

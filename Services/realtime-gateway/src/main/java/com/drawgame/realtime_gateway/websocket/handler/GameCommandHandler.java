@@ -133,6 +133,7 @@ public class GameCommandHandler {
             case "JOIN_ROOM" -> handleJoinRoom(sessionId, json, requestId);
             case "RESUME_SESSION" -> handleResumeSession(sessionId, json, requestId);
             case "GET_ROOM" -> handleGetRoom(sessionId, json, requestId);
+            case "LIST_ROOMS" -> handleListRooms(json, requestId);
             case "LEAVE_ROOM" -> handleLeaveRoom(sessionId, json, requestId);
             case "START_GAME" -> handleStartGame(sessionId, json, requestId);
             case "GET_GAME_STATE" -> handleGetGameState(sessionId, json, requestId);
@@ -519,6 +520,35 @@ public class GameCommandHandler {
         return roomGrpcClient.getRoom(roomId)
                 .map(response -> createRoomSuccessJson("ROOM_INFO", response, requestId))
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "GET_ROOM_FAILED", e.getMessage())));
+    }
+
+    private Mono<String> handleListRooms(JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        int limit = node.has("limit") ? Math.max(1, Math.min(node.get("limit").asInt(10), 50)) : 10;
+
+        return roomGrpcClient.listRooms(limit)
+                .map(response -> {
+                    List<Map<String, Object>> rooms = response.getRoomsList().stream()
+                            .map(room -> {
+                                Map<String, Object> item = new HashMap<>();
+                                item.put("roomId", room.getRoomId());
+                                item.put("name", room.getName());
+                                item.put("status", room.getStatus());
+                                item.put("playerCount", room.getPlayersCount());
+                                item.put("maxPlayers", room.getMaxPlayers());
+                                return item;
+                            })
+                            .toList();
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("type", "ROOM_LIST");
+                    if (requestId != null && !requestId.isBlank()) {
+                        result.put("requestId", requestId);
+                    }
+                    result.put("rooms", rooms);
+                    return toJson(result);
+                })
+                .onErrorResume(e -> Mono.just(createErrorJson(
+                        requestId, "LIST_ROOMS_FAILED", e.getMessage())));
     }
 
     private Mono<String> handleLeaveRoom(String sessionId, JsonNode json, String requestId) {

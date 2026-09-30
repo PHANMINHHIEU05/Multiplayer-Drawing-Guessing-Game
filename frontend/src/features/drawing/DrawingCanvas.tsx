@@ -14,7 +14,6 @@ interface DrawingCanvasProps {
   isDrawer: boolean;
   color?: string;
   size?: number;
-  isEraser?: boolean;
   activeTool?: 'pen' | 'eraser' | 'fill' | 'line' | 'circle' | 'rect';
   onDrawPoint?: (point: DrawPoint) => void;
   onDrawBatch?: (points: DrawPoint[]) => void;
@@ -29,7 +28,6 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   isDrawer,
   color: controlledColor,
   size: controlledSize,
-  isEraser = false,
   activeTool = 'pen',
   onDrawPoint,
   onDrawBatch,

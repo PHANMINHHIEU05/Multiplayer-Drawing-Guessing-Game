@@ -160,11 +160,6 @@ export const HomePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Stats Bar */}
-              <div className="w-full bg-sky-50/90 rounded-2xl p-2.5 mt-4 border border-sky-100 flex items-center justify-between text-xs font-extrabold text-slate-600">
-                <span>🏆 Cấp độ: <strong className="text-primary">Lv. 15</strong></span>
-                <span className="text-amber-500">⭐ 1,420 pts</span>
-              </div>
             </div>
 
             {/* Right: Create / Join Room Tabs & Forms */}
