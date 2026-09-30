@@ -12,6 +12,8 @@ public interface RoomRepository {
 
     Optional<Room> findById(String roomId);
 
+    List<Room> findJoinableRooms(int limit);
+
     boolean exists(String roomId);
 
     Room addPlayer(String roomId, RoomPlayer player);

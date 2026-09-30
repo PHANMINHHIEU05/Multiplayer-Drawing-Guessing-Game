@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.List;
 
@@ -65,6 +64,11 @@ public class RoomManagementService {
         }
         return repository.findById(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("Room not found: " + roomId));
+    }
+
+    public List<Room> listJoinableRooms(int limit) {
+        int safeLimit = limit > 0 ? Math.min(limit, 50) : 10;
+        return repository.findJoinableRooms(safeLimit);
     }
 
     public Room joinRoom(String roomId, String playerId, String username) {

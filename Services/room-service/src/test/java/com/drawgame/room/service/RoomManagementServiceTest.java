@@ -125,6 +125,19 @@ class RoomManagementServiceTest {
     }
 
     @Test
+    @DisplayName("LIST_ROOMS - Should use default and bounded limits")
+    void listJoinableRooms_usesSafeLimits() {
+        when(repository.findJoinableRooms(10)).thenReturn(List.of());
+        when(repository.findJoinableRooms(50)).thenReturn(List.of());
+
+        assertTrue(roomService.listJoinableRooms(0).isEmpty());
+        assertTrue(roomService.listJoinableRooms(100).isEmpty());
+
+        verify(repository).findJoinableRooms(10);
+        verify(repository).findJoinableRooms(50);
+    }
+
+    @Test
     @DisplayName("JOIN_ROOM - Should delegate to repository addPlayer")
     void joinRoom_success() {
         Room updated = new Room("A7F2K9", "Room", "u01", RoomStatus.WAITING, 4, 3, 60,

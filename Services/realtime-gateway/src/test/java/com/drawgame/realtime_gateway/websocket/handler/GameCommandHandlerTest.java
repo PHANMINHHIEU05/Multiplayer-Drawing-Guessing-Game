@@ -5,6 +5,7 @@ import com.drawgame.chat.grpc.generated.GetRecentMessagesResponse;
 import com.drawgame.game.grpc.generated.GameStateResponse;
 import com.drawgame.game.grpc.generated.GuessResponse;
 import com.drawgame.room.grpc.generated.PlayerMessage;
+import com.drawgame.room.grpc.generated.ListRoomsResponse;
 import com.drawgame.room.grpc.generated.RoomResponse;
 import com.drawgame.realtime_gateway.connection.ConnectionManager;
 import com.drawgame.realtime_gateway.drawing.routing.DrawingRoomState;
@@ -116,6 +117,34 @@ class GameCommandHandlerTest {
                 .verifyComplete();
 
         verify(connectionManager).broadcastToRoom(eq("room-1"), anyString());
+    }
+
+    @Test
+    void handleListRooms_ReturnsRealRoomSummaries() throws Exception {
+        RoomResponse room = RoomResponse.newBuilder()
+                .setRoomId("ABC123")
+                .setName("Phòng của Minh")
+                .setStatus("WAITING")
+                .setMaxPlayers(8)
+                .addPlayers(PlayerMessage.newBuilder().setPlayerId("p1").setUsername("Minh"))
+                .build();
+        when(roomGrpcClient.listRooms(10)).thenReturn(Mono.just(
+                ListRoomsResponse.newBuilder().addRooms(room).build()));
+
+        JsonNode command = objectMapper.readTree("""
+                {"type":"LIST_ROOMS","requestId":"req-list","payload":{"limit":10}}
+                """);
+
+        StepVerifier.create(handler.handleCommand("unbound-session", command))
+                .assertNext(json -> {
+                    assertTrue(json.contains("\"type\":\"ROOM_LIST\""));
+                    assertTrue(json.contains("\"roomId\":\"ABC123\""));
+                    assertTrue(json.contains("\"playerCount\":1"));
+                    assertTrue(json.contains("\"maxPlayers\":8"));
+                })
+                .verifyComplete();
+
+        verify(roomGrpcClient).listRooms(10);
     }
 
     @Test

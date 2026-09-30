@@ -754,7 +754,6 @@ export const GamePage: React.FC = () => {
               color={brushColor}
               size={brushSize}
               activeTool={activeTool}
-              isEraser={activeTool === "eraser"}
               onDrawBatch={handleDrawBatch}
               onClearCanvas={handleClearCanvas}
               externalPoints={isDrawer ? undefined : drawPoints}
