@@ -67,7 +67,7 @@ export interface GuessResult {
   scoreAwarded: number;
 }
 
-export type DrawingTool = 'BRUSH' | 'ERASER';
+export type DrawingTool = 'BRUSH' | 'ERASER' | 'FILL';
 
 export interface RemoteStrokeState {
   strokeId: string;
@@ -85,7 +85,7 @@ export interface DrawPoint {
   color: string;      // Hex color code (e.g. "#EF4444")
   size: number;       // Stroke width in pixels (2-20)
   isNewPath: boolean;  // true: PointerDown (new path), false: PointerMove (continue)
-  tool?: DrawingTool; // 'BRUSH' or 'ERASER'
+  tool?: DrawingTool; // 'BRUSH', 'ERASER', or one-shot 'FILL'
   strokeId?: string;  // Unique identifier for the stroke
   timestamp?: number; // Unix timestamp (ms) for latency tracking
 }

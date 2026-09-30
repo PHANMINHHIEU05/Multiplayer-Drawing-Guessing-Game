@@ -546,13 +546,15 @@ export function setupMessageHandlers(
           pointData.tool === "ERASER" ||
           payload.tool === "ERASER" ||
           color.toUpperCase() === "#FFFFFF";
+        const isFill =
+          pointData.tool === "FILL" || payload.tool === "FILL";
         const point: DrawPoint = {
           x: pointData.x ?? 0,
           y: pointData.y ?? 0,
           color,
           size: pointData.size ?? payload.size ?? 4,
           isNewPath: pointData.isNewPath ?? payload.isNewPath ?? false,
-          tool: isEraser ? "ERASER" : "BRUSH",
+          tool: isFill ? "FILL" : isEraser ? "ERASER" : "BRUSH",
           strokeId: payload.strokeId || pointData.strokeId,
           timestamp: pointData.timestamp ?? payload.timestamp,
         };
@@ -574,13 +576,14 @@ export function setupMessageHandlers(
             p.tool === "ERASER" ||
             batchIsEraser ||
             ptColor.toUpperCase() === "#FFFFFF";
+          const isPtFill = p.tool === "FILL" || payload.tool === "FILL";
           return {
             x: p.x ?? 0,
             y: p.y ?? 0,
             color: ptColor,
             size: p.size ?? payload.size ?? 4,
             isNewPath: p.isNewPath ?? false,
-            tool: isPtEraser ? "ERASER" : "BRUSH",
+            tool: isPtFill ? "FILL" : isPtEraser ? "ERASER" : "BRUSH",
             strokeId: p.strokeId || payload.strokeId,
             timestamp: p.timestamp,
           };

@@ -72,6 +72,19 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
             <span className="material-symbols-outlined text-lg sm:text-xl">ink_eraser</span>
           </button>
 
+          <button
+            type="button"
+            title="Đổ màu"
+            onClick={() => onToolChange && onToolChange('fill')}
+            className={`btn-3d w-full aspect-square rounded-xl flex items-center justify-center font-bold transition-all ${
+              activeTool === 'fill'
+                ? 'bg-amber-400 text-slate-900 shadow-[0_3px_0_0_#d97706]'
+                : 'bg-white/20 text-white hover:bg-white/30'
+            }`}
+          >
+            <span className="material-symbols-outlined text-lg sm:text-xl">format_color_fill</span>
+          </button>
+
           {onUndo && (
             <button
               type="button"

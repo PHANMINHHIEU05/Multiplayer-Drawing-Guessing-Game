@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, f
 import { DrawPoint } from '../../types/game';
 import { usePointBatcher } from './usePointBatcher';
 import { generateStrokeId } from './binaryCodec';
+import { floodFillPixels, hexToRgbColor } from './floodFill';
 
 export interface DrawingCanvasHandle {
   clear: () => void;
@@ -13,6 +14,7 @@ interface DrawingCanvasProps {
   color?: string;
   size?: number;
   isEraser?: boolean;
+  tool?: 'pen' | 'eraser' | 'fill' | 'line' | 'circle' | 'rect';
   onDrawPoint?: (point: DrawPoint) => void;
   onDrawBatch?: (points: DrawPoint[]) => void;
   onClearCanvas?: () => void;
@@ -27,6 +29,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   color: controlledColor,
   size: controlledSize,
   isEraser = false,
+  tool,
   onDrawPoint,
   onDrawBatch,
   onClearCanvas,
@@ -42,7 +45,8 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   const [internalSize] = useState(4);
 
   const activeColor = controlledColor ?? internalColor;
-  const activeSize = isEraser ? (controlledSize ?? internalSize) * 2.5 : (controlledSize ?? internalSize);
+  const activeTool = tool ?? (isEraser ? 'eraser' : 'pen');
+  const activeSize = activeTool === 'eraser' ? (controlledSize ?? internalSize) * 2.5 : (controlledSize ?? internalSize);
 
   // Track the last rendered external point index to avoid re-rendering everything
   const lastRenderedIndexRef = useRef(0);
@@ -95,6 +99,14 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     const { x, y } = denormalizeCoords(point.x, point.y);
 
+    if (point.tool === 'FILL') {
+      const image = context.getImageData(0, 0, canvas.width, canvas.height);
+      if (floodFillPixels(image, x, y, hexToRgbColor(point.color))) {
+        context.putImageData(image, 0, 0);
+      }
+      return;
+    }
+
     const isEraserTool = point.tool === 'ERASER';
     if (isEraserTool) {
       context.globalCompositeOperation = 'destination-out';
@@ -135,6 +147,14 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     for (const point of points) {
       const x = point.x * width;
       const y = point.y * height;
+
+      if (point.tool === 'FILL') {
+        const image = ctx.getImageData(0, 0, width, height);
+        if (floodFillPixels(image, x, y, hexToRgbColor(point.color))) {
+          ctx.putImageData(image, 0, 0);
+        }
+        continue;
+      }
 
       if (point.tool === 'ERASER') {
         ctx.globalCompositeOperation = 'destination-out';
@@ -240,7 +260,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       }
       lastRenderedIndexRef.current = externalPoints.length;
     });
-  }, [externalPoints, drawPointOnCanvas]);
+  }, [externalPoints, drawPointOnCanvas, isDrawer]);
 
   // ─── Pointer Event Handlers (Drawer only) ──────────────────────────
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -257,14 +277,36 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     const { x, y } = normalizeCoords(pixelX, pixelY);
 
+    if (activeTool === 'fill') {
+      isDrawing.current = false;
+      const point: DrawPoint = {
+        x,
+        y,
+        color: activeColor,
+        size: 1,
+        isNewPath: true,
+        tool: 'FILL',
+        strokeId: generateStrokeId(),
+        timestamp: Date.now(),
+      };
+
+      drawPointOnCanvas(point);
+      if (onDrawBatch) {
+        onDrawBatch([point]);
+      } else if (onDrawPoint) {
+        onDrawPoint(point);
+      }
+      return;
+    }
+
     const strokeId = generateStrokeId();
     currentStrokeIdRef.current = strokeId;
-    const currentTool = isEraser ? 'ERASER' : 'BRUSH';
+    const currentTool = activeTool === 'eraser' ? 'ERASER' : 'BRUSH';
 
     const point: DrawPoint = {
       x,
       y,
-      color: isEraser ? '#ffffff' : activeColor,
+      color: activeTool === 'eraser' ? '#ffffff' : activeColor,
       size: activeSize,
       isNewPath: true,
       tool: currentTool,
@@ -277,7 +319,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawer || !isDrawing.current) return;
+    if (!isDrawer || !isDrawing.current || activeTool === 'fill') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -289,12 +331,12 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     const { x, y } = normalizeCoords(pixelX, pixelY);
 
-    const currentTool = isEraser ? 'ERASER' : 'BRUSH';
+    const currentTool = activeTool === 'eraser' ? 'ERASER' : 'BRUSH';
 
     const point: DrawPoint = {
       x,
       y,
-      color: isEraser ? '#ffffff' : activeColor,
+      color: activeTool === 'eraser' ? '#ffffff' : activeColor,
       size: activeSize,
       isNewPath: false,
       tool: currentTool,
@@ -360,8 +402,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
           className={`w-full h-full touch-none ${
             !isDrawer
               ? 'cursor-not-allowed'
-              : isEraser
+              : activeTool === 'eraser'
               ? 'cursor-eraser'
+              : activeTool === 'fill'
+              ? 'cursor-crosshair'
               : 'cursor-pencil'
           }`}
         />
