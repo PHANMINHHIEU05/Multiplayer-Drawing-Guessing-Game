@@ -61,23 +61,23 @@ class RoomPolishFeaturesTest {
     }
 
     @Test
-    @DisplayName("RESET_ROOM (REMATCH) - host resets FINISHED room to WAITING")
+    @DisplayName("RESET_ROOM (REMATCH) - member resets FINISHED room to WAITING")
     void resetRoom_success() {
         Room waiting = new Room("A7F2K9", "Phòng", "u01", RoomStatus.WAITING, 8, 5, 60,
                 List.of(new RoomPlayer("u01", "Host"), new RoomPlayer("u02", "Guest")));
-        when(repository.resetRoom("A7F2K9", "u01")).thenReturn(waiting);
-        Room result = roomService.resetRoom("A7F2K9", "u01");
+        when(repository.resetRoom("A7F2K9", "u02")).thenReturn(waiting);
+        Room result = roomService.resetRoom("A7F2K9", "u02");
         assertEquals(RoomStatus.WAITING, result.status());
         assertEquals(2, result.players().size()); // membership preserved
-        verify(repository).resetRoom("A7F2K9", "u01");
+        verify(repository).resetRoom("A7F2K9", "u02");
     }
 
     @Test
-    @DisplayName("RESET_ROOM - repository authorization failure propagates (non-host rejected)")
+    @DisplayName("RESET_ROOM - repository authorization failure propagates (non-member rejected)")
     void resetRoom_nonHostPropagates() {
-        when(repository.resetRoom("A7F2K9", "u02"))
-                .thenThrow(new IllegalArgumentException("Requester is not host of room A7F2K9"));
-        assertThrows(IllegalArgumentException.class, () -> roomService.resetRoom("A7F2K9", "u02"));
+        when(repository.resetRoom("A7F2K9", "u99"))
+                .thenThrow(new IllegalArgumentException("Requester is not a member of room A7F2K9"));
+        assertThrows(IllegalArgumentException.class, () -> roomService.resetRoom("A7F2K9", "u99"));
     }
 
     @Test

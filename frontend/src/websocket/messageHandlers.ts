@@ -15,6 +15,7 @@ import { ChatMessage } from "../types/chat";
 import { metricsStore } from "../store/metricsStore";
 import { noticeStore } from "../store/noticeStore";
 import { reactionStore } from "../store/reactionStore";
+import { matchSummaryStore } from "../store/matchSummaryStore";
 import { translateError } from "../utils/errorTranslation";
 import { audioManager } from "../audio/AudioManager";
 
@@ -794,46 +795,72 @@ export function setupMessageHandlers(
       case "GAME_FINISHED":
       case "GAME_ENDED": {
         const current = gameStore.getState().gameState;
+        const targetRoomId =
+          response.roomId ||
+          response.payload?.roomId ||
+          current?.roomId ||
+          roomStore.getState().room?.roomId;
         const rawScores = response.scores || response.payload?.scores || [];
         const formattedScores = rawScores.map((s: any) => ({
           playerId: s.playerId,
           username: s.username || s.playerId,
           score: s.score ?? s.finalScore ?? 0,
         }));
-        if (current) {
-          gameStore.setGameState({
-            ...current,
-            status: "FINISHED",
-            roundPhase: "",
-            gameId: response.gameId || current.gameId,
-            awards:
-              response.awards ||
-              response.payload?.awards ||
-              current.awards ||
-              [],
-            scores:
-              formattedScores.length > 0 ? formattedScores : current.scores,
-          });
-        } else {
-          gameStore.setGameState({
-            roomId: response.roomId || "",
-            gameId: response.gameId || response.payload?.gameId,
-            status: "FINISHED",
-            currentRound: response.currentRound || 5,
-            totalRounds: response.totalRounds || 5,
-            drawerId: "",
-            roundStartedAt: 0,
-            roundEndsAt: 0,
-            hint: "",
-            roundPhase: "",
-            awards: response.awards || response.payload?.awards || [],
-            scores: formattedScores,
+        const finalScores =
+          formattedScores.length > 0 ? formattedScores : current?.scores || [];
+        const awards =
+          response.awards || response.payload?.awards || current?.awards || [];
+
+        const sortedScores = [...finalScores].sort((a, b) => b.score - a.score);
+        const winner = sortedScores[0];
+
+        // Store match summary for recap modal overlay
+        matchSummaryStore.setSummary({
+          roomId: targetRoomId || "",
+          gameId:
+            response.gameId || response.payload?.gameId || current?.gameId,
+          scores: finalScores,
+          awards,
+          winner: winner
+            ? {
+                playerId: winner.playerId,
+                username: winner.username,
+                score: winner.score,
+              }
+            : undefined,
+        });
+
+        // Automatically return everyone to WAITING (Room Lobby)
+        const currentRoom = roomStore.getState().room;
+        if (currentRoom) {
+          const resetPlayers: Player[] = currentRoom.players.map((p) => ({
+            ...p,
+            ready: p.playerId === currentRoom.hostPlayerId,
+          }));
+          roomStore.setRoom({
+            ...currentRoom,
+            status: "WAITING",
+            players: resetPlayers,
           });
         }
+
+        // Fetch fresh authoritative room info from server
+        if (targetRoomId) {
+          wsClient
+            .send(MessageType.GET_ROOM, { roomId: targetRoomId })
+            .catch(() => {});
+        }
+
+        // Reset match-specific state
+        gameStore.clearGame();
+        guessStore.clearGuesses();
+        metricsStore.resetStrokeSequence();
+
+        audioManager.playSFX("gameover");
         noticeStore.pushNotice({
           type: "SUCCESS",
-          message: "Trận đấu đã kết thúc!",
-          durationMs: 5000,
+          message: "Trận đấu đã kết thúc! Đã quay về phòng chờ.",
+          durationMs: 4000,
         });
         break;
       }

@@ -13,6 +13,7 @@ import { LobbyPage } from "../pages/LobbyPage";
 import { GamePage } from "../pages/GamePage";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { GameSystemNotice } from "../components/GameSystemNotice";
+import { MatchRecapModal } from "../components/MatchRecapModal";
 
 /**
  * Sync URL with room/game state so the browser address bar reflects the
@@ -59,6 +60,7 @@ export const App: React.FC = () => {
     <BrowserRouter>
       <WebSocketProvider>
         <GameSystemNotice />
+        <MatchRecapModal />
         <RouteSync />
         <Routes>
           <Route path="/lobby" element={<AppContent />} />

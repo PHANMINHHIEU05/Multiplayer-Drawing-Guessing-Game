@@ -460,14 +460,15 @@ public class GameCommandHandler {
     }
 
     /**
-     * TV10 REMATCH: host-only FINISHED -> WAITING. Room/members/config preserved;
+     * TV10 REMATCH: FINISHED -> WAITING. Room/members/config preserved;
      * ready state cleared. Old match result already persisted by Game Service.
      * Also defensively clears drawing auth cache + canvas recovery state on every
      * Gateway (cross-Gateway control event does the same on remote gateways).
      */
     private Mono<String> handleRematch(String sessionId, JsonNode json, String requestId) {
-        final String roomId = connectionManager.getRoomId(sessionId);
-        final String playerId = connectionManager.getPlayerId(sessionId);
+        JsonNode node = getPayloadOrRoot(json);
+        final String roomId = extractString(node, "roomId", connectionManager.getRoomId(sessionId));
+        final String playerId = extractString(node, "playerId", connectionManager.getPlayerId(sessionId));
         if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
             return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
         }

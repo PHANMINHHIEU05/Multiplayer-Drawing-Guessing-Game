@@ -35,105 +35,101 @@ public class RedisRoomRepository implements RoomRepository {
 
     private static final RedisScript<Long> JOIN_ROOM_SCRIPT = new DefaultRedisScript<>(
             """
-            local roomKey = KEYS[1]
-            local playersKey = KEYS[2]
-            local orderKey = KEYS[3]
-            local playerId = ARGV[1]
-            local username = ARGV[2]
-            local ttl = tonumber(ARGV[3])
+                    local roomKey = KEYS[1]
+                    local playersKey = KEYS[2]
+                    local orderKey = KEYS[3]
+                    local playerId = ARGV[1]
+                    local username = ARGV[2]
+                    local ttl = tonumber(ARGV[3])
 
-            if redis.call('EXISTS', roomKey) == 0 then
-                return -1
-            end
+                    if redis.call('EXISTS', roomKey) == 0 then
+                        return -1
+                    end
 
-            local status = redis.call('HGET', roomKey, 'status')
-            if status ~= 'WAITING' then
-                return -2
-            end
+                    local status = redis.call('HGET', roomKey, 'status')
+                    if status ~= 'WAITING' then
+                        return -2
+                    end
 
-            if redis.call('HEXISTS', playersKey, playerId) == 1 then
-                return -3
-            end
+                    if redis.call('HEXISTS', playersKey, playerId) == 1 then
+                        return -3
+                    end
 
-            local maxPlayers = tonumber(redis.call('HGET', roomKey, 'maxPlayers'))
-            local currentCount = tonumber(redis.call('HLEN', playersKey))
-            if currentCount >= maxPlayers then
-                return -4
-            end
+                    local maxPlayers = tonumber(redis.call('HGET', roomKey, 'maxPlayers'))
+                    local currentCount = tonumber(redis.call('HLEN', playersKey))
+                    if currentCount >= maxPlayers then
+                        return -4
+                    end
 
-            redis.call('HSET', playersKey, playerId, username)
-            redis.call('RPUSH', orderKey, playerId)
+                    redis.call('HSET', playersKey, playerId, username)
+                    redis.call('RPUSH', orderKey, playerId)
 
-            if ttl > 0 then
-                redis.call('EXPIRE', roomKey, ttl)
-                redis.call('EXPIRE', playersKey, ttl)
-                redis.call('EXPIRE', orderKey, ttl)
-            end
+                    if ttl > 0 then
+                        redis.call('EXPIRE', roomKey, ttl)
+                        redis.call('EXPIRE', playersKey, ttl)
+                        redis.call('EXPIRE', orderKey, ttl)
+                    end
 
-            return 0
-            """,
-            Long.class
-    );
+                    return 0
+                    """,
+            Long.class);
 
     private static final RedisScript<Long> SET_CATEGORIES_SCRIPT = new DefaultRedisScript<>(
             """
-            if redis.call('EXISTS', KEYS[1]) == 0 then return -1 end
-            if redis.call('HGET', KEYS[1], 'hostId') ~= ARGV[1] then return -2 end
-            if redis.call('HGET', KEYS[1], 'status') ~= 'WAITING' then return -3 end
-            redis.call('HSET', KEYS[1], 'selectedCategories', ARGV[2])
-            local ttl = tonumber(ARGV[3])
-            if ttl > 0 then redis.call('EXPIRE', KEYS[1], ttl) end
-            return 0
-            """,
-            Long.class
-    );
+                    if redis.call('EXISTS', KEYS[1]) == 0 then return -1 end
+                    if redis.call('HGET', KEYS[1], 'hostId') ~= ARGV[1] then return -2 end
+                    if redis.call('HGET', KEYS[1], 'status') ~= 'WAITING' then return -3 end
+                    redis.call('HSET', KEYS[1], 'selectedCategories', ARGV[2])
+                    local ttl = tonumber(ARGV[3])
+                    if ttl > 0 then redis.call('EXPIRE', KEYS[1], ttl) end
+                    return 0
+                    """,
+            Long.class);
 
     private static final RedisScript<Long> LEAVE_ROOM_SCRIPT = new DefaultRedisScript<>(
             """
-            local roomKey = KEYS[1]
-            local playersKey = KEYS[2]
-            local orderKey = KEYS[3]
-            local playerId = ARGV[1]
-            local ttl = tonumber(ARGV[2])
+                    local roomKey = KEYS[1]
+                    local playersKey = KEYS[2]
+                    local orderKey = KEYS[3]
+                    local playerId = ARGV[1]
+                    local ttl = tonumber(ARGV[2])
 
-            if redis.call('EXISTS', roomKey) == 0 then
-                return -1
-            end
-
-            if redis.call('HEXISTS', playersKey, playerId) == 0 then
-                return -2
-            end
-
-            redis.call('HDEL', playersKey, playerId)
-            redis.call('LREM', orderKey, 0, playerId)
-
-            local currentCount = tonumber(redis.call('HLEN', playersKey))
-            if currentCount == 0 then
-                redis.call('DEL', roomKey, playersKey, orderKey)
-                return 1
-            else
-                local hostId = redis.call('HGET', roomKey, 'hostId')
-                if hostId == playerId then
-                    local newHostId = redis.call('LINDEX', orderKey, 0)
-                    if newHostId then
-                        redis.call('HSET', roomKey, 'hostId', newHostId)
+                    if redis.call('EXISTS', roomKey) == 0 then
+                        return -1
                     end
-                end
-                if ttl > 0 then
-                    redis.call('EXPIRE', roomKey, ttl)
-                    redis.call('EXPIRE', playersKey, ttl)
-                    redis.call('EXPIRE', orderKey, ttl)
-                end
-                return 0
-            end
-            """,
-            Long.class
-    );
+
+                    if redis.call('HEXISTS', playersKey, playerId) == 0 then
+                        return -2
+                    end
+
+                    redis.call('HDEL', playersKey, playerId)
+                    redis.call('LREM', orderKey, 0, playerId)
+
+                    local currentCount = tonumber(redis.call('HLEN', playersKey))
+                    if currentCount == 0 then
+                        redis.call('DEL', roomKey, playersKey, orderKey)
+                        return 1
+                    else
+                        local hostId = redis.call('HGET', roomKey, 'hostId')
+                        if hostId == playerId then
+                            local newHostId = redis.call('LINDEX', orderKey, 0)
+                            if newHostId then
+                                redis.call('HSET', roomKey, 'hostId', newHostId)
+                            end
+                        end
+                        if ttl > 0 then
+                            redis.call('EXPIRE', roomKey, ttl)
+                            redis.call('EXPIRE', playersKey, ttl)
+                            redis.call('EXPIRE', orderKey, ttl)
+                        end
+                        return 0
+                    end
+                    """,
+            Long.class);
 
     public RedisRoomRepository(
             StringRedisTemplate redis,
-            @Value("${room.ttl:7200}") long roomTtlSeconds
-    ) {
+            @Value("${room.ttl:7200}") long roomTtlSeconds) {
         this.redis = redis;
         this.roomTtlSeconds = roomTtlSeconds;
     }
@@ -173,8 +169,7 @@ public class RedisRoomRepository implements RoomRepository {
                 "maxPlayers", String.valueOf(room.maxPlayers()),
                 "roundCount", String.valueOf(room.roundCount()),
                 "roundDuration", String.valueOf(room.roundDuration()),
-                "selectedCategories", String.join(",", room.selectedCategories())
-        );
+                "selectedCategories", String.join(",", room.selectedCategories()));
 
         redis.opsForHash().putAll(key, meta);
         redis.delete(List.of(playersKey, orderKey));
@@ -218,7 +213,8 @@ public class RedisRoomRepository implements RoomRepository {
                 if (usernameObj != null) {
                     // TV10: join with authoritative ready state (host is implicitly ready)
                     String hostId = values.get("hostId").toString();
-                    roomPlayers.add(new RoomPlayer(pid, usernameObj.toString(), readySet.contains(pid) || pid.equals(hostId)));
+                    roomPlayers.add(
+                            new RoomPlayer(pid, usernameObj.toString(), readySet.contains(pid) || pid.equals(hostId)));
                 }
             }
         }
@@ -244,8 +240,7 @@ public class RedisRoomRepository implements RoomRepository {
                 Integer.parseInt(values.get("roundCount").toString()),
                 Integer.parseInt(values.get("roundDuration").toString()),
                 roomPlayers,
-                categories
-        );
+                categories);
 
         return Optional.of(room);
     }
@@ -288,8 +283,7 @@ public class RedisRoomRepository implements RoomRepository {
         redis.delete(List.of(
                 roomKey(roomId),
                 roomPlayersKey(roomId),
-                roomOrderKey(roomId)
-        ));
+                roomOrderKey(roomId)));
     }
 
     @Override
@@ -297,16 +291,14 @@ public class RedisRoomRepository implements RoomRepository {
         List<String> keys = List.of(
                 roomKey(roomId),
                 roomPlayersKey(roomId),
-                roomOrderKey(roomId)
-        );
+                roomOrderKey(roomId));
 
         Long result = redis.execute(
                 JOIN_ROOM_SCRIPT,
                 keys,
                 player.playerId(),
                 player.username(),
-                String.valueOf(roomTtlSeconds)
-        );
+                String.valueOf(roomTtlSeconds));
 
         if (result == null) {
             throw new IllegalStateException("Redis script execution returned null");
@@ -331,15 +323,13 @@ public class RedisRoomRepository implements RoomRepository {
         List<String> keys = List.of(
                 roomKey(roomId),
                 roomPlayersKey(roomId),
-                roomOrderKey(roomId)
-        );
+                roomOrderKey(roomId));
 
         Long result = redis.execute(
                 LEAVE_ROOM_SCRIPT,
                 keys,
                 playerId,
-                String.valueOf(roomTtlSeconds)
-        );
+                String.valueOf(roomTtlSeconds));
 
         if (result == null) {
             throw new IllegalStateException("Redis script execution returned null");
@@ -409,20 +399,24 @@ public class RedisRoomRepository implements RoomRepository {
     }
 
     /**
-     * TV10 REMATCH: FINISHED -> WAITING. Host-only. Preserves room code, name,
-     * membership, host, and configuration; clears ready state so the lobby
-     * starts fresh. Old match result is already persisted separately by
+     * TV10 REMATCH: FINISHED -> WAITING. Allows any room member to reset the
+     * finished room.
+     * Preserves room code, name, membership, host, and configuration; clears ready
+     * state
+     * so the lobby starts fresh. Old match result is already persisted separately
+     * by
      * Game Service finishGame (never mutated here).
      */
     @Override
     public Room resetRoom(String roomId, String requesterId) {
         Room room = findById(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("Room not found: " + roomId));
-        if (!room.hostId().equals(requesterId)) {
-            throw new IllegalArgumentException("Requester is not host of room " + roomId);
+        boolean isMember = room.players().stream().anyMatch(p -> p.playerId().equals(requesterId));
+        if (!isMember && !room.hostId().equals(requesterId)) {
+            throw new IllegalArgumentException("Requester is not a member of room " + roomId);
         }
-        if (room.status() != RoomStatus.FINISHED) {
-            throw new InvalidRoomStateException("Room is not in FINISHED state: " + roomId);
+        if (room.status() != RoomStatus.FINISHED && room.status() != RoomStatus.WAITING) {
+            throw new InvalidRoomStateException("Room is not in FINISHED or WAITING state: " + roomId);
         }
 
         redis.opsForHash().put(roomKey(roomId), "status", RoomStatus.WAITING.name());
@@ -464,7 +458,8 @@ public class RedisRoomRepository implements RoomRepository {
         Room room = findById(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("Room not found: " + roomId));
 
-        redis.opsForHash().put(roomKey(roomId), "status", RoomStatus.FINISHED.name());
+        redis.opsForHash().put(roomKey(roomId), "status", RoomStatus.WAITING.name());
+        redis.delete(roomReadyKey(roomId));
         return findById(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("Room not found after finish: " + roomId));
     }

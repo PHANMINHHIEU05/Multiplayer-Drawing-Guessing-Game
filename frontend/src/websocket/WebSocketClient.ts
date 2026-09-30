@@ -9,6 +9,7 @@ import { recoveryStore } from "../store/recoveryStore";
 import { noticeStore } from "../store/noticeStore";
 import { chatStore } from "../store/chatStore";
 import { guessStore } from "../store/guessStore";
+import { matchSummaryStore } from "../store/matchSummaryStore";
 
 interface PendingRequest {
   resolve: (value: WSResponse | PromiseLike<WSResponse>) => void;
@@ -574,6 +575,7 @@ export function resetAllSessionState(): void {
   gameStore.clearGame();
   chatStore.clearMessages();
   guessStore.clearGuesses();
+  matchSummaryStore.clear();
   metricsStore.resetStrokeSequence();
   recoveryStore.abort();
   noticeStore.clearAll();

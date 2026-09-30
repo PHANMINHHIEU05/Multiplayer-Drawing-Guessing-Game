@@ -24,8 +24,6 @@ import { metricsStore } from "../store/metricsStore";
 import { recoveryStore, useRecoveryStore } from "../store/recoveryStore";
 import { useConnectionStore } from "../store/connectionStore";
 import { reactionStore, useReactions } from "../store/reactionStore";
-import { noticeStore } from "../store/noticeStore";
-import { translateError } from "../utils/errorTranslation";
 import {
   encodeDrawStart,
   encodeDrawBatch,
@@ -75,25 +73,6 @@ export const GamePage: React.FC = () => {
     connStatus === "RECONNECTING" ||
     connStatus === "CONNECTING" ||
     connStatus === "FAILING_OVER";
-  // TV10: rematch is host-only; room.status WAITING (after ROOM_RESET) exits game screen via App routing
-  const isHost = room?.hostPlayerId === playerId;
-  const [rematching, setRematching] = useState<boolean>(false);
-  const handleRematch = async () => {
-    if (rematching) return;
-    setRematching(true);
-    try {
-      await wsClient.send("REMATCH", {});
-    } catch (err: any) {
-      console.error("Rematch failed:", err);
-      noticeStore.pushNotice({
-        type: "ERROR",
-        message: translateError(err),
-        durationMs: 3500,
-      });
-    } finally {
-      setRematching(false);
-    }
-  };
 
   // BUG-3: Fallback timeout to prevent infinite spinner if gameState is never received
   const [loadTimedOut, setLoadTimedOut] = useState<boolean>(false);
@@ -642,7 +621,7 @@ export const GamePage: React.FC = () => {
           </button>
           <button
             onClick={() => {
-              if (window.confirm("Bạn có chắc muốn rời phòng?")) {
+              if (window.confirm("Bạn có chắc muốn rời phòng về trang chủ?")) {
                 wsClient
                   .send("LEAVE_ROOM", {
                     roomId,
@@ -653,7 +632,7 @@ export const GamePage: React.FC = () => {
                 resetAllSessionState();
               }
             }}
-            title="Rời phòng"
+            title="Rời phòng (về trang chủ)"
             className="btn-3d bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 p-2 rounded-2xl border border-rose-400/40 shadow-md"
           >
             <span className="material-symbols-outlined text-lg">logout</span>
@@ -673,7 +652,7 @@ export const GamePage: React.FC = () => {
           </button>
           <button
             onClick={() => {
-              if (window.confirm("Bạn có chắc muốn rời phòng?")) {
+              if (window.confirm("Bạn có chắc muốn rời phòng về trang chủ?")) {
                 wsClient
                   .send("LEAVE_ROOM", {
                     roomId,
@@ -684,7 +663,7 @@ export const GamePage: React.FC = () => {
                 resetAllSessionState();
               }
             }}
-            title="Rời phòng"
+            title="Rời phòng (về trang chủ)"
             className="btn-3d bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 p-2 rounded-2xl border border-rose-400/40 shadow-md"
           >
             <span className="material-symbols-outlined text-base leading-none">
@@ -810,114 +789,6 @@ export const GamePage: React.FC = () => {
           </div>
         </div>
       </main>
-
-      {/* Game Over Celebration Modal */}
-      {isGameOver && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="glass-panel-dark border-2 border-amber-400/80 rounded-3xl p-6 max-h-[90vh] max-w-md w-full overflow-y-auto text-center space-y-5 shadow-2xl">
-            <div className="text-6xl animate-bounce">🏆</div>
-            <div>
-              <h2 className="text-3xl font-black bubbly-logo text-amber-300">
-                TRẬN ĐẤU KẾT THÚC!
-              </h2>
-              <p className="text-xs font-bold text-slate-300 mt-1">
-                Bảng điểm chung cuộc
-              </p>
-            </div>
-
-            <div className="max-h-52 overflow-y-auto">
-              <Scoreboard
-                scores={gameState.scores}
-                currentPlayerId={playerId}
-                currentDrawerId={gameState.drawerId}
-              />
-            </div>
-
-            {/* TV10: winner callout */}
-            {(() => {
-              const sorted = [...(gameState.scores || [])].sort(
-                (a, b) => b.score - a.score,
-              );
-              const winner = sorted[0];
-              return winner ? (
-                <p className="text-sm font-black text-white">
-                  🥇 Người thắng:{" "}
-                  <span className="text-amber-300">
-                    {winner.username || "Người chơi"}
-                  </span>{" "}
-                  ({winner.score} điểm)
-                </p>
-              ) : null;
-            })()}
-
-            {isHost ? (
-              <button
-                onClick={handleRematch}
-                disabled={rematching}
-                className="bouncy-btn w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#059669] transition-all disabled:opacity-50"
-              >
-                {rematching ? "ĐANG BẮT ĐẦU LẠI..." : "CHƠI LẠI 🔁"}
-              </button>
-            ) : (
-              <p className="text-xs font-bold text-slate-300 animate-pulse">
-                Đang chờ chủ phòng bắt đầu ván mới...
-              </p>
-            )}
-
-            {(gameState.awards || []).length > 0 && (
-              <div className="rounded-2xl border border-amber-300/30 bg-white/5 p-3 text-left">
-                <p className="mb-2 text-xs font-black tracking-widest text-amber-200">
-                  GIẢI THƯỞNG
-                </p>
-                <div className="space-y-1.5">
-                  {gameState.awards?.map((award) => (
-                    <div
-                      key={`${award.type}-${award.playerId}`}
-                      className="flex justify-between gap-3 text-xs"
-                    >
-                      <span className="font-bold text-white/80">
-                        {award.label}
-                      </span>
-                      <span className="text-right font-black text-amber-100">
-                        {award.username}
-                        {award.type === "FASTEST_GUESS" &&
-                        typeof award.elapsedMillis === "number" &&
-                        award.elapsedMillis > 0
-                          ? ` · ${(award.elapsedMillis / 1000).toFixed(1)}s`
-                          : award.type === "WINNER"
-                            ? ` · ${award.value} điểm`
-                            : award.type === "BEST_ARTIST"
-                              ? ` · ${award.value} điểm vẽ`
-                              : award.type === "MOST_CORRECT"
-                                ? ` · ${award.value} lượt`
-                                : award.type === "BEST_STREAK"
-                                  ? ` · ${award.value} vòng liên tiếp`
-                                  : ""}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <button
-              onClick={() => {
-                wsClient
-                  .send("LEAVE_ROOM", {
-                    roomId,
-                    playerId,
-                    username: playerStore.getState().username || "Người chơi",
-                  })
-                  .catch(() => {});
-                resetAllSessionState();
-              }}
-              className="bouncy-btn w-full py-3 bg-white/15 hover:bg-white/25 text-white font-black text-sm rounded-2xl border border-white/25 transition-all"
-            >
-              RỜI PHÒNG 🚪
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
