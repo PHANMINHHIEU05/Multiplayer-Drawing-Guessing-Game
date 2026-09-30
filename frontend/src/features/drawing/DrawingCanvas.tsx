@@ -14,6 +14,8 @@ interface DrawingCanvasProps {
   isDrawer: boolean;
   color?: string;
   size?: number;
+  /** Backward-compatible shortcut; activeTool takes precedence when provided. */
+  isEraser?: boolean;
   activeTool?: 'pen' | 'eraser' | 'fill' | 'line' | 'circle' | 'rect';
   onDrawPoint?: (point: DrawPoint) => void;
   onDrawBatch?: (points: DrawPoint[]) => void;
@@ -580,4 +582,3 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 });
 
 DrawingCanvas.displayName = 'DrawingCanvas';
-
