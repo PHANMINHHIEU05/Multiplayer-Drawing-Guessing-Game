@@ -35,6 +35,34 @@ function setPixel(
 }
 
 /**
+ * The canvas is displayed on an opaque white background, while the eraser uses
+ * destination-out and therefore leaves transparent pixels behind. Flattening
+ * those pixels before a fill makes erased areas behave like blank canvas
+ * instead of an invisible/white stroke that blocks the flood fill.
+ */
+function flattenOntoWhite(data: Uint8ClampedArray): boolean {
+  let changed = false;
+
+  for (let offset = 0; offset < data.length; offset += 4) {
+    const alpha = data[offset + 3];
+    if (alpha === 255) continue;
+
+    const opacity = alpha / 255;
+    data[offset] = Math.round(data[offset] * opacity + 255 * (1 - opacity));
+    data[offset + 1] = Math.round(
+      data[offset + 1] * opacity + 255 * (1 - opacity),
+    );
+    data[offset + 2] = Math.round(
+      data[offset + 2] * opacity + 255 * (1 - opacity),
+    );
+    data[offset + 3] = 255;
+    changed = true;
+  }
+
+  return changed;
+}
+
+/**
  * Scanline flood fill. Mutates the supplied pixel buffer and returns whether
  * any pixel changed.
  */
@@ -48,6 +76,7 @@ export function floodFillPixels(
   if (width <= 0 || height <= 0 || data.length < width * height * 4) {
     return false;
   }
+  const flattened = flattenOntoWhite(data);
   const x = Math.max(0, Math.min(width - 1, Math.floor(startX)));
   const y = Math.max(0, Math.min(height - 1, Math.floor(startY)));
   const startOffset = (y * width + x) * 4;
@@ -64,11 +93,11 @@ export function floodFillPixels(
     target[2] === color.b &&
     target[3] === 255
   ) {
-    return false;
+    return flattened;
   }
 
   const stack: Array<[number, number]> = [[x, y]];
-  let changed = false;
+  let changed = flattened;
 
   while (stack.length > 0) {
     const [seedX, seedY] = stack.pop()!;

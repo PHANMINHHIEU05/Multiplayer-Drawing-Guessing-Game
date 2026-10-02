@@ -13,9 +13,9 @@ export const SoundToggle: React.FC<SoundToggleProps> = ({
   const { isMuted, toggleMute } = useAudio();
 
   const sizeClasses = {
-    sm: 'p-1.5 rounded-xl text-base',
-    md: 'p-2 sm:p-2.5 rounded-2xl text-lg sm:text-xl',
-    lg: 'p-3 rounded-2xl text-2xl',
+    sm: 'p-1.5 rounded-lg text-base',
+    md: 'p-2 sm:p-2.5 rounded-xl text-lg sm:text-xl',
+    lg: 'p-3 rounded-xl text-2xl',
   };
 
   return (
@@ -24,10 +24,10 @@ export const SoundToggle: React.FC<SoundToggleProps> = ({
       onClick={toggleMute}
       title={isMuted ? 'Bật âm thanh (Unmute)' : 'Tắt âm thanh (Mute)'}
       aria-label={isMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
-      className={`bouncy-btn transition-all backdrop-blur-md shadow-md flex items-center justify-center ${
+      className={`bouncy-btn transition-all border-2 border-[#15375f] shadow-[0_3px_0_rgba(10,52,93,.38)] flex items-center justify-center ${
         isMuted
-          ? 'bg-rose-500/25 hover:bg-rose-500/40 text-rose-200 border border-rose-400/50'
-          : 'bg-white/20 hover:bg-white/30 text-white border border-white/30'
+          ? 'bg-rose-100 hover:bg-rose-200 text-rose-600'
+          : 'bg-white hover:bg-sky-50 text-[#15375f]'
       } ${sizeClasses[size]} ${className}`}
     >
       <span className="material-symbols-outlined leading-none">

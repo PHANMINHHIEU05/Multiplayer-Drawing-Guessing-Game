@@ -44,6 +44,23 @@ class BinaryDrawingCodecTest {
         assertThat(decoded.green()).isEqualTo(original.green());
         assertThat(decoded.blue()).isEqualTo(original.blue());
         assertThat(decoded.width()).isEqualTo(original.width());
+        assertThat(decoded.eraser()).isFalse();
+    }
+
+    @Test
+    void roundTrip_drawStartEraser() {
+        UUID strokeId = UUID.randomUUID();
+        DrawStartMessage original = new DrawStartMessage(
+                1, 2, strokeId, 0.315, 0.527, 255, 255, 255, 16, true
+        );
+
+        byte[] encoded = encoder.encode(original);
+        DrawStartMessage decoded = (DrawStartMessage) decoder.decode(encoded);
+
+        assertThat(encoded).hasSize(DrawingProtocol.DRAW_START_FRAME_SIZE);
+        assertThat(Byte.toUnsignedInt(encoded[27]) & DrawingProtocol.ERASER_WIDTH_FLAG).isNotZero();
+        assertThat(decoded.width()).isEqualTo(16);
+        assertThat(decoded.eraser()).isTrue();
     }
 
     @Test

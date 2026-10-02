@@ -57,6 +57,12 @@ export const RoomLobby: React.FC = () => {
   }, [room?.selectedCategories]);
 
   useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
+  useEffect(() => {
     audioManager.playBGM("lobby");
   }, []);
 
@@ -170,25 +176,25 @@ export const RoomLobby: React.FC = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 max-w-6xl mx-auto p-4">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mx-auto p-1 sm:p-2">
       {/* Left Column: Room info & Player List */}
       <div className="lg:col-span-2 space-y-4">
         {/* Room Header Card */}
-        <div className="glass-panel rounded-3xl p-5 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="dg-field-card p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs px-3 py-1 rounded-xl bg-primary text-white font-mono font-black shadow-sm tracking-wider">
+              <span className="text-xs px-3 py-1 rounded-lg bg-[#15375f] text-white font-mono font-black shadow-sm tracking-wider">
                 #{room.roomId}
               </span>
               <button
                 type="button"
                 onClick={handleCopyRoomCode}
-                className="text-xs font-black px-2.5 py-1 rounded-xl bg-white/90 hover:bg-white text-slate-700 border border-slate-200 shadow-sm transition-all flex items-center gap-1 hover:border-primary"
+                className="text-xs font-black px-2.5 py-1 rounded-lg bg-white hover:bg-sky-50 text-slate-700 border-2 border-slate-200 shadow-sm transition-all flex items-center gap-1 hover:border-sky-500"
                 title="Sao chép mã phòng"
               >
                 <span>📋</span> Sao chép
               </button>
-              <span className="text-xs px-2.5 py-1 rounded-xl bg-sky-100 text-sky-800 font-extrabold">
+              <span className="text-xs px-2.5 py-1 rounded-lg bg-sky-100 text-sky-800 border border-sky-200 font-extrabold">
                 {room.playerCount} / {room.maxPlayers} Người
               </span>
               <SoundToggle size="sm" />
@@ -211,7 +217,7 @@ export const RoomLobby: React.FC = () => {
             <button
               onClick={handleLeaveRoom}
               disabled={leaving}
-              className="bouncy-btn py-1.5 px-3 bg-white/80 hover:bg-white text-rose-600 border border-rose-200 font-extrabold text-xs rounded-xl transition-all shadow-sm disabled:opacity-50 w-28 sm:w-32 text-center"
+              className="bouncy-btn py-1.5 px-3 bg-white hover:bg-rose-50 text-rose-600 border-2 border-rose-300 font-extrabold text-xs rounded-xl transition-all shadow-sm disabled:opacity-50 w-28 sm:w-32 text-center"
             >
               {leaving ? "Đang rời..." : "Rời phòng"}
             </button>
@@ -221,10 +227,10 @@ export const RoomLobby: React.FC = () => {
               <button
                 onClick={handleToggleReady}
                 disabled={togglingReady}
-                className={`bouncy-btn py-2.5 px-4 font-black text-xs rounded-2xl transition-all border disabled:opacity-50 w-56 sm:w-64 text-center flex items-center justify-center gap-1.5 ${
+                className={`bouncy-btn py-2.5 px-4 font-black text-xs rounded-xl transition-all border-2 border-[#15375f] disabled:opacity-50 w-56 sm:w-64 text-center flex items-center justify-center gap-1.5 ${
                   myReady
-                    ? "bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-400 shadow-[0_4px_0_0_#059669]"
-                    : "bg-white/90 hover:bg-white text-emerald-700 border-emerald-300 shadow-sm"
+                    ? "dg-success-button text-white"
+                    : "bg-white hover:bg-emerald-50 text-emerald-700 shadow-[0_3px_0_rgba(21,55,95,.25)]"
                 }`}
               >
                 {togglingReady
@@ -263,7 +269,7 @@ export const RoomLobby: React.FC = () => {
                       onClick={handleStartGame}
                       disabled={starting || !canStart}
                       title={canStart ? "" : disabledReason.replace("\n", " ")}
-                      className="bouncy-btn py-2.5 px-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#059669] transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 w-56 sm:w-64"
+                      className="dg-success-button bouncy-btn py-2.5 px-4 text-sm flex items-center justify-center gap-1.5 w-56 sm:w-64"
                     >
                       <span>🚀</span>
                       <span>
@@ -282,7 +288,7 @@ export const RoomLobby: React.FC = () => {
         </div>
 
         {/* Room Settings: Selected Categories */}
-        <section className="glass-panel-game p-4 shadow-lg">
+        <section className="glass-panel-game p-4">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <div>
               <h2 className="text-sm font-black text-slate-800">
@@ -337,8 +343,8 @@ export const RoomLobby: React.FC = () => {
                   }
                   className={`rounded-2xl border px-3 py-2.5 text-left flex items-center gap-2 transition-all disabled:cursor-default ${
                     selected
-                      ? "bg-indigo-600 text-white border-indigo-500 shadow-md"
-                      : "bg-white/80 text-slate-700 border-slate-200 hover:border-indigo-300"
+                      ? "bg-sky-500 text-white border-[#15375f] shadow-[0_3px_0_rgba(21,55,95,.25)]"
+                      : "bg-white text-slate-700 border-slate-200 hover:border-sky-400"
                   }`}
                 >
                   <span>{category.icon}</span>
@@ -363,7 +369,7 @@ export const RoomLobby: React.FC = () => {
                 type="button"
                 onClick={handleSaveCategories}
                 disabled={savingCategories || categoryDraft.length === 0}
-                className="rounded-xl px-4 py-2 text-xs font-black bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm disabled:opacity-50 transition-all"
+                className="dg-success-button rounded-xl px-4 py-2 text-xs disabled:opacity-50"
               >
                 {savingCategories ? "Đang lưu..." : "Lưu chủ đề"}
               </button>
@@ -372,7 +378,7 @@ export const RoomLobby: React.FC = () => {
         </section>
 
         {error && (
-          <div className="p-3 bg-rose-500/20 border border-rose-500/40 text-rose-800 rounded-2xl text-xs font-bold flex items-center justify-between">
+          <div className="p-3 bg-rose-50 border-2 border-rose-300 text-rose-700 rounded-xl text-xs font-bold flex items-center justify-between">
             <span>⚠️ {error}</span>
             <button
               onClick={() => setError(null)}
@@ -393,7 +399,7 @@ export const RoomLobby: React.FC = () => {
       </div>
 
       {/* Right Column: Chat Panel */}
-      <div className="lg:col-span-1 h-[480px]">
+      <div className="lg:col-span-1 h-[480px] lg:h-auto lg:min-h-[560px]">
         <ChatPanel roomId={room.roomId} />
       </div>
     </div>

@@ -30,6 +30,12 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
   const fullRoomId = digits.join("").toUpperCase();
 
   useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
+  useEffect(() => {
     if (connectionStatus !== "CONNECTED") {
       setPublicRooms([]);
       return;
@@ -130,15 +136,15 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-3">
       {error && (
-        <div className="p-3 bg-rose-500/20 border border-rose-500/40 text-rose-800 rounded-2xl text-xs font-bold">
+        <div className="p-3 bg-rose-50 border-2 border-rose-300 text-rose-700 rounded-xl text-xs font-bold">
           ⚠️ {error}
         </div>
       )}
 
       {/* 6 Digit Box Inputs */}
-      <div className="bg-white/80 p-4 rounded-2xl border border-sky-200/80 shadow-sm text-center">
+      <div className="dg-field-card p-4 text-center">
         <label className="text-xs font-extrabold text-slate-700 block mb-3">
           Nhập Mã Phòng 6 Ký Tự
         </label>
@@ -155,7 +161,7 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
               value={digit}
               onChange={(e) => handleDigitChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
-              className="w-10 h-12 sm:w-11 sm:h-14 text-center font-black text-xl sm:text-2xl bg-white border-2 border-sky-300 focus:border-primary focus:ring-2 focus:ring-sky-200 rounded-xl uppercase outline-none shadow-inner transition-all text-primary"
+              className="w-10 h-12 sm:w-11 sm:h-14 text-center font-black text-xl sm:text-2xl bg-white border-2 border-[#15375f] focus:border-sky-500 focus:ring-2 focus:ring-sky-200 rounded-xl uppercase outline-none shadow-inner transition-all text-sky-700"
             />
           ))}
         </div>
@@ -163,7 +169,7 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
         <button
           type="submit"
           disabled={loading || fullRoomId.length < 3}
-          className="bouncy-btn w-full max-w-xs mx-auto py-3 bg-primary hover:bg-primary-dark text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#1565C0] mt-4 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+          className="dg-primary-button bouncy-btn w-full max-w-xs mx-auto py-3 mt-4 flex items-center justify-center gap-2 text-sm"
         >
           <span>{loading ? "Đang vào..." : "VÀO PHÒNG NGAY"}</span>
           <span className="material-symbols-outlined text-base">
@@ -173,7 +179,7 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
       </div>
 
       {/* Public Rooms List */}
-      <div className="bg-white/80 p-3 rounded-2xl border border-sky-200/80 shadow-sm">
+      <div className="dg-field-card p-3">
         <div className="flex justify-between items-center mb-2 px-1">
           <label className="text-xs font-extrabold text-slate-500 uppercase">
             Phòng Chờ Phổ Biến
@@ -202,7 +208,7 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
                 chars.forEach((c, idx) => (newDigits[idx] = c));
                 setDigits(newDigits);
               }}
-              className="flex items-center justify-between p-2 rounded-xl bg-slate-50 hover:bg-sky-50 border border-slate-200 hover:border-primary transition-all cursor-pointer group"
+              className="flex items-center justify-between p-2 rounded-xl bg-slate-50 hover:bg-sky-50 border-2 border-slate-200 hover:border-sky-500 transition-all cursor-pointer group"
             >
               <div className="flex items-center gap-2">
                 <span className="text-base">🎨</span>

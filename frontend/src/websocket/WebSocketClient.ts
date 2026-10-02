@@ -15,9 +15,12 @@ interface PendingRequest {
   resolve: (value: WSResponse | PromiseLike<WSResponse>) => void;
   reject: (reason?: any) => void;
   timer: any;
+  type: string;
 }
 
 export type BinaryMessageHandler = (buffer: ArrayBuffer) => void;
+
+const IS_DEV = Boolean((import.meta as any).env?.DEV);
 
 function defaultWebSocketEndpoint(useSameOrigin: boolean): string {
   if (useSameOrigin && typeof window !== "undefined" && window.location?.host) {
@@ -74,10 +77,12 @@ export class WebSocketClient {
       this.endpoints = [fallbackEndpoint];
     }
     this.url = this.endpoints[0];
-    console.log(
-      `[WebSocket] Endpoint pool (${this.endpoints.length}):`,
-      this.endpoints.join(", "),
-    );
+    if (IS_DEV) {
+      console.log(
+        `[WebSocket] Endpoint pool (${this.endpoints.length}):`,
+        this.endpoints.join(", "),
+      );
+    }
     this.startRateTicker();
   }
 
@@ -96,7 +101,7 @@ export class WebSocketClient {
       id: "connection_reconnecting",
       type: "WARNING",
       message: "Đang chuyển sang máy chủ dự phòng...",
-      durationMs: 0,
+      durationMs: 6000,
     });
     console.warn(`[WebSocket] FAILOVER: switching to ${this.url}`);
     return true;
@@ -137,11 +142,13 @@ export class WebSocketClient {
 
       this.ws.onopen = () => {
         const wasReconnecting = this.reconnectAttempts > 0;
-        console.log(
-          "[WebSocket] Connected to",
-          this.url,
-          wasReconnecting ? "(Reconnected)" : "",
-        );
+        if (IS_DEV) {
+          console.log(
+            "[WebSocket] Connected to",
+            this.url,
+            wasReconnecting ? "(Reconnected)" : "",
+          );
+        }
         this.reconnectAttempts = 0;
         this.missedPongsCount = 0;
         connectionStore.setStatus("CONNECTED");
@@ -185,12 +192,14 @@ export class WebSocketClient {
       };
 
       this.ws.onclose = (event) => {
-        console.log(
-          "[WebSocket] Disconnected code:",
-          event.code,
-          "reason:",
-          event.reason,
-        );
+        if (IS_DEV) {
+          console.log(
+            "[WebSocket] Disconnected code:",
+            event.code,
+            "reason:",
+            event.reason,
+          );
+        }
         this.ws = null;
         this.stopHeartbeat();
         this.rejectAllPending("WebSocket connection closed");
@@ -257,7 +266,7 @@ export class WebSocketClient {
         }
       }, timeoutMs);
 
-      this.pendingRequests.set(req.requestId, { resolve, reject, timer });
+      this.pendingRequests.set(req.requestId, { resolve, reject, timer, type });
 
       try {
         metricsStore.recordTx(raw.length);
@@ -333,6 +342,7 @@ export class WebSocketClient {
       }
 
       // Correlation ID resolution
+      let suppressListenerDispatch = false;
       if (response.requestId && this.pendingRequests.has(response.requestId)) {
         const pending = this.pendingRequests.get(response.requestId)!;
         clearTimeout(pending.timer);
@@ -341,20 +351,35 @@ export class WebSocketClient {
         if (response.type === "ERROR") {
           const errMsg =
             response.message || response.error?.message || "Gateway error";
-          pending.reject(new Error(errMsg));
+          const error = new Error(errMsg) as Error & { wsError?: unknown };
+          error.wsError = response.error || {
+            code: response.code,
+            message: errMsg,
+          };
+          pending.reject(error);
+
+          const errorCode = response.code || response.error?.code;
+          // Reaction spam is intentionally dropped by the server. The reaction
+          // bar already applies a cooldown, so do not turn this harmless case
+          // into a global error toast.
+          suppressListenerDispatch =
+            pending.type === MessageType.SEND_REACTION &&
+            errorCode === "RATE_LIMITED";
         } else {
           pending.resolve(response);
         }
       }
 
       // Dispatch to generic message listeners
-      this.messageListeners.forEach((listener) => {
-        try {
-          listener(response);
-        } catch (err) {
-          console.error("[WebSocket] Listener error:", err);
-        }
-      });
+      if (!suppressListenerDispatch) {
+        this.messageListeners.forEach((listener) => {
+          try {
+            listener(response);
+          } catch (err) {
+            console.error("[WebSocket] Listener error:", err);
+          }
+        });
+      }
     } catch (err) {
       console.error("[WebSocket] Failed to parse message:", raw, err);
     }
@@ -412,9 +437,11 @@ export class WebSocketClient {
     const jitter = 0.8 + Math.random() * 0.4;
     const delay = Math.round(backoff * jitter);
 
-    console.log(
-      `[WebSocket] Reconnecting in ${delay}ms (attempt #${this.reconnectAttempts})...`,
-    );
+    if (IS_DEV) {
+      console.log(
+        `[WebSocket] Reconnecting in ${delay}ms (attempt #${this.reconnectAttempts})...`,
+      );
+    }
     connectionStore.setStatus("RECONNECTING");
     metricsStore.setStatus("RECONNECTING");
 
@@ -422,7 +449,7 @@ export class WebSocketClient {
       id: "connection_reconnecting",
       type: "WARNING",
       message: `Mất kết nối. Đang thử kết nối lại... (lần ${this.reconnectAttempts})`,
-      durationMs: 0,
+      durationMs: 6000,
     });
 
     this.reconnectTimer = setTimeout(() => {
@@ -442,7 +469,9 @@ export class WebSocketClient {
     const token = playerStore.getSessionToken();
 
     if (roomId && playerId && token) {
-      console.log(`[WebSocket] Restoring session in room ${roomId}...`);
+      if (IS_DEV) {
+        console.log(`[WebSocket] Restoring session in room ${roomId}...`);
+      }
       // Re-bind the new WebSocket session without mutating room membership.
       this.send(
         MessageType.RESUME_SESSION,
@@ -454,7 +483,9 @@ export class WebSocketClient {
         5000,
       )
         .then((resumeResponse) => {
-          console.log("[WebSocket] Session resumed successfully");
+          if (IS_DEV) {
+            console.log("[WebSocket] Session resumed successfully");
+          }
           // TV8: the server rotates the credential on every successful resume
           if (resumeResponse.sessionToken) {
             playerStore.setSessionToken(resumeResponse.sessionToken);
@@ -543,9 +574,11 @@ export class WebSocketClient {
         if (buffered.length > 0) {
           gameStore.addDrawPoints(buffered);
         }
-        console.log(
-          `[WebSocket] Canvas recovery complete: round=${round}, ${buffered.length} buffered live events flushed`,
-        );
+        if (IS_DEV) {
+          console.log(
+            `[WebSocket] Canvas recovery complete: round=${round}, ${buffered.length} buffered live events flushed`,
+          );
+        }
       })
       .catch((err) => {
         // Partial recovery UX: game state restored, canvas unavailable — keep playing live

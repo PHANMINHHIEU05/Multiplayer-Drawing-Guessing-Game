@@ -25,15 +25,15 @@ const GuessFeedback: React.FC<{ entry: GuessEntry }> = ({ entry }) => {
   switch (entry.result) {
     case "CORRECT":
       return (
-        <div className="p-1.5 rounded-xl bg-emerald-500/25 border border-emerald-400/50 text-emerald-200 text-xs font-black shadow-sm flex items-center gap-1.5">
-          <span className="text-emerald-300">✓</span>
+        <div className="p-1.5 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-700 text-xs font-black shadow-sm flex items-center gap-1.5">
+          <span className="text-emerald-600">✓</span>
           <span>Chính xác! +{entry.scoreDelta ?? 0} điểm</span>
         </div>
       );
     case "CLOSE":
       return (
-        <div className="p-1.5 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-200 text-xs font-bold shadow-sm flex items-center gap-1.5">
-          <span className="text-amber-300">~</span>
+        <div className="p-1.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-700 text-xs font-bold shadow-sm flex items-center gap-1.5">
+          <span className="text-amber-600">~</span>
           <span>
             <span className="font-mono">"{entry.guess}"</span> gần đúng!
           </span>
@@ -41,8 +41,8 @@ const GuessFeedback: React.FC<{ entry: GuessEntry }> = ({ entry }) => {
       );
     case "WRONG":
       return (
-        <div className="p-1.5 rounded-xl bg-rose-500/15 border border-rose-400/40 text-rose-200 text-xs font-bold flex items-center gap-1.5">
-          <span className="text-rose-300">✕</span>
+        <div className="p-1.5 rounded-xl bg-rose-100 border border-rose-300 text-rose-700 text-xs font-bold flex items-center gap-1.5">
+          <span className="text-rose-600">✕</span>
           <span>
             <span className="font-mono">"{entry.guess}"</span> chưa chính xác.
           </span>
@@ -50,35 +50,35 @@ const GuessFeedback: React.FC<{ entry: GuessEntry }> = ({ entry }) => {
       );
     case "ALREADY_GUESSED":
       return (
-        <div className="p-1.5 rounded-xl bg-emerald-500/15 border border-emerald-400/40 text-emerald-200/90 text-xs font-bold flex items-center gap-1.5">
+        <div className="p-1.5 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-700 text-xs font-bold flex items-center gap-1.5">
           <span>✓</span>
           <span>Bạn đã đoán đúng rồi!</span>
         </div>
       );
     case "TIME_EXPIRED":
       return (
-        <div className="p-1.5 rounded-xl bg-white/10 border border-white/25 text-blue-100/80 text-xs font-bold flex items-center gap-1.5">
+        <div className="p-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold flex items-center gap-1.5">
           <span>⏱</span>
           <span>Đã hết thời gian nhận đoán.</span>
         </div>
       );
     case "ROUND_NOT_ACTIVE":
       return (
-        <div className="p-1.5 rounded-xl bg-white/10 border border-white/25 text-blue-100/80 text-xs font-bold flex items-center gap-1.5">
+        <div className="p-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold flex items-center gap-1.5">
           <span>⏸</span>
           <span>Vòng chơi hiện không còn hoạt động.</span>
         </div>
       );
     case "RATE_LIMITED":
       return (
-        <div className="p-1.5 rounded-xl bg-amber-500/15 border border-amber-400/40 text-amber-200 text-xs font-bold flex items-center gap-1.5">
+        <div className="p-1.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-700 text-xs font-bold flex items-center gap-1.5">
           <span>⏳</span>
           <span>Bạn thao tác quá nhanh, vui lòng thử lại.</span>
         </div>
       );
     case "ERROR":
       return (
-        <div className="p-1.5 rounded-xl bg-rose-500/15 border border-rose-400/40 text-rose-200 text-xs font-bold flex items-center gap-1.5">
+        <div className="p-1.5 rounded-xl bg-rose-100 border border-rose-300 text-rose-700 text-xs font-bold flex items-center gap-1.5">
           <span>⚠</span>
           <span>Không gửi được đoán, thử lại nhé.</span>
         </div>
@@ -87,11 +87,11 @@ const GuessFeedback: React.FC<{ entry: GuessEntry }> = ({ entry }) => {
       // Pending — server hasn't answered yet
       return (
         <div className="text-xs font-semibold flex items-center gap-1.5 animate-pulse">
-          <span className="text-sky-200 font-bold">{entry.username}:</span>
-          <span className="text-white bg-white/15 px-2 py-0.5 rounded-md font-mono">
+          <span className="text-sky-700 font-bold">{entry.username}:</span>
+          <span className="text-slate-700 bg-white px-2 py-0.5 rounded-md font-mono border border-sky-100">
             {entry.guess}
           </span>
-          <span className="text-white/50 italic">đang chờ...</span>
+          <span className="text-slate-400 italic">đang chờ...</span>
         </div>
       );
   }
@@ -168,11 +168,11 @@ export const GuessInput: React.FC<GuessInputProps> = ({
   return (
     <div className="glass-panel-game h-full flex flex-col overflow-hidden select-none">
       {/* Header */}
-      <div className="bg-indigo-900/70 px-3 py-1.5 font-extrabold text-[11px] sm:text-xs text-white border-b border-white/20 flex items-center justify-between shrink-0 shadow-sm">
+      <div className="dg-panel-heading shrink-0">
         <span className="flex items-center gap-1.5">
           <span>🎯</span> TRẢ LỜI / ĐOÁN TỪ
         </span>
-        <span className="text-[10px] font-bold text-emerald-300">
+        <span className="text-[10px] font-bold text-emerald-300 normal-case tracking-normal">
           {hasGuessed
             ? "✓ Đã đoán đúng"
             : disabled
@@ -182,9 +182,9 @@ export const GuessInput: React.FC<GuessInputProps> = ({
       </div>
 
       {/* Guesses Feed - Only displays guess attempts and correct guess notifications */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-1.5 custom-scrollbar bg-black/10 text-xs">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-1.5 custom-scrollbar bg-[#edf8fd] text-xs">
         {guesses.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-xs text-white/50 italic text-center">
+          <div className="h-full flex items-center justify-center text-xs text-slate-400 italic text-center">
             {disabled
               ? "Người chơi khác đang suy nghĩ để đoán..."
               : "Hãy nhập từ bạn đoán vào khung bên dưới!"}
@@ -201,9 +201,9 @@ export const GuessInput: React.FC<GuessInputProps> = ({
               return (
                 <div
                   key={entry.id}
-                  className="p-1.5 rounded-xl bg-emerald-500/25 border border-emerald-400/50 text-emerald-200 text-xs font-black shadow-sm flex items-center gap-1.5"
+                  className="p-1.5 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-700 text-xs font-black shadow-sm flex items-center gap-1.5"
                 >
-                  <span className="text-emerald-300">✓</span>
+                  <span className="text-emerald-600">✓</span>
                   <span>
                     {entry.username} {entry.guess}
                   </span>
@@ -221,10 +221,10 @@ export const GuessInput: React.FC<GuessInputProps> = ({
                 key={entry.id}
                 className="text-xs font-semibold flex items-center gap-1.5"
               >
-                <span className="text-sky-200 font-bold">
+                <span className="text-sky-700 font-bold">
                   {entry.username}:
                 </span>
-                <span className="text-white bg-white/15 px-2 py-0.5 rounded-md font-mono">
+                <span className="text-slate-700 bg-white px-2 py-0.5 rounded-md font-mono border border-sky-100">
                   {entry.guess}
                 </span>
               </div>
@@ -236,19 +236,19 @@ export const GuessInput: React.FC<GuessInputProps> = ({
 
       {/* Input or Distinct Status Banners */}
       {hasGuessed ? (
-        <div className="p-3 bg-emerald-500/20 border-t border-emerald-400/40 flex items-center justify-center gap-2 text-emerald-300 font-extrabold text-xs shadow-inner">
+        <div className="p-3 bg-emerald-100 border-t-2 border-emerald-300 flex items-center justify-center gap-2 text-emerald-700 font-extrabold text-xs shadow-inner">
           <span className="text-base">✓</span>
           <span>Bạn đã đoán đúng từ khóa! Đang đợi các bạn khác 🎉</span>
         </div>
       ) : disabled ? (
-        <div className="p-3 bg-slate-900/40 border-t border-white/15 flex items-center justify-center gap-2 text-amber-300 font-extrabold text-xs">
+        <div className="p-3 bg-amber-50 border-t-2 border-amber-200 flex items-center justify-center gap-2 text-amber-700 font-extrabold text-xs">
           <span>🎨</span>
           <span>Bạn đang là người vẽ — không thể đoán từ!</span>
         </div>
       ) : (
         <form
           onSubmit={handleSubmit}
-          className="p-2 bg-slate-900/30 border-t border-white/15 flex gap-1.5 shrink-0"
+          className="p-2 bg-white border-t-2 border-[#b5dbea] flex gap-1.5 shrink-0"
         >
           <input
             type="text"
@@ -256,12 +256,12 @@ export const GuessInput: React.FC<GuessInputProps> = ({
             placeholder="Nhập từ dự đoán của bạn..."
             value={guess}
             onChange={(e) => setGuess(e.target.value)}
-            className="flex-1 px-3 py-1.5 bg-white/90 text-slate-800 rounded-xl text-xs outline-none border border-transparent focus:border-emerald-500 font-bold placeholder:text-slate-400 disabled:opacity-50"
+            className="flex-1 min-w-0 px-3 py-2 bg-sky-50 text-slate-800 rounded-lg text-xs outline-none border-2 border-sky-200 focus:border-emerald-500 font-bold placeholder:text-slate-400 disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={inputDisabled || !guess.trim() || submitting}
-            className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs rounded-xl shadow-md transition-all disabled:opacity-40"
+            className="dg-success-button px-4 py-1.5 text-xs disabled:opacity-40"
           >
             {submitting ? "..." : "ĐOÁN"}
           </button>

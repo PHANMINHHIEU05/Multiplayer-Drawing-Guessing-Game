@@ -33,8 +33,11 @@ class AudioManager {
   private sfxVolume: number = 0.5;
 
   private activeBGMTrack: BGMTrack | null = null;
+  private requestedBGMTrack: BGMTrack | null = null;
   private bgmLoopTimer: number | null = null;
+  private bgmResetTimer: number | null = null;
   private isBGMPlaying: boolean = false;
+  private hasUserGesture: boolean = false;
   private listeners: Set<(muted: boolean) => void> = new Set();
 
   constructor() {
@@ -51,9 +54,17 @@ class AudioManager {
     // Auto-unlock on first user interaction
     if (typeof window !== 'undefined') {
       const unlock = () => {
-        this.initContext();
-        if (this.ctx && this.ctx.state === 'suspended') {
-          this.ctx.resume();
+        this.hasUserGesture = true;
+        if (!this.isMuted) {
+          const ctx = this.initContext();
+          const ready = ctx.state === 'suspended' ? ctx.resume() : Promise.resolve();
+          void ready
+            .catch(() => undefined)
+            .then(() => {
+              if (this.requestedBGMTrack && !this.isMuted) {
+                this.playBGM(this.requestedBGMTrack);
+              }
+            });
         }
         window.removeEventListener('pointerdown', unlock);
         window.removeEventListener('keydown', unlock);
@@ -88,6 +99,9 @@ class AudioManager {
   }
 
   public toggleMute(): boolean {
+    // The sound button itself is a trusted user gesture, so Web Audio may be
+    // created/resumed safely from this point onward.
+    this.hasUserGesture = true;
     this.isMuted = !this.isMuted;
     try {
       localStorage.setItem('dopamine_audio_muted', String(this.isMuted));
@@ -95,11 +109,25 @@ class AudioManager {
       // Ignore
     }
 
-    const ctx = this.initContext();
-    if (this.masterGain) {
+    const ctx = this.ctx || (!this.isMuted ? this.initContext() : null);
+    if (ctx && this.masterGain) {
       const now = ctx.currentTime;
       this.masterGain.gain.cancelScheduledValues(now);
-      this.masterGain.gain.linearRampToValueAtTime(this.isMuted ? 0 : 1, now + 0.05);
+      if (this.isMuted) {
+        // Mute must be immediate; a ramp can leave lobby music audible briefly.
+        this.masterGain.gain.setValueAtTime(0, now);
+      } else {
+        this.masterGain.gain.setValueAtTime(0, now);
+        this.masterGain.gain.linearRampToValueAtTime(1, now + 0.05);
+      }
+    }
+
+    if (this.isMuted) {
+      // Stop the BGM scheduler as well as silencing the master bus. The desired
+      // track is retained so unmute can resume the correct page music cleanly.
+      this.stopBGMPlayback();
+    } else if (this.requestedBGMTrack) {
+      this.playBGM(this.requestedBGMTrack);
     }
 
     // Notify UI listeners
@@ -123,7 +151,7 @@ class AudioManager {
   // ─────────────────────────────────────────────────────────────────────────────
 
   public playSFX(type: SFXType) {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.hasUserGesture) return;
     try {
       const ctx = this.initContext();
       if (ctx.state === 'suspended') {
@@ -370,13 +398,25 @@ class AudioManager {
   // ─────────────────────────────────────────────────────────────────────────────
 
   public playBGM(track: BGMTrack) {
+    this.requestedBGMTrack = track;
+    if (this.isMuted) {
+      this.stopBGMPlayback();
+      return;
+    }
+    // Browsers reject AudioContext startup before a user gesture. Remember the
+    // requested track and let the one-time unlock handler start it afterward.
+    if (!this.hasUserGesture) return;
     if (this.activeBGMTrack === track && this.isBGMPlaying) return;
 
-    this.stopBGM();
+    this.stopBGMPlayback();
     this.activeBGMTrack = track;
     this.isBGMPlaying = true;
 
     const ctx = this.initContext();
+    if (this.bgmGain) {
+      this.bgmGain.gain.cancelScheduledValues(ctx.currentTime);
+      this.bgmGain.gain.setValueAtTime(this.bgmVolume, ctx.currentTime);
+    }
     if (ctx.state === 'suspended') {
       ctx.resume();
     }
@@ -391,6 +431,11 @@ class AudioManager {
   }
 
   public stopBGM() {
+    this.requestedBGMTrack = null;
+    this.stopBGMPlayback();
+  }
+
+  private stopBGMPlayback() {
     this.isBGMPlaying = false;
     this.activeBGMTrack = null;
 
@@ -399,13 +444,19 @@ class AudioManager {
       this.bgmLoopTimer = null;
     }
 
+    if (this.bgmResetTimer !== null) {
+      window.clearTimeout(this.bgmResetTimer);
+      this.bgmResetTimer = null;
+    }
+
     // Smooth fade out
     if (this.ctx && this.bgmGain) {
       const now = this.ctx.currentTime;
       this.bgmGain.gain.cancelScheduledValues(now);
       this.bgmGain.gain.linearRampToValueAtTime(0.001, now + 0.2);
-      setTimeout(() => {
-        if (this.bgmGain && this.ctx) {
+      this.bgmResetTimer = window.setTimeout(() => {
+        this.bgmResetTimer = null;
+        if (!this.isBGMPlaying && this.bgmGain && this.ctx) {
           this.bgmGain.gain.setValueAtTime(this.bgmVolume, this.ctx.currentTime);
         }
       }, 250);

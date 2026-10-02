@@ -100,6 +100,7 @@ class DrawingRecoveryRepositoryTest {
         assertThat(result.events.get(0).get("type")).isEqualTo("DRAW_START");
         assertThat(result.events.get(0).get("r")).isEqualTo("239"); // 0xEF
         assertThat(result.events.get(0).get("width")).isEqualTo("12");
+        assertThat(result.events.get(0).get("tool")).isEqualTo("BRUSH");
         assertThat(result.events.get(1).get("type")).isEqualTo("DRAW_BATCH");
         assertThat(String.valueOf(result.events.get(1).get("points"))).contains("0.3");
         assertThat(result.events.get(2).get("type")).isEqualTo("DRAW_END");

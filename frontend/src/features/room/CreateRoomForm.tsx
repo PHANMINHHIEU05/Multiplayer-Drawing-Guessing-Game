@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { wsClient } from "../../websocket/WebSocketClient";
 import { MessageType } from "../../websocket/protocol";
 import { usePlayerStore } from "../../store/playerStore";
@@ -17,6 +17,12 @@ export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({
   const [drawTime, setDrawTime] = useState<number>(60);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,40 +53,40 @@ export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({
   };
 
   return (
-    <form onSubmit={handleCreate} className="space-y-4">
+    <form onSubmit={handleCreate} className="space-y-3">
       {error && (
-        <div className="p-3 bg-rose-500/20 border border-rose-500/40 text-rose-800 rounded-2xl text-xs font-bold">
+        <div className="p-3 bg-rose-50 border-2 border-rose-300 text-rose-700 rounded-xl text-xs font-bold">
           ⚠️ {error}
         </div>
       )}
 
       {/* Row 1: Players Slider & Draw Time */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="bg-white/80 p-3 rounded-2xl border border-sky-200/80 shadow-sm">
+        <div className="dg-field-card p-3">
           <div className="flex justify-between items-center mb-1.5">
             <label className="text-xs font-extrabold text-slate-700">
               Số Người Chơi
             </label>
-            <span className="text-xs font-black text-primary bg-sky-100 px-2 py-0.5 rounded-lg">
+            <span className="text-xs font-black text-sky-700 bg-sky-100 border border-sky-200 px-2 py-0.5 rounded-lg">
               {maxPlayers} Người
             </span>
           </div>
           <input
             type="range"
             min="2"
-            max="12"
+            max="10"
             value={maxPlayers}
             onChange={(e) => setMaxPlayers(parseInt(e.target.value))}
-            className="w-full accent-primary cursor-pointer h-2 bg-slate-200 rounded-lg"
+            className="w-full accent-sky-500 cursor-pointer h-2 bg-slate-200 rounded-lg"
           />
           <div className="flex justify-between text-[10px] font-bold text-slate-400 mt-1">
             <span>2</span>
             <span>6</span>
-            <span>12 max</span>
+            <span>10 max</span>
           </div>
         </div>
 
-        <div className="bg-white/80 p-3 rounded-2xl border border-sky-200/80 shadow-sm">
+        <div className="dg-field-card p-3">
           <label className="text-xs font-extrabold text-slate-700 block mb-1.5">
             Thời Gian Vẽ / Vòng
           </label>
@@ -92,8 +98,8 @@ export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({
                 onClick={() => setDrawTime(t)}
                 className={`flex-1 py-1.5 rounded-xl font-extrabold text-xs transition-all ${
                   drawTime === t
-                    ? "bg-primary text-white shadow-sm scale-105"
-                    : "bg-slate-100 text-slate-600 hover:bg-sky-50"
+                    ? "bg-sky-500 text-white border-2 border-[#15375f] shadow-[0_2px_0_rgba(21,55,95,.3)]"
+                    : "bg-slate-100 text-slate-600 border-2 border-transparent hover:bg-sky-50"
                 }`}
               >
                 {t}s
@@ -104,7 +110,7 @@ export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({
       </div>
 
       {/* Rounds Slider */}
-      <div className="bg-white/80 p-3 rounded-2xl border border-sky-200/80 shadow-sm flex items-center justify-between gap-3">
+      <div className="dg-field-card p-3 flex items-center justify-between gap-3">
         <div className="min-w-24">
           <label className="text-xs font-extrabold text-slate-700 block">
             Số Vòng Đấu
@@ -127,7 +133,7 @@ export const CreateRoomForm: React.FC<CreateRoomFormProps> = ({
       <button
         type="submit"
         disabled={loading}
-        className="bouncy-btn w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-base rounded-2xl shadow-[0_5px_0_0_#059669] flex items-center justify-center gap-2 transition-all disabled:opacity-60 mt-2"
+        className="dg-yellow-button bouncy-btn w-full py-3 flex items-center justify-center gap-2 text-sm sm:text-base mt-2"
       >
         <span className="material-symbols-outlined text-xl">add_circle</span>
         <span>{loading ? "Đang tạo phòng..." : "BẮT ĐẦU TẠO PHÒNG"}</span>

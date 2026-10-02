@@ -12,8 +12,24 @@ public record DrawStartMessage(
         int red,
         int green,
         int blue,
-        int width
+        int width,
+        boolean eraser
 ) implements DrawingMessage {
+
+    /** Backward-compatible constructor for brush messages and existing tests. */
+    public DrawStartMessage(
+            int version,
+            int round,
+            UUID strokeId,
+            double x,
+            double y,
+            int red,
+            int green,
+            int blue,
+            int width
+    ) {
+        this(version, round, strokeId, x, y, red, green, blue, width, false);
+    }
 
     public DrawStartMessage {
         if (version != DrawingProtocol.VERSION) {

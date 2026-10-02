@@ -35,22 +35,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({ roomId }) => {
   };
 
   return (
-    <form onSubmit={handleSend} className="p-2 bg-slate-900/30 border-t border-white/15 flex gap-1.5 shrink-0">
+    <form onSubmit={handleSend} className="p-2 bg-white border-t-2 border-[#b5dbea] flex gap-1.5 shrink-0">
       <input
         type="text"
         placeholder="Nhắn tin trong phòng..."
         value={text}
         onChange={(e) => setText(e.target.value)}
-        className="flex-1 px-3 py-1.5 bg-white/90 text-slate-800 rounded-xl text-xs outline-none border border-transparent focus:border-primary font-medium placeholder:text-slate-400"
+        className="flex-1 min-w-0 px-3 py-2 bg-sky-50 text-slate-800 rounded-lg text-xs outline-none border-2 border-sky-200 focus:border-sky-500 font-medium placeholder:text-slate-400"
       />
       <button
         type="submit"
         disabled={!text.trim() || sending}
-        className="px-3 py-1.5 bg-primary hover:bg-primary-dark text-white font-extrabold text-xs rounded-xl shadow-md transition-all disabled:opacity-40"
+        className="dg-primary-button px-3 py-1.5 text-xs disabled:opacity-40"
       >
         GỬI
       </button>
     </form>
   );
 };
-

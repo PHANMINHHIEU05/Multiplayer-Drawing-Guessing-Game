@@ -19,6 +19,7 @@ let state: ConnectionState = {
 };
 
 const listeners = new Set<() => void>();
+let lastErrorTimer: ReturnType<typeof setTimeout> | null = null;
 
 function notify() {
   listeners.forEach((l) => l());
@@ -27,6 +28,10 @@ function notify() {
 export const connectionStore = {
   getState: () => state,
   setStatus: (status: ConnectionStatus) => {
+    if (status === "CONNECTED" && lastErrorTimer) {
+      clearTimeout(lastErrorTimer);
+      lastErrorTimer = null;
+    }
     state = {
       ...state,
       status,
@@ -35,8 +40,19 @@ export const connectionStore = {
     notify();
   },
   setLastError: (error: string | null) => {
+    if (lastErrorTimer) {
+      clearTimeout(lastErrorTimer);
+      lastErrorTimer = null;
+    }
     state = { ...state, lastError: error };
     notify();
+    if (error) {
+      lastErrorTimer = setTimeout(() => {
+        lastErrorTimer = null;
+        state = { ...state, lastError: null };
+        notify();
+      }, 6000);
+    }
   },
   subscribe: (listener: () => void) => {
     listeners.add(listener);

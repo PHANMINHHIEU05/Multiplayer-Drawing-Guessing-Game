@@ -32,13 +32,13 @@ export const PlayerList: React.FC<PlayerListProps> = ({
   );
 
   return (
-    <div className="glass-panel-game p-4 shadow-lg select-none">
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+    <div className="glass-panel-game overflow-hidden select-none">
+      <div className="dg-panel-heading">
+        <h3 className="flex items-center gap-1.5">
           <span>👥</span> Người chơi trong phòng ({players.length})
         </h3>
       </div>
-      <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
+      <div className="space-y-2.5 max-h-72 overflow-y-auto p-3 custom-scrollbar">
         {players.map((player, idx) => {
           const isCurrent = player.playerId === currentPlayerId;
           const isHost = player.playerId === hostPlayerId;
@@ -49,10 +49,10 @@ export const PlayerList: React.FC<PlayerListProps> = ({
           return (
             <div
               key={player.playerId}
-              className={`flex items-center justify-between px-3.5 py-3 rounded-2xl border transition-all ${
+              className={`flex items-center justify-between px-3.5 py-3 rounded-xl border-2 transition-all ${
                 isCurrent
-                  ? "bg-sky-100/90 border-primary text-slate-800 shadow-sm ring-1 ring-primary/30"
-                  : "bg-white/85 border-slate-200 text-slate-700 hover:bg-white"
+                  ? "bg-sky-100 border-sky-500 text-slate-800 shadow-sm"
+                  : "bg-white border-slate-200 text-slate-700 hover:border-sky-300"
               }`}
             >
               {/* Left side: Avatar + Username + Local Player tag + Presence */}

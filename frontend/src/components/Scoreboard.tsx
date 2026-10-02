@@ -25,7 +25,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
 
   return (
     <div className="glass-panel-game w-full h-full flex flex-col overflow-hidden select-none">
-      <div className="bg-indigo-950/60 p-2.5 text-center font-extrabold text-xs tracking-wider uppercase border-b border-white/20 flex items-center justify-center gap-1.5 shrink-0">
+      <div className="dg-panel-heading !justify-center shrink-0">
         <span>🏆</span> Bảng Xếp Hạng
       </div>
 
@@ -39,18 +39,18 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
           return (
             <div
               key={s.playerId}
-              className={`flex items-center gap-2.5 p-2 rounded-2xl border transition-all ${
+              className={`flex items-center gap-2.5 p-2 rounded-xl border-2 transition-all ${
                 isDrawer
-                  ? "bg-white/30 border-amber-300 shadow-md ring-1 ring-amber-300/60"
+                  ? "bg-amber-100 border-amber-400 shadow-md"
                   : isCurrent
-                    ? "bg-white/20 border-white/40 shadow-sm"
-                    : "bg-white/10 border-white/15 hover:bg-white/15"
+                    ? "bg-sky-100 border-sky-500 shadow-sm"
+                    : "bg-white border-slate-200 hover:border-sky-300"
               }`}
             >
               {/* Avatar with status icon */}
               <div className="relative shrink-0">
                 <div
-                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-black text-xs sm:text-sm border-2 border-white/60 shadow-sm ${avatarColor}`}
+                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-black text-xs sm:text-sm border-2 border-[#15375f] shadow-sm ${avatarColor}`}
                 >
                   {initial}
                 </div>
@@ -71,18 +71,18 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
               {/* Player Name & Score */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1">
-                  <span className="font-extrabold text-xs text-white truncate">
+                  <span className="font-extrabold text-xs text-slate-800 truncate">
                     {s.username}
                   </span>
                   {isCurrent && (
-                    <span className="text-[9px] font-black text-sky-200 bg-sky-500/40 px-1 rounded">
+                    <span className="text-[9px] font-black text-white bg-sky-500 px-1 rounded">
                       Bạn
                     </span>
                   )}
                 </div>
-                <div className="text-[11px] font-black text-amber-300">
+                <div className="text-[11px] font-black text-amber-600">
                   {s.score}{" "}
-                  <span className="text-[9px] font-semibold text-white/70">
+                  <span className="text-[9px] font-semibold text-slate-500">
                     điểm
                   </span>
                 </div>
@@ -94,7 +94,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
                 {index === 1 && <span className="text-sm">🥈</span>}
                 {index === 2 && <span className="text-sm">🥉</span>}
                 {index > 2 && (
-                  <span className="text-[10px] font-black text-white/50 px-1">
+                  <span className="text-[10px] font-black text-slate-400 px-1">
                     #{index + 1}
                   </span>
                 )}

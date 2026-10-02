@@ -25,6 +25,8 @@ interface DrawingCanvasProps {
 }
 
 const CANVAS_BG = '#ffffff';
+const getDrawingContext = (canvas: HTMLCanvasElement) =>
+  canvas.getContext('2d', { willReadFrequently: true });
 
 export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(({
   isDrawer,
@@ -100,7 +102,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   const drawPointOnCanvas = useCallback((point: DrawPoint, ctx?: CanvasRenderingContext2D) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const context = ctx || canvas.getContext('2d');
+    const context = ctx || getDrawingContext(canvas);
     if (!context) return;
 
     const { x, y } = denormalizeCoords(point.x, point.y);
@@ -195,7 +197,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     const container = containerRef.current;
     if (!canvas || !container) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = getDrawingContext(canvas);
     if (!ctx) return;
 
     const width = container.clientWidth;
@@ -238,7 +240,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     if (externalPoints.length === 0) {
       const canvas = canvasRef.current;
       if (canvas) {
-        const ctx = canvas.getContext('2d');
+        const ctx = getDrawingContext(canvas);
         if (ctx) {
           ctx.globalCompositeOperation = 'source-over';
           ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -252,7 +254,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = getDrawingContext(canvas);
     if (!ctx) return;
 
     const startIndex = lastRenderedIndexRef.current;
@@ -273,7 +275,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     if (!isDrawer) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = getDrawingContext(canvas);
     if (!ctx) return;
 
     const rect = canvas.getBoundingClientRect();
@@ -344,7 +346,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     if (!isDrawer || !isDrawing.current || activeTool === 'fill') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = getDrawingContext(canvas);
     if (!ctx) return;
 
     const rect = canvas.getBoundingClientRect();
@@ -408,7 +410,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     isDrawing.current = false;
 
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
+    const ctx = canvas ? getDrawingContext(canvas) : null;
 
     if ((activeTool === 'rect' || activeTool === 'circle') && shapeStartRef.current && currentPosRef.current && ctx && canvas) {
       if (snapshotRef.current) {
@@ -503,7 +505,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = getDrawingContext(canvas);
     if (!ctx) return;
     ctx.globalCompositeOperation = 'source-over';
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -527,7 +529,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     <div className="relative w-full h-full flex flex-col">
       <div
         ref={containerRef}
-        className="relative flex-1 w-full min-h-[300px] rounded-3xl overflow-hidden bg-white border-4 border-white/60 shadow-2xl"
+        className="dg-canvas-frame relative flex-1 w-full min-h-[300px] overflow-hidden bg-white"
       >
         <canvas
           ref={canvasRef}
@@ -548,7 +550,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
           }`}
         />
         {!isDrawer && (
-          <div className="absolute top-3 left-3 bg-slate-900/75 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 text-[11px] text-slate-200 font-bold shadow-md">
+          <div className="absolute top-3 left-3 bg-white/95 px-3 py-1 rounded-full border-2 border-[#15375f] text-[11px] text-slate-600 font-bold shadow-md">
             👀 Chế độ xem (Người đoán từ)
           </div>
         )}

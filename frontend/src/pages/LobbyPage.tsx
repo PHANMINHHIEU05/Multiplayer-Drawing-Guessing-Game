@@ -4,25 +4,24 @@ import { ConnectionStatus } from '../components/ConnectionStatus';
 
 export const LobbyPage: React.FC = () => {
   return (
-    <div className="min-h-screen flex flex-col justify-between p-4 md:p-6 text-slate-800">
-      <header className="max-w-6xl w-full mx-auto flex items-center justify-between py-2 mb-4">
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">🎨</span>
-          <span className="bubbly-logo text-2xl font-black text-white drop-shadow-md">
-            Dopamine
+    <div className="dg-page min-h-screen flex flex-col justify-between py-3 sm:py-4 text-slate-800">
+      <header className="dg-topbar flex items-center justify-between gap-3 mb-7">
+        <div className="dg-brand">
+          <span className="dg-brand-palette">🎨</span>
+          <span className="dg-brand-name text-2xl sm:text-3xl">
+            Dopamine<span className="dg-brand-dot">.io</span>
           </span>
         </div>
         <ConnectionStatus />
       </header>
 
-      <main className="flex-1 max-w-6xl w-full mx-auto">
+      <main className="dg-lobby-shell glass-panel flex-1">
         <RoomLobby />
       </main>
 
-      <footer className="text-center text-xs font-bold text-white/80 py-3 drop-shadow">
-        Đang chờ chủ phòng bắt đầu trận đấu...
+      <footer className="text-center text-xs font-bold text-white/90 pt-5 pb-2 px-4 drop-shadow">
+        Chuẩn bị sẵn sàng — trận đấu sẽ bắt đầu khi chủ phòng nhấn chơi!
       </footer>
     </div>
   );
 };
-

@@ -35,30 +35,30 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   const drawerName = drawerPlayer?.username || "Người chơi";
 
   return (
-    <div className="glass-panel-game px-3 sm:px-4 py-2 flex items-center justify-between gap-2 sm:gap-4 shrink-0 shadow-lg">
+    <div className="glass-panel-game !bg-white px-3 sm:px-4 py-2 flex items-center justify-between gap-2 sm:gap-4 shrink-0">
       {/* Left: Logo, Room info & Drawer badge */}
       <div className="flex items-center gap-2 sm:gap-3">
-        <span className="text-2xl">🎨</span>
+        <span className="grid place-items-center w-8 h-8 rounded-full bg-sky-100 border-2 border-[#15375f] text-base shrink-0">🎨</span>
         <div>
           <div className="flex items-center gap-1.5">
-            <span className="bubbly-logo text-sm sm:text-base font-black leading-none block">
-              Dopamine
+            <span className="dg-brand-name text-sm sm:text-lg leading-none block">
+              Dopamine<span className="dg-brand-dot">.io</span>
             </span>
             {roomId && (
-              <span className="text-[9px] font-black text-sky-200 uppercase tracking-widest hidden sm:inline">
+              <span className="text-[9px] font-black text-sky-700 bg-sky-100 border border-sky-200 rounded-md px-1.5 uppercase tracking-widest hidden sm:inline">
                 #{roomId}
               </span>
             )}
           </div>
           <div className="mt-0.5">
             {isDrawer ? (
-              <span className="text-[10px] sm:text-[11px] font-black text-amber-300 flex items-center gap-1">
+              <span className="text-[10px] sm:text-[11px] font-black text-amber-700 flex items-center gap-1">
                 <span>✏️</span> Bạn đang vẽ
               </span>
             ) : (
-              <span className="text-[10px] sm:text-[11px] font-extrabold text-sky-200 flex items-center gap-1">
+              <span className="text-[10px] sm:text-[11px] font-extrabold text-sky-700 flex items-center gap-1">
                 <span>🎨</span>{" "}
-                <span className="text-white font-black">{drawerName}</span> đang
+                <span className="text-slate-800 font-black">{drawerName}</span> đang
                 vẽ
               </span>
             )}
@@ -69,7 +69,7 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
       {/* Center: Round & Secret Word / Word Hint */}
       <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-center max-w-lg">
         {/* Round Badge */}
-        <div className="bg-indigo-900/90 border border-indigo-400/40 text-white font-black text-[10px] sm:text-xs px-2.5 sm:px-3 py-1 rounded-full shadow-md whitespace-nowrap">
+        <div className="bg-[#15375f] border-2 border-[#15375f] text-white font-black text-[10px] sm:text-xs px-2.5 sm:px-3 py-1 rounded-full shadow-md whitespace-nowrap">
           VÒNG {gameState.currentRound} / {gameState.totalRounds}
         </div>
 

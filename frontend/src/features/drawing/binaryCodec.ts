@@ -16,6 +16,8 @@ export const DrawingOpcode = {
 export type DrawingOpcodeType = typeof DrawingOpcode[keyof typeof DrawingOpcode];
 
 export const PROTOCOL_VERSION = 1;
+const ERASER_WIDTH_FLAG = 0x80;
+const WIDTH_MASK = 0x7f;
 export const QUANTIZATION_FACTOR = 65535.0;
 
 export interface NormalizedPoint {
@@ -136,6 +138,7 @@ export function generateStrokeId(): string {
 /**
  * Encode DRAW_START frame (28 bytes)
  * [version:1][opcode:1][round:2][strokeId:16][x:2][y:2][r:1][g:1][b:1][w:1]
+ * The high bit of w is the eraser flag; the lower 7 bits contain brush width.
  */
 export function encodeDrawStart(data: DrawStartData): ArrayBuffer {
   const buffer = new ArrayBuffer(28);
@@ -151,12 +154,12 @@ export function encodeDrawStart(data: DrawStartData): ArrayBuffer {
   view.setUint16(20, encodeCoordinate(data.x), false);
   view.setUint16(22, encodeCoordinate(data.y), false);
 
-  const colorHex = data.tool === 'ERASER' ? '#FFFFFF' : data.colorHex;
-  const { r, g, b } = hexToRgb(colorHex);
+  const { r, g, b } = hexToRgb(data.tool === 'ERASER' ? '#FFFFFF' : data.colorHex);
   view.setUint8(24, r);
   view.setUint8(25, g);
   view.setUint8(26, b);
-  view.setUint8(27, Math.max(1, Math.min(64, Math.round(data.width))));
+  const width = Math.max(1, Math.min(64, Math.round(data.width)));
+  view.setUint8(27, width | (data.tool === 'ERASER' ? ERASER_WIDTH_FLAG : 0));
 
   return buffer;
 }
@@ -245,9 +248,10 @@ export function decodeDrawingFrame(buffer: ArrayBuffer): DecodedDrawingMessage |
       const r = view.getUint8(24);
       const g = view.getUint8(25);
       const b = view.getUint8(26);
-      const width = view.getUint8(27);
+      const encodedWidth = view.getUint8(27);
+      const width = encodedWidth & WIDTH_MASK;
       const colorHex = rgbToHex(r, g, b);
-      const isEraser = r === 255 && g === 255 && b === 255;
+      const isEraser = (encodedWidth & ERASER_WIDTH_FLAG) !== 0;
 
       return {
         type: 'DRAW_START',

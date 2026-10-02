@@ -8,6 +8,8 @@ public final class DrawingProtocol {
     public static final int MAX_POINTS_PER_BATCH = 256;
     public static final int MIN_BRUSH_WIDTH = 1;
     public static final int MAX_BRUSH_WIDTH = 64;
+    public static final int ERASER_WIDTH_FLAG = 0x80;
+    public static final int WIDTH_MASK = 0x7F;
     public static final int MIN_COLOR_VALUE = 0;
     public static final int MAX_COLOR_VALUE = 255;
     public static final int MIN_ROUND_VALUE = 0;

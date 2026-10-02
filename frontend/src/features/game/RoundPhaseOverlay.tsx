@@ -67,12 +67,12 @@ export const RoundPhaseOverlay: React.FC<Props> = ({
         className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/40 backdrop-blur-[2px] p-3"
         role="status"
       >
-        <section className="w-full max-w-xl rounded-3xl border border-white/30 bg-slate-900/95 p-5 text-center shadow-2xl sm:p-7">
-          <p className="text-xs font-black tracking-[.22em] text-sky-200 uppercase">
+        <section className="w-full max-w-xl rounded-3xl border-[3px] border-[#15375f] bg-white p-5 text-center shadow-2xl sm:p-7">
+          <p className="text-xs font-black tracking-[.22em] text-sky-700 uppercase">
             {isDrawer ? "CHỌN MỘT TỪ ĐỂ VẼ" : "ĐANG CHỌN TỪ KHÓA"}
           </p>
           <div
-            className="my-3 text-4xl font-black tabular-nums text-amber-300"
+            className="my-3 text-4xl font-black tabular-nums text-amber-600"
             aria-label={`${seconds} giây`}
           >
             {seconds}s
@@ -87,13 +87,13 @@ export const RoundPhaseOverlay: React.FC<Props> = ({
                     setSelected(true);
                     onSelectWord(choice.choiceId);
                   }}
-                  className="min-h-16 rounded-2xl border border-sky-200/40 bg-sky-500/20 px-3 py-4 text-base font-black text-white transition hover:-translate-y-0.5 hover:bg-violet-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="dg-yellow-button min-h-16 px-3 py-4 text-base disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {choice.displayWord}
                 </button>
               ))}
               {(gameState.wordChoices || []).length === 0 && (
-                <p className="sm:col-span-3 text-sm text-white/70">
+                <p className="sm:col-span-3 text-sm text-slate-500">
                   Đang khôi phục lựa chọn từ…
                 </p>
               )}
@@ -101,10 +101,10 @@ export const RoundPhaseOverlay: React.FC<Props> = ({
           ) : (
             <div className="py-4 space-y-1">
               <div className="text-4xl mb-2">🤔</div>
-              <p className="text-base font-black text-white">
+              <p className="text-base font-black text-slate-800">
                 {drawerName} đang chọn từ...
               </p>
-              <p className="text-xs text-sky-200">
+              <p className="text-xs text-sky-700">
                 Hãy sẵn sàng đoán từ khi bắt đầu lượt!
               </p>
             </div>
@@ -120,20 +120,20 @@ export const RoundPhaseOverlay: React.FC<Props> = ({
         className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/35 pointer-events-none"
         aria-live="polite"
       >
-        <section className="rounded-3xl border border-white/35 bg-slate-900/85 px-10 py-6 text-center shadow-2xl">
-          <p className="text-sm font-black tracking-widest text-white">
+        <section className="rounded-3xl border-[3px] border-[#15375f] bg-white px-10 py-6 text-center shadow-2xl">
+          <p className="text-sm font-black tracking-widest text-slate-800">
             {isDrawer
               ? "ĐẾN LƯỢT BẠN VẼ"
               : `LƯỢT MỚI · ${drawerName.toUpperCase()} CHUẨN BỊ VẼ`}
           </p>
           {isDrawer && (
-            <p className="mt-2 text-xl font-black text-amber-300 tracking-wider font-mono">
+            <p className="mt-2 text-xl font-black text-amber-600 tracking-wider font-mono">
               {gameState.secretWord}
             </p>
           )}
           <div
             key={seconds}
-            className="mt-2 text-7xl font-black tabular-nums text-white animate-count-pulse inline-block drop-shadow-md"
+            className="mt-2 text-7xl font-black tabular-nums text-sky-600 animate-count-pulse inline-block drop-shadow-md"
           >
             {seconds > 0 ? seconds : isDrawer ? "VẼ!" : "ĐOÁN!"}
           </div>
@@ -149,20 +149,20 @@ export const RoundPhaseOverlay: React.FC<Props> = ({
         className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/50 p-3"
         role="status"
       >
-        <section className="w-full max-w-lg rounded-3xl border border-amber-200/40 bg-slate-900/95 p-5 shadow-2xl sm:p-7">
+        <section className="w-full max-w-lg rounded-3xl border-[3px] border-[#15375f] bg-white p-5 shadow-2xl sm:p-7">
           <div className="text-center">
-            <p className="text-xs font-black tracking-[.2em] text-amber-300 uppercase">
+            <p className="text-xs font-black tracking-[.2em] text-amber-600 uppercase">
               HẾT LƯỢT!
             </p>
             <div className="mt-1 flex items-center justify-center gap-2">
-              <span className="text-xs font-bold text-white/70">Đáp án:</span>
-              <h2 className="text-2xl font-black text-amber-300 font-mono tracking-wider">
+              <span className="text-xs font-bold text-slate-500">Đáp án:</span>
+              <h2 className="text-2xl font-black text-amber-600 font-mono tracking-wider">
                 {recap?.answer ||
                   gameState.secretWord ||
                   "Đáp án đã được tiết lộ"}
               </h2>
             </div>
-            <p className="mt-2 text-xs font-bold text-sky-200">
+            <p className="mt-2 text-xs font-bold text-sky-700">
               Lượt tiếp theo sẽ bắt đầu sau {seconds}s
             </p>
           </div>
@@ -170,35 +170,35 @@ export const RoundPhaseOverlay: React.FC<Props> = ({
             {(recap?.scoreDeltas || []).map((score) => (
               <div
                 key={score.playerId}
-                className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-sm border border-white/10"
+                className="flex items-center justify-between rounded-xl bg-sky-50 px-3 py-2 text-sm border border-sky-100"
               >
-                <span className="font-bold text-white">{score.username}</span>
+                <span className="font-bold text-slate-800">{score.username}</span>
                 <span className="text-right">
                   <b
                     className={
                       score.roundDelta > 0
-                        ? "text-emerald-300 font-black"
-                        : "text-white/60"
+                        ? "text-emerald-600 font-black"
+                        : "text-slate-500"
                     }
                   >
                     {score.roundDelta > 0
                       ? `+${score.roundDelta}`
                       : score.roundDelta}
                   </b>
-                  <small className="ml-2 text-white/50 font-bold">
+                  <small className="ml-2 text-slate-400 font-bold">
                     Tổng: {score.totalScore}
                   </small>
                 </span>
               </div>
             ))}
             {recap && (recap.correctPlayerIds || []).length === 0 && (
-              <p className="mb-2 text-center text-sm text-white/65 italic">
+              <p className="mb-2 text-center text-sm text-slate-500 italic">
                 Không ai đoán đúng lượt này.
               </p>
             )}
           </div>
           {recap?.fastestUsername && (
-            <p className="mt-3 text-center text-xs font-black text-amber-300">
+            <p className="mt-3 text-center text-xs font-black text-amber-600">
               ⚡ Đoán nhanh nhất: {recap.fastestUsername} (
               {((recap.fastestElapsedMillis || 0) / 1000).toFixed(1)}s)
             </p>
@@ -225,14 +225,14 @@ export const ReactionBar: React.FC<{
 
   return (
     <div
-      className="absolute bottom-3 left-3 z-40 flex items-center gap-1.5 rounded-2xl border border-white/25 bg-slate-900/75 p-1.5 shadow-lg backdrop-blur"
+      className="absolute bottom-3 left-3 z-40 flex items-center gap-1.5 rounded-2xl border-2 border-[#15375f] bg-white/95 p-1.5 text-slate-800 shadow-lg"
       aria-label="Phản ứng nhanh"
     >
       <button
         type="button"
         disabled={disabled}
         onClick={() => setExpanded((open) => !open)}
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg transition hover:bg-white/15 disabled:opacity-40"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg transition hover:bg-sky-100 disabled:opacity-40"
         aria-label={expanded ? "Thu gọn cảm xúc" : "Mở cảm xúc"}
         aria-expanded={expanded}
         aria-controls="quick-reactions"
@@ -253,7 +253,7 @@ export const ReactionBar: React.FC<{
               type="button"
               disabled={disabled}
               onClick={() => sendReaction(reaction)}
-              className="grid h-9 w-9 place-items-center rounded-xl text-lg transition hover:scale-110 hover:bg-white/15 disabled:opacity-40"
+              className="grid h-9 w-9 place-items-center rounded-xl text-lg transition hover:scale-110 hover:bg-sky-100 disabled:opacity-40"
               aria-label={`Gửi ${reaction}`}
             >
               {reaction}

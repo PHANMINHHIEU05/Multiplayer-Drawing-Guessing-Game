@@ -25,11 +25,11 @@ export const MatchRecapModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn">
-      <div className="glass-panel-dark border-2 border-amber-400/80 rounded-3xl p-6 max-h-[90vh] max-w-md w-full overflow-y-auto text-center space-y-4 shadow-2xl relative">
+      <div className="glass-panel-dark rounded-3xl p-6 max-h-[90vh] max-w-md w-full overflow-y-auto text-center space-y-4 shadow-2xl relative">
         {/* Close button at top right */}
         <button
           onClick={handleClose}
-          className="absolute top-4 right-4 text-white/60 hover:text-white bg-white/10 hover:bg-white/20 w-8 h-8 rounded-full flex items-center justify-center transition-all font-black text-sm"
+          className="absolute top-4 right-4 text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 w-8 h-8 rounded-full flex items-center justify-center transition-all font-black text-sm"
           title="Đóng bảng tổng kết"
         >
           ✕
@@ -40,16 +40,16 @@ export const MatchRecapModal: React.FC = () => {
           <h2 className="text-2xl sm:text-3xl font-black bubbly-logo text-amber-300">
             TỔNG KẾT TRẬN ĐẤU!
           </h2>
-          <p className="text-xs font-bold text-slate-300 mt-0.5">
+          <p className="text-xs font-bold text-slate-500 mt-0.5">
             Bảng điểm chung cuộc
           </p>
         </div>
 
         {winner && (
-          <div className="bg-amber-400/20 border border-amber-400/50 rounded-2xl py-2 px-4">
-            <p className="text-sm font-black text-white">
+          <div className="bg-amber-100 border-2 border-amber-300 rounded-2xl py-2 px-4">
+            <p className="text-sm font-black text-slate-800">
               🥇 Người thắng:{" "}
-              <span className="text-amber-300">
+              <span className="text-amber-700">
                 {winner.username || "Người chơi"}
               </span>{" "}
               ({winner.score} điểm)
@@ -62,8 +62,8 @@ export const MatchRecapModal: React.FC = () => {
         </div>
 
         {(summary.awards || []).length > 0 && (
-          <div className="rounded-2xl border border-amber-300/30 bg-white/5 p-3 text-left">
-            <p className="mb-2 text-[10px] sm:text-xs font-black tracking-widest text-amber-200 uppercase">
+          <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-3 text-left">
+            <p className="mb-2 text-[10px] sm:text-xs font-black tracking-widest text-amber-700 uppercase">
               🎖️ DANH HIỆU TRẬN ĐẤU
             </p>
             <div className="space-y-1.5">
@@ -72,8 +72,8 @@ export const MatchRecapModal: React.FC = () => {
                   key={`${award.type}-${award.playerId}-${i}`}
                   className="flex justify-between gap-3 text-xs"
                 >
-                  <span className="font-bold text-white/80">{award.label}</span>
-                  <span className="text-right font-black text-amber-100">
+                  <span className="font-bold text-slate-600">{award.label}</span>
+                  <span className="text-right font-black text-amber-700">
                     {award.username}
                     {award.type === "FASTEST_GUESS" &&
                     typeof award.elapsedMillis === "number" &&
@@ -99,7 +99,7 @@ export const MatchRecapModal: React.FC = () => {
         <div className="pt-2">
           <button
             onClick={handleClose}
-            className="bouncy-btn w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-[0_4px_0_0_#059669] transition-all flex items-center justify-center gap-2 hover:scale-[1.02]"
+            className="dg-success-button bouncy-btn w-full py-3.5 text-sm flex items-center justify-center gap-2"
           >
             <span>ĐÓNG (VÀO PHÒNG CHỜ)</span>
             <span className="text-lg">✓</span>

@@ -83,20 +83,20 @@ export const NetworkInspector: React.FC = () => {
       (metrics.status === 'CONNECTED' && metrics.rttSamplesCount > 0 && metrics.rttCurrent > 150);
 
     const chipTone = isError
-      ? 'bg-rose-500/70 border-rose-300'
+      ? 'bg-rose-500 border-[#15375f] text-white'
       : isWarning
-        ? 'bg-amber-500/70 border-amber-300'
-        : 'bg-white/25 border-white/50';
+        ? 'bg-amber-300 border-[#15375f] text-slate-900'
+        : 'bg-white border-[#15375f] text-[#15375f]';
 
     return (
       <button
         onClick={() => metricsStore.setInspectorOpen(true)}
-        className={`absolute bottom-3 right-3 z-40 px-3 py-1.5 rounded-full ${chipTone} backdrop-blur-md text-white text-xs font-bold shadow-lg hover:bg-white/35 transition-all flex items-center gap-2 select-none`}
+        className={`absolute bottom-3 right-3 z-40 px-3 py-1.5 rounded-full border-2 ${chipTone} text-xs font-bold shadow-lg transition-all flex items-center gap-2 select-none`}
         title="Mở Network Inspector (Ctrl+Shift+N hoặc `)"
       >
         <span className={`w-2 h-2 rounded-full ${statusBadge.dot}`} />
         <span>⚡ NET</span>
-        <span className="text-white/90 text-[11px] font-mono">
+        <span className="text-current opacity-80 text-[11px] font-mono">
           {isError ? 'offline' : metrics.rttSamplesCount > 0 ? `${metrics.rttCurrent}ms` : '—'}
         </span>
       </button>
@@ -105,7 +105,7 @@ export const NetworkInspector: React.FC = () => {
 
   // ─── Expanded panel: light glass + dark text (readable) ──────────────
   return (
-    <div className="absolute bottom-3 right-3 z-40 w-[340px] max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:w-auto max-h-[65vh] flex flex-col rounded-3xl bg-white/92 backdrop-blur-xl border-2 border-indigo-200 shadow-2xl text-slate-800 text-xs overflow-hidden select-none animate-fadeIn">
+    <div className="absolute bottom-3 right-3 z-40 w-[340px] max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:w-auto max-h-[65vh] flex flex-col rounded-3xl bg-white border-[3px] border-[#15375f] shadow-2xl text-slate-800 text-xs overflow-hidden select-none animate-fadeIn">
       {/* Header */}
       <div className="flex items-center justify-between px-3.5 py-2.5 bg-indigo-50/90 border-b border-indigo-100 shrink-0">
         <div className="flex items-center gap-2 min-w-0">

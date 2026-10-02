@@ -166,6 +166,26 @@ describe('BinaryDrawingCodec', () => {
       expect(decoded.data.width).toBe(16);
     });
 
+    it('keeps a white brush distinct from an eraser', () => {
+      const buffer = encodeDrawStart({
+        round: 1,
+        strokeId,
+        x: 0.25,
+        y: 0.5,
+        colorHex: '#ffffff',
+        width: 10,
+        tool: 'BRUSH',
+      });
+
+      const decoded = decodeDrawingFrame(buffer);
+      expect(decoded).not.toBeNull();
+      if (!decoded || decoded.type !== 'DRAW_START') throw new Error('Expected DRAW_START');
+
+      expect(decoded.data.colorHex).toBe('#ffffff');
+      expect(decoded.data.tool).toBe('BRUSH');
+      expect(decoded.data.width).toBe(10);
+    });
+
     it('returns null on truncated frames', () => {
       const shortBuffer = new ArrayBuffer(2);
       expect(decodeDrawingFrame(shortBuffer)).toBeNull();

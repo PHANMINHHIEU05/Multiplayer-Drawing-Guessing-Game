@@ -48,7 +48,10 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
 
   return (
     <>
-      <div className="glass-panel-game w-16 sm:w-20 flex flex-col items-center py-2.5 px-1.5 h-full shrink-0 gap-2 overflow-y-auto custom-scrollbar select-none">
+      <div className="glass-panel-game !bg-[#e8f6fc] w-16 sm:w-[76px] flex flex-col items-center py-2.5 px-1.5 h-full shrink-0 gap-2 overflow-y-auto custom-scrollbar select-none">
+        <span className="text-[9px] font-black uppercase tracking-wider text-sky-800">
+          Công cụ
+        </span>
         {/* Tool Actions in 2-Column Grid */}
         <div className="grid grid-cols-2 gap-1.5 w-full">
           {/* Bút vẽ */}
@@ -56,10 +59,10 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
             type="button"
             title="Bút vẽ tự do"
             onClick={() => handleToolSelect('pen')}
-            className={`btn-3d w-full aspect-square rounded-xl flex items-center justify-center font-bold transition-all ${
+            className={`dg-tool-button btn-3d w-full aspect-square rounded-lg flex items-center justify-center font-bold transition-all ${
               activeTool === 'pen'
-                ? 'bg-amber-400 text-slate-900 shadow-[0_3px_0_0_#d97706]'
-                : 'bg-white/20 text-white hover:bg-white/30'
+                ? 'is-active text-slate-900'
+                : 'bg-white text-[#15375f] hover:bg-sky-50'
             }`}
           >
             <span className="material-symbols-outlined text-base sm:text-lg">edit</span>
@@ -70,10 +73,10 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
             type="button"
             title="Tẩy nét vẽ"
             onClick={() => handleToolSelect('eraser')}
-            className={`btn-3d w-full aspect-square rounded-xl flex items-center justify-center font-bold transition-all ${
+            className={`dg-tool-button btn-3d w-full aspect-square rounded-lg flex items-center justify-center font-bold transition-all ${
               activeTool === 'eraser'
-                ? 'bg-amber-400 text-slate-900 shadow-[0_3px_0_0_#d97706]'
-                : 'bg-white/20 text-white hover:bg-white/30'
+                ? 'is-active text-slate-900'
+                : 'bg-white text-[#15375f] hover:bg-sky-50'
             }`}
           >
             <span className="material-symbols-outlined text-base sm:text-lg">ink_eraser</span>
@@ -84,10 +87,10 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
             type="button"
             title="Vẽ hình chữ nhật"
             onClick={() => handleToolSelect('rect')}
-            className={`btn-3d w-full aspect-square rounded-xl flex items-center justify-center font-bold transition-all ${
+            className={`dg-tool-button btn-3d w-full aspect-square rounded-lg flex items-center justify-center font-bold transition-all ${
               activeTool === 'rect'
-                ? 'bg-amber-400 text-slate-900 shadow-[0_3px_0_0_#d97706]'
-                : 'bg-white/20 text-white hover:bg-white/30'
+                ? 'is-active text-slate-900'
+                : 'bg-white text-[#15375f] hover:bg-sky-50'
             }`}
           >
             <span className="material-symbols-outlined text-base sm:text-lg">rectangle</span>
@@ -98,10 +101,10 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
             type="button"
             title="Vẽ hình tròn"
             onClick={() => handleToolSelect('circle')}
-            className={`btn-3d w-full aspect-square rounded-xl flex items-center justify-center font-bold transition-all ${
+            className={`dg-tool-button btn-3d w-full aspect-square rounded-lg flex items-center justify-center font-bold transition-all ${
               activeTool === 'circle'
-                ? 'bg-amber-400 text-slate-900 shadow-[0_3px_0_0_#d97706]'
-                : 'bg-white/20 text-white hover:bg-white/30'
+                ? 'is-active text-slate-900'
+                : 'bg-white text-[#15375f] hover:bg-sky-50'
             }`}
           >
             <span className="material-symbols-outlined text-base sm:text-lg">circle</span>
@@ -112,10 +115,10 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
             type="button"
             title="Thùng sơn đổ màu"
             onClick={() => handleToolSelect('fill')}
-            className={`btn-3d w-full aspect-square rounded-xl flex items-center justify-center font-bold transition-all ${
+            className={`dg-tool-button btn-3d w-full aspect-square rounded-lg flex items-center justify-center font-bold transition-all ${
               activeTool === 'fill'
-                ? 'bg-amber-400 text-slate-900 shadow-[0_3px_0_0_#d97706]'
-                : 'bg-white/20 text-white hover:bg-white/30'
+                ? 'is-active text-slate-900'
+                : 'bg-white text-[#15375f] hover:bg-sky-50'
             }`}
           >
             <span className="material-symbols-outlined text-base sm:text-lg">format_color_fill</span>
@@ -129,13 +132,13 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
               audioManager.playSFX('tool_click');
               onClearCanvas();
             }}
-            className="btn-3d w-full aspect-square rounded-xl bg-rose-500/80 hover:bg-rose-500 text-white flex items-center justify-center transition-all shadow-[0_2px_0_0_#9f1239]"
+            className="dg-tool-button btn-3d w-full aspect-square rounded-lg bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center transition-all"
           >
             <span className="material-symbols-outlined text-base sm:text-lg">delete</span>
           </button>
         </div>
 
-        <div className="w-full h-px bg-white/30 my-0.5" />
+        <div className="w-full h-0.5 bg-sky-200 my-0.5" />
 
         {/* 2-Column Palette */}
         <div className="grid grid-cols-2 gap-1.5 w-full">
@@ -152,12 +155,12 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
               }}
               className={`w-6 h-6 rounded-lg transition-transform mx-auto ${
                 color.toLowerCase() === c.toLowerCase()
-                  ? 'ring-2 ring-white scale-110 shadow-md'
+                  ? 'ring-2 ring-[#15375f] ring-offset-1 scale-110 shadow-md'
                   : 'hover:scale-110 opacity-90'
               }`}
               style={{
                 backgroundColor: c,
-                border: c === '#ffffff' ? '1px solid rgba(0,0,0,0.2)' : '1px solid rgba(255,255,255,0.4)',
+                border: '1px solid rgba(21,55,95,.38)',
               }}
             />
           ))}
@@ -168,17 +171,17 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
           type="button"
           title="Bảng màu quang phổ 360°"
           onClick={() => setShowColorWheel(true)}
-          className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform my-1"
+          className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-[#15375f] shadow-md hover:scale-110 transition-transform my-1"
           style={{
             background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
           }}
         />
 
         {/* Brush Size Slider */}
-        <div className="w-full flex flex-col items-center gap-1 mt-auto pt-1 border-t border-white/20">
-          <div className="flex items-center gap-1 text-[9px] font-black text-sky-100 uppercase">
+        <div className="w-full flex flex-col items-center gap-1 mt-auto pt-1 border-t-2 border-sky-200">
+          <div className="flex items-center gap-1 text-[9px] font-black text-sky-800 uppercase">
             <span>Size</span>
-            <span className="text-amber-300">{size}px</span>
+            <span className="text-amber-600">{size}px</span>
           </div>
           <input
             type="range"
@@ -186,7 +189,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
             max="28"
             value={size}
             onChange={(e) => onSizeChange(parseInt(e.target.value))}
-            className="w-full accent-amber-400 cursor-pointer h-1.5 bg-white/30 rounded-lg"
+            className="w-full accent-amber-400 cursor-pointer h-1.5 bg-sky-200 rounded-lg"
           />
         </div>
       </div>

@@ -97,9 +97,11 @@ public class BinaryDrawingDecoder {
         int red = Byte.toUnsignedInt(buffer.get());
         int green = Byte.toUnsignedInt(buffer.get());
         int blue = Byte.toUnsignedInt(buffer.get());
-        int width = Byte.toUnsignedInt(buffer.get());
+        int encodedWidth = Byte.toUnsignedInt(buffer.get());
+        boolean eraser = (encodedWidth & DrawingProtocol.ERASER_WIDTH_FLAG) != 0;
+        int width = encodedWidth & DrawingProtocol.WIDTH_MASK;
 
-        return new DrawStartMessage(version, round, strokeId, x, y, red, green, blue, width);
+        return new DrawStartMessage(version, round, strokeId, x, y, red, green, blue, width, eraser);
     }
 
     private DrawBatchMessage decodeDrawBatch(ByteBuffer buffer, int version, int round, int totalLength) {

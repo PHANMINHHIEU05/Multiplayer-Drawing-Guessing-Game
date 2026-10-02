@@ -28,4 +28,26 @@ describe('floodFillPixels', () => {
     expect(Array.from(image.data.slice(16, 20))).toEqual([0, 0, 0, 255]);
     expect(Array.from(image.data.slice(20, 24))).toEqual([255, 255, 255, 255]);
   });
+
+  it('treats transparent pixels left by the eraser as blank canvas', () => {
+    const image = whiteImage(3, 1);
+    image.data.set([0, 0, 0, 0], 4);
+
+    expect(floodFillPixels(image, 0, 0, hexToRgbColor('#22c55e'))).toBe(true);
+    expect(Array.from(image.data.slice(0, 4))).toEqual([34, 197, 94, 255]);
+    expect(Array.from(image.data.slice(4, 8))).toEqual([34, 197, 94, 255]);
+    expect(Array.from(image.data.slice(8, 12))).toEqual([34, 197, 94, 255]);
+  });
+
+  it('fills the surrounding blank canvas when clicking an erased pixel', () => {
+    const image = whiteImage(3, 1);
+    image.data.set([0, 0, 0, 0], 4);
+
+    expect(floodFillPixels(image, 1, 0, hexToRgbColor('#f59e0b'))).toBe(true);
+    expect(Array.from(image.data)).toEqual([
+      245, 158, 11, 255,
+      245, 158, 11, 255,
+      245, 158, 11, 255,
+    ]);
+  });
 });

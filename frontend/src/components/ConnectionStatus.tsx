@@ -9,35 +9,35 @@ export const ConnectionStatus: React.FC = () => {
     switch (status) {
       case "CONNECTED":
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/25 text-emerald-200 border border-emerald-400/40 backdrop-blur-md shadow-sm">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-white text-emerald-700 border-2 border-[#15375f] shadow-[0_2px_0_rgba(10,52,93,.35)]">
             <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
             Đã kết nối
           </span>
         );
       case "CONNECTING":
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-500/25 text-amber-200 border border-amber-400/40 backdrop-blur-md shadow-sm">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-50 text-amber-700 border-2 border-[#15375f] shadow-[0_2px_0_rgba(10,52,93,.35)]">
             <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping" />
             Đang kết nối...
           </span>
         );
       case "RECONNECTING":
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-orange-500/25 text-orange-200 border border-orange-400/40 backdrop-blur-md shadow-sm">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-orange-50 text-orange-700 border-2 border-[#15375f] shadow-[0_2px_0_rgba(10,52,93,.35)]">
             <span className="w-2 h-2 rounded-full bg-orange-300 animate-bounce" />
             Mất kết nối — đang thử kết nối lại...
           </span>
         );
       case "FAILING_OVER":
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 backdrop-blur-md shadow-sm animate-pulse">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-indigo-50 text-indigo-700 border-2 border-[#15375f] shadow-[0_2px_0_rgba(10,52,93,.35)] animate-pulse">
             <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping" />
             Đang chuyển sang máy chủ dự phòng...
           </span>
         );
       case "RECOVERING":
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-sky-500/25 text-sky-200 border border-sky-400/40 backdrop-blur-md shadow-sm">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-sky-50 text-sky-700 border-2 border-[#15375f] shadow-[0_2px_0_rgba(10,52,93,.35)]">
             <span className="w-2 h-2 rounded-full bg-sky-300 animate-ping" />
             Đang đồng bộ lại ván chơi...
           </span>
@@ -46,20 +46,20 @@ export const ConnectionStatus: React.FC = () => {
       default:
         return (
           <div className="inline-flex items-center gap-1.5">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-rose-500/25 text-rose-200 border border-rose-400/40 backdrop-blur-md shadow-sm">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-rose-50 text-rose-700 border-2 border-[#15375f] shadow-[0_2px_0_rgba(10,52,93,.35)]">
               <span className="w-2 h-2 rounded-full bg-rose-400" />
               Không thể kết nối
             </span>
             <button
               onClick={() => wsClient.connect()}
-              className="text-xs bg-white/30 hover:bg-white/40 text-white font-bold px-2.5 py-1 rounded-xl transition-all shadow-sm border border-white/40"
+              className="text-xs bg-white hover:bg-sky-50 text-[#15375f] font-bold px-2.5 py-1 rounded-lg transition-all shadow-sm border-2 border-[#15375f]"
               title="Thử kết nối lại"
             >
               Thử lại
             </button>
             <button
               onClick={() => resetAllSessionState()}
-              className="text-xs bg-rose-600/60 hover:bg-rose-600 text-white font-bold px-2.5 py-1 rounded-xl transition-all shadow-sm border border-rose-400/40"
+              className="text-xs bg-rose-500 hover:bg-rose-600 text-white font-bold px-2.5 py-1 rounded-lg transition-all shadow-sm border-2 border-[#15375f]"
               title="Quay lại trang chủ"
             >
               Về trang chủ
@@ -74,7 +74,7 @@ export const ConnectionStatus: React.FC = () => {
       {getStatusBadge()}
       {lastError && (
         <span
-          className="text-xs text-rose-200 bg-rose-900/60 px-2 py-0.5 rounded-lg max-w-xs truncate"
+          className="text-xs font-bold text-rose-900 bg-rose-50/95 border border-rose-300 px-2 py-0.5 rounded-lg max-w-xs truncate shadow-sm"
           title={lastError}
         >
           {lastError}

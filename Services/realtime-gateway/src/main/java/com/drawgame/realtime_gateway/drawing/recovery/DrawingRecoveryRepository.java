@@ -207,6 +207,7 @@ public class DrawingRecoveryRepository {
             body.put("g", String.valueOf(m.green()));
             body.put("b", String.valueOf(m.blue()));
             body.put("width", String.valueOf(m.width()));
+            body.put("tool", m.eraser() ? "ERASER" : "BRUSH");
         } else if (message instanceof DrawBatchMessage m) {
             body.put("type", "DRAW_BATCH");
             body.put("round", String.valueOf(m.round()));

@@ -7,26 +7,26 @@ const getNoticeBadge = (type: NoticeType) => {
       return {
         icon: "✓",
         classes:
-          "bg-emerald-500/90 border-emerald-400/60 text-white shadow-emerald-500/20",
+          "bg-emerald-50/95 border-emerald-300 text-emerald-950 shadow-emerald-900/15",
       };
     case "WARNING":
       return {
         icon: "⚠️",
         classes:
-          "bg-amber-500/95 border-amber-400/60 text-slate-950 shadow-amber-500/20",
+          "bg-amber-50/95 border-amber-300 text-amber-950 shadow-amber-900/15",
       };
     case "ERROR":
       return {
         icon: "✕",
         classes:
-          "bg-rose-500/95 border-rose-400/60 text-white shadow-rose-500/20",
+          "bg-rose-50/95 border-rose-300 text-rose-950 shadow-rose-900/15",
       };
     case "INFO":
     default:
       return {
         icon: "ℹ️",
         classes:
-          "bg-indigo-600/90 border-indigo-400/50 text-white shadow-indigo-600/20",
+          "bg-sky-50/95 border-sky-300 text-sky-950 shadow-sky-900/15",
       };
   }
 };
@@ -43,7 +43,7 @@ export const GameSystemNotice: React.FC = () => {
         return (
           <div
             key={notice.id}
-            className={`pointer-events-auto px-4 py-2.5 rounded-2xl border backdrop-blur-md shadow-xl flex items-center justify-between gap-3 text-xs sm:text-sm font-extrabold transition-all animate-pop-in ${badge.classes}`}
+            className={`pointer-events-auto px-4 py-2.5 rounded-xl border-2 border-[#15375f] shadow-[0_4px_0_rgba(10,52,93,.32),0_12px_26px_rgba(10,52,93,.16)] flex items-center justify-between gap-3 text-xs sm:text-sm font-extrabold transition-all animate-pop-in ${badge.classes}`}
           >
             <div className="flex items-center gap-2">
               <span className="text-base leading-none">{badge.icon}</span>
@@ -51,7 +51,7 @@ export const GameSystemNotice: React.FC = () => {
             </div>
             <button
               onClick={() => noticeStore.removeNotice(notice.id)}
-              className="text-white/70 hover:text-white rounded-full w-5 h-5 flex items-center justify-center font-bold text-xs transition-colors shrink-0 ml-1"
+              className="text-current opacity-50 hover:opacity-100 hover:bg-black/5 rounded-full w-5 h-5 flex items-center justify-center font-bold text-xs transition-all shrink-0 ml-1"
               aria-label="Dismiss notice"
             >
               ✕

@@ -26,6 +26,7 @@ function notify() {
 
 // Track recently pushed messages to prevent spam/self-echo duplicates
 const recentMessages = new Map<string, number>();
+const noticeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export const noticeStore = {
   getState: () => state,
@@ -70,20 +71,31 @@ export const noticeStore = {
     state = { notices: [...filtered.slice(-2), item] };
     notify();
 
+    const previousTimer = noticeTimers.get(id);
+    if (previousTimer) clearTimeout(previousTimer);
     if (durationMs > 0) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        noticeTimers.delete(id);
         noticeStore.removeNotice(id);
       }, durationMs);
+      noticeTimers.set(id, timer);
     }
   },
 
   removeNotice: (id: string) => {
+    const timer = noticeTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      noticeTimers.delete(id);
+    }
     if (!state.notices.some((n) => n.id === id)) return;
     state = { notices: state.notices.filter((n) => n.id !== id) };
     notify();
   },
 
   clearAll: () => {
+    noticeTimers.forEach((timer) => clearTimeout(timer));
+    noticeTimers.clear();
     state = { notices: [] };
     notify();
   },

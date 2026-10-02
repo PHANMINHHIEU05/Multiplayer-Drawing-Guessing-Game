@@ -1,10 +1,36 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface ColorWheelModalProps {
   isOpen: boolean;
   currentColor: string;
   onClose: () => void;
   onSelectColor: (color: string) => void;
+}
+
+const byteToHex = (value: number) =>
+  Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0');
+
+/** Convert a point in a CSS conic colour wheel to the exact displayed HSV colour. */
+export function colorWheelPointToHex(x: number, y: number, radius: number): string {
+  const saturation = Math.min(Math.hypot(x, y) / Math.max(radius, 1), 1);
+  // CSS conic-gradient starts at 12 o'clock and advances clockwise.
+  const hue = (Math.atan2(y, x) * (180 / Math.PI) + 90 + 360) % 360;
+  const sector = hue / 60;
+  const chroma = saturation;
+  const secondary = chroma * (1 - Math.abs((sector % 2) - 1));
+  let r = 0;
+  let g = 0;
+  let b = 0;
+
+  if (sector < 1) [r, g] = [chroma, secondary];
+  else if (sector < 2) [r, g] = [secondary, chroma];
+  else if (sector < 3) [g, b] = [chroma, secondary];
+  else if (sector < 4) [g, b] = [secondary, chroma];
+  else if (sector < 5) [r, b] = [secondary, chroma];
+  else [r, b] = [chroma, secondary];
+
+  const match = 1 - chroma;
+  return `#${byteToHex((r + match) * 255)}${byteToHex((g + match) * 255)}${byteToHex((b + match) * 255)}`;
 }
 
 export const ColorWheelModal: React.FC<ColorWheelModalProps> = ({
@@ -15,34 +41,17 @@ export const ColorWheelModal: React.FC<ColorWheelModalProps> = ({
 }) => {
   const [hexInput, setHexInput] = useState(currentColor);
 
+  useEffect(() => {
+    if (isOpen) setHexInput(currentColor.toLowerCase());
+  }, [currentColor, isOpen]);
+
   if (!isOpen) return null;
 
   const handleWheelClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left - rect.width / 2;
     const y = e.clientY - rect.top - rect.height / 2;
-    const angle = Math.atan2(y, x) * (180 / Math.PI) + 180; // 0 - 360
-    const distance = Math.min(Math.sqrt(x * x + y * y) / (rect.width / 2), 1.0); // 0.0 - 1.0
-
-    // Convert HSV to Hex (S = distance, V = 1.0)
-    const h = angle / 60;
-    const c = distance;
-    const xVal = c * (1 - Math.abs((h % 2) - 1));
-    let r = 0, g = 0, b = 0;
-
-    if (h >= 0 && h < 1) { r = c; g = xVal; }
-    else if (h >= 1 && h < 2) { r = xVal; g = c; }
-    else if (h >= 2 && h < 3) { g = c; b = xVal; }
-    else if (h >= 3 && h < 4) { g = xVal; b = c; }
-    else if (h >= 4 && h < 5) { r = xVal; b = c; }
-    else if (h >= 5 && h <= 6) { r = c; b = xVal; }
-
-    const m = 1 - c;
-    const rByte = Math.round((r + m) * 255);
-    const gByte = Math.round((g + m) * 255);
-    const bByte = Math.round((b + m) * 255);
-
-    const hex = `#${((1 << 24) + (rByte << 16) + (gByte << 8) + bByte).toString(16).slice(1)}`;
+    const hex = colorWheelPointToHex(x, y, rect.width / 2);
     setHexInput(hex);
     onSelectColor(hex);
   };
@@ -61,12 +70,12 @@ export const ColorWheelModal: React.FC<ColorWheelModalProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="glass-panel-dark p-6 max-w-xs w-full text-center space-y-4 rounded-3xl border-2 border-white/40 shadow-2xl">
+      <div className="glass-panel-dark p-6 max-w-xs w-full text-center space-y-4 rounded-3xl shadow-2xl">
         <div className="flex justify-between items-center">
-          <h3 className="text-sm font-black text-amber-300 uppercase tracking-wider">
+          <h3 className="text-sm font-black text-amber-700 uppercase tracking-wider">
             Bảng Màu Quang Phổ 360°
           </h3>
-          <button onClick={onClose} className="text-white/60 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-800 transition-colors">
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
         </div>
@@ -74,31 +83,30 @@ export const ColorWheelModal: React.FC<ColorWheelModalProps> = ({
         {/* 360 Spectrum Wheel */}
         <div
           onClick={handleWheelClick}
-          className="w-44 h-44 rounded-full mx-auto border-4 border-white shadow-2xl cursor-crosshair relative transform active:scale-95 transition-transform"
+          className="w-44 h-44 rounded-full mx-auto border-4 border-[#15375f] shadow-2xl cursor-crosshair relative transform active:scale-95 transition-transform"
           style={{
-            background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
+            background:
+              'radial-gradient(circle at center, #fff 0%, rgba(255,255,255,0) 100%), conic-gradient(from 0deg, red, yellow, lime, aqua, blue, magenta, red)',
           }}
-        >
-          <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,white_0%,transparent_70%)] opacity-60 pointer-events-none" />
-        </div>
+        />
 
         {/* Selected Color Preview & HEX input */}
         <div className="flex items-center justify-center gap-2">
           <div
-            className="w-8 h-8 rounded-xl border-2 border-white shadow-inner"
+            className="w-8 h-8 rounded-xl border-2 border-[#15375f] shadow-inner"
             style={{ backgroundColor: hexInput }}
           />
           <input
             type="text"
             value={hexInput}
             onChange={(e) => setHexInput(e.target.value)}
-            className="bg-white/20 border border-white/40 rounded-xl px-3 py-1.5 text-xs font-mono text-white text-center w-28 outline-none uppercase"
+            className="bg-white border-2 border-sky-200 rounded-xl px-3 py-1.5 text-xs font-mono text-slate-800 text-center w-28 outline-none uppercase"
           />
         </div>
 
         <button
           onClick={handleConfirm}
-          className="bouncy-btn w-full py-2.5 bg-primary hover:bg-primary-dark text-white font-extrabold text-xs rounded-xl shadow-[0_3px_0_0_#1565C0] transition-all"
+          className="dg-primary-button bouncy-btn w-full py-2.5 text-xs"
         >
           XÁC NHẬN MÀU NÀY
         </button>

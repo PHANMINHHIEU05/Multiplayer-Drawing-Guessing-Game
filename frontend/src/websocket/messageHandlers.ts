@@ -585,9 +585,7 @@ export function setupMessageHandlers(
         const pointData = payload.point || payload;
         const color = pointData.color || payload.color || "#000000";
         const isEraser =
-          pointData.tool === "ERASER" ||
-          payload.tool === "ERASER" ||
-          color.toUpperCase() === "#FFFFFF";
+          pointData.tool === "ERASER" || payload.tool === "ERASER";
         const isFill = pointData.tool === "FILL" || payload.tool === "FILL";
         const point: DrawPoint = {
           x: pointData.x ?? 0,
@@ -609,14 +607,10 @@ export function setupMessageHandlers(
         const payload = response.payload || response;
         const rawPoints = payload.points || [];
         const batchColor = payload.color || "#000000";
-        const batchIsEraser =
-          payload.tool === "ERASER" || batchColor.toUpperCase() === "#FFFFFF";
+        const batchIsEraser = payload.tool === "ERASER";
         const points: DrawPoint[] = rawPoints.map((p: any) => {
           const ptColor = p.color || batchColor;
-          const isPtEraser =
-            p.tool === "ERASER" ||
-            batchIsEraser ||
-            ptColor.toUpperCase() === "#FFFFFF";
+          const isPtEraser = p.tool === "ERASER" || batchIsEraser;
           const isPtFill = p.tool === "FILL" || payload.tool === "FILL";
           return {
             x: p.x ?? 0,
@@ -651,7 +645,10 @@ export function setupMessageHandlers(
         const events: any[] = payload.events || [];
         const recovered: DrawPoint[] = [];
         // strokeId -> style from DRAW_START (color/width live in the START frame)
-        const strokeStyles = new Map<string, { color: string; size: number }>();
+        const strokeStyles = new Map<
+          string,
+          { color: string; size: number; tool: "BRUSH" | "ERASER" }
+        >();
 
         for (const ev of events) {
           switch (ev.type) {
@@ -663,8 +660,12 @@ export function setupMessageHandlers(
                     Math.max(0, Math.min(255, c)).toString(16).padStart(2, "0"),
                   )
                   .join("");
-              const isEraser = ev.r === 255 && ev.g === 255 && ev.b === 255;
-              const style = { color: colorHex, size: ev.width ?? 4 };
+              const isEraser = ev.tool === "ERASER" || ev.eraser === true || ev.eraser === "true";
+              const style = {
+                color: colorHex,
+                size: ev.width ?? 4,
+                tool: isEraser ? ("ERASER" as const) : ("BRUSH" as const),
+              };
               strokeStyles.set(ev.strokeId, style);
               recovered.push({
                 x: Number(ev.x),
@@ -681,6 +682,7 @@ export function setupMessageHandlers(
               const style = strokeStyles.get(ev.strokeId) ?? {
                 color: "#000000",
                 size: 4,
+                tool: "BRUSH" as const,
               };
               const pts = String(ev.points || "")
                 .split(" ")
@@ -692,10 +694,7 @@ export function setupMessageHandlers(
                   y,
                   color: style.color,
                   size: style.size,
-                  tool:
-                    style.color.toUpperCase() === "#FFFFFF"
-                      ? "ERASER"
-                      : "BRUSH",
+                  tool: style.tool,
                   strokeId: ev.strokeId,
                   isNewPath: false,
                 });

@@ -55,7 +55,8 @@ public class BinaryDrawingEncoder {
         buffer.put((byte) msg.red());
         buffer.put((byte) msg.green());
         buffer.put((byte) msg.blue());
-        buffer.put((byte) msg.width());
+        int encodedWidth = msg.width() | (msg.eraser() ? DrawingProtocol.ERASER_WIDTH_FLAG : 0);
+        buffer.put((byte) encodedWidth);
     }
 
     private void encodeDrawBatchPayload(DrawBatchMessage msg, ByteBuffer buffer) {

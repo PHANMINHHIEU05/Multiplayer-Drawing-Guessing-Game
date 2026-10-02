@@ -153,6 +153,48 @@ class GameCommandHandlerTest {
     }
 
     @Test
+    void handleCreateRoom_ClampsLegacyTwelvePlayerRequestToBackendMaximum() throws Exception {
+        RoomResponse room = RoomResponse.newBuilder()
+                .setRoomId("ROOM10")
+                .setName("Phòng 10 người")
+                .setStatus("WAITING")
+                .setHostId("player-new")
+                .setMaxPlayers(10)
+                .addPlayers(PlayerMessage.newBuilder()
+                        .setPlayerId("player-new")
+                        .setUsername("Minh"))
+                .build();
+        when(roomGrpcClient.createRoom(
+                eq("player-new"), eq("Minh"), anyString(), eq(10), eq(5), eq(60)))
+                .thenReturn(Mono.just(room));
+
+        JsonNode command = objectMapper.readTree("""
+                {
+                    "type":"CREATE_ROOM",
+                    "requestId":"req-create",
+                    "payload":{
+                        "playerId":"player-new",
+                        "username":"Minh",
+                        "roomName":"Phòng 10 người",
+                        "maxPlayers":12,
+                        "totalRounds":5,
+                        "roundDuration":60
+                    }
+                }
+                """);
+
+        StepVerifier.create(handler.handleCommand("new-session", command))
+                .assertNext(json -> {
+                    assertTrue(json.contains("\"type\":\"ROOM_CREATED\""));
+                    assertTrue(json.contains("\"maxPlayers\":10"));
+                })
+                .verifyComplete();
+
+        verify(roomGrpcClient).createRoom(
+                eq("player-new"), eq("Minh"), anyString(), eq(10), eq(5), eq(60));
+    }
+
+    @Test
     void handleSendReaction_UsesBoundIdentityAndOnlyAllowsDrawingPhase() throws Exception {
         when(connectionManager.getUsername("session-1")).thenReturn("Minh");
         when(gameGrpcClient.getGameState("room-1", "player-1")).thenReturn(Mono.just(GameStateResponse.newBuilder()

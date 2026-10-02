@@ -175,9 +175,7 @@ export const GamePage: React.FC = () => {
           return;
         }
         if (decoded.type === "DRAW_START") {
-          const isEraser =
-            decoded.data.tool === "ERASER" ||
-            decoded.data.colorHex.toUpperCase() === "#FFFFFF";
+          const isEraser = decoded.data.tool === "ERASER";
           recoveryStore.buffer([
             {
               x: decoded.data.x,
@@ -224,9 +222,7 @@ export const GamePage: React.FC = () => {
       switch (decoded.type) {
         case "DRAW_START": {
           metricsStore.recordDrawBatchReceived(1, decoded.data.strokeId, 0);
-          const isEraser =
-            decoded.data.tool === "ERASER" ||
-            decoded.data.colorHex.toUpperCase() === "#FFFFFF";
+          const isEraser = decoded.data.tool === "ERASER";
           const strokeState: RemoteStrokeState = {
             strokeId: decoded.data.strokeId,
             tool: isEraser ? "ERASER" : "BRUSH",
@@ -311,9 +307,6 @@ export const GamePage: React.FC = () => {
   const prevRoundRef = useRef<number>(currentRound);
   useEffect(() => {
     if (currentRound !== prevRoundRef.current) {
-      console.log(
-        `[GamePage] Round transitioned from ${prevRoundRef.current} to ${currentRound}. Resetting canvas state.`,
-      );
       prevRoundRef.current = currentRound;
       // Cancel active stroke if in progress
       canvasHandleRef.current?.cancelActiveStroke();
@@ -333,9 +326,6 @@ export const GamePage: React.FC = () => {
       prevDrawerRef.current = isDrawer;
       if (!isDrawer) {
         // Player lost drawer role - immediately cancel active stroke and flush buffers
-        console.log(
-          "[GamePage] Drawer privilege revoked. Cancelling active drawing stroke.",
-        );
         canvasHandleRef.current?.cancelActiveStroke();
       }
     }
@@ -355,7 +345,6 @@ export const GamePage: React.FC = () => {
       )
         return;
 
-      const isEraserTool = activeTool === "eraser";
       const mode = metricsStore.getState().drawingMode;
 
       // Fill is a one-shot semantic operation. Binary drawing protocol v1 only
@@ -378,16 +367,15 @@ export const GamePage: React.FC = () => {
           seqCounterRef.current = 0;
 
           const firstPt = points[0];
+          const isEraserStroke = firstPt.tool === "ERASER";
           const startBuffer = encodeDrawStart({
             round: currentRound,
             strokeId: currentStrokeIdRef.current,
             x: firstPt.x,
             y: firstPt.y,
-            colorHex: isEraserTool ? "#FFFFFF" : firstPt.color || brushColor,
-            width: isEraserTool
-              ? Math.min(64, Math.round((brushSize || 4) * 2.5))
-              : Math.min(64, Math.round(firstPt.size || brushSize)),
-            tool: isEraserTool ? "ERASER" : "BRUSH",
+            colorHex: isEraserStroke ? "#FFFFFF" : firstPt.color || brushColor,
+            width: Math.min(64, Math.round(firstPt.size || brushSize)),
+            tool: isEraserStroke ? "ERASER" : "BRUSH",
           });
           wsClient.sendBinary(startBuffer);
           metricsStore.recordDrawBatchSent(1);
@@ -421,7 +409,7 @@ export const GamePage: React.FC = () => {
       // JSON Modes: Include tool and strokeId in payload
       const pointsWithTool = points.map((p) => ({
         ...p,
-        tool: isEraserTool ? ("ERASER" as const) : ("BRUSH" as const),
+        tool: p.tool === "ERASER" ? ("ERASER" as const) : ("BRUSH" as const),
         strokeId: currentStrokeIdRef.current,
       }));
 
@@ -463,7 +451,6 @@ export const GamePage: React.FC = () => {
       currentRound,
       brushColor,
       brushSize,
-      activeTool,
       isDrawer,
     ],
   );
@@ -504,10 +491,34 @@ export const GamePage: React.FC = () => {
     });
   }, []);
 
+  const [reactionOnCooldown, setReactionOnCooldown] = useState(false);
+  const reactionCooldownUntilRef = useRef(0);
+  const reactionCooldownTimerRef = useRef<number | null>(null);
+
   const handleSendReaction = useCallback((reactionType: string) => {
+    const now = Date.now();
+    if (now < reactionCooldownUntilRef.current) return;
+
+    const cooldownMs = 1100;
+    reactionCooldownUntilRef.current = now + cooldownMs;
+    setReactionOnCooldown(true);
+    if (reactionCooldownTimerRef.current !== null) {
+      window.clearTimeout(reactionCooldownTimerRef.current);
+    }
+    reactionCooldownTimerRef.current = window.setTimeout(() => {
+      reactionCooldownTimerRef.current = null;
+      setReactionOnCooldown(false);
+    }, cooldownMs);
+
     wsClient
       .send(MessageType.SEND_REACTION, { reactionType }, 3000)
       .catch(() => {});
+  }, []);
+
+  useEffect(() => () => {
+    if (reactionCooldownTimerRef.current !== null) {
+      window.clearTimeout(reactionCooldownTimerRef.current);
+    }
   }, []);
 
   useEffect(() => {
@@ -517,20 +528,20 @@ export const GamePage: React.FC = () => {
   if (!gameState) {
     if (loadTimedOut) {
       return (
-        <div className="min-h-screen flex items-center justify-center select-none p-4">
+        <div className="dg-page min-h-screen flex items-center justify-center select-none p-4">
           <div className="glass-panel p-8 rounded-3xl text-center space-y-4 shadow-2xl max-w-sm w-full">
             <div className="text-4xl">⚠️</div>
-            <h3 className="text-white font-extrabold text-lg">
+            <h3 className="text-slate-800 font-extrabold text-lg">
               Không thể tải trận đấu
             </h3>
-            <p className="text-slate-300 text-xs font-medium">
+            <p className="text-slate-500 text-xs font-medium">
               Ván chơi có thể đã kết thúc hoặc kết nối gặp gián đoạn.
             </p>
             <button
               onClick={() => {
                 resetAllSessionState();
               }}
-              className="bouncy-btn w-full py-3 bg-rose-500 hover:bg-rose-600 text-white font-black text-sm rounded-2xl shadow-lg transition-all"
+              className="dg-danger-button bouncy-btn w-full py-3 text-sm"
             >
               Trở về trang chủ 🏠
             </button>
@@ -539,10 +550,10 @@ export const GamePage: React.FC = () => {
       );
     }
     return (
-      <div className="min-h-screen flex items-center justify-center select-none">
+      <div className="dg-page min-h-screen flex items-center justify-center select-none">
         <div className="glass-panel p-8 rounded-3xl text-center space-y-4 shadow-2xl">
-          <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-white font-extrabold text-sm drop-shadow">
+          <div className="w-12 h-12 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-slate-700 font-extrabold text-sm">
             Đang tải trạng thái trận đấu...
           </p>
         </div>
@@ -574,10 +585,10 @@ export const GamePage: React.FC = () => {
   }, [isGameOver]);
 
   return (
-    <div className="h-screen w-screen flex flex-col p-2 sm:p-3 md:p-4 gap-2 sm:gap-3 overflow-hidden text-slate-100 select-none">
+    <div className="dg-page dg-game-page w-screen flex flex-col p-2 sm:p-3 gap-2 sm:gap-3 overflow-hidden text-slate-800 select-none">
       {/* TV7: reconnect / recovery banners — small, non-blocking */}
       {showReconnectBanner && (
-        <div className="shrink-0 px-4 py-2 rounded-2xl bg-rose-500/25 border border-rose-300/50 backdrop-blur-md text-rose-100 text-xs font-bold flex items-center justify-between gap-2 animate-pulse">
+        <div className="shrink-0 px-4 py-2 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-700 text-xs font-bold flex items-center justify-between gap-2 animate-pulse shadow-sm">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-rose-400" />
             <span>
@@ -591,7 +602,7 @@ export const GamePage: React.FC = () => {
           {connStatus === "DISCONNECTED" && (
             <button
               onClick={() => resetAllSessionState()}
-              className="text-[10px] bg-white/20 hover:bg-white/30 text-white font-extrabold px-2.5 py-1 rounded-xl transition-all"
+              className="text-[10px] bg-white hover:bg-rose-100 text-rose-700 border border-rose-300 font-extrabold px-2.5 py-1 rounded-lg transition-all"
             >
               Về trang chủ
             </button>
@@ -599,7 +610,7 @@ export const GamePage: React.FC = () => {
         </div>
       )}
       {showRecoveryBanner && (
-        <div className="shrink-0 px-4 py-2 rounded-2xl bg-amber-400/25 border border-amber-300/50 backdrop-blur-md text-amber-100 text-xs font-bold flex items-center gap-2 animate-pulse">
+        <div className="shrink-0 px-4 py-2 rounded-xl bg-amber-50 border-2 border-amber-300 text-amber-700 text-xs font-bold flex items-center gap-2 animate-pulse shadow-sm">
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
           Đang đồng bộ lại ván chơi...
         </div>
@@ -616,7 +627,14 @@ export const GamePage: React.FC = () => {
         {/* Desktop actions */}
         <div className="hidden md:flex items-center gap-2">
           <SoundToggle />
-          <button className="btn-3d bg-white/20 hover:bg-white/30 text-white p-2 rounded-2xl border border-white/30 shadow-md">
+          <button
+            onClick={() => setShowMobileScoreboard(true)}
+            className="dg-icon-btn btn-3d xl:hidden"
+            title="Xem bảng xếp hạng"
+          >
+            🏆
+          </button>
+          <button className="dg-icon-btn btn-3d" title="Trợ giúp">
             <span className="material-symbols-outlined text-lg">help</span>
           </button>
           <button
@@ -633,7 +651,7 @@ export const GamePage: React.FC = () => {
               }
             }}
             title="Rời phòng (về trang chủ)"
-            className="btn-3d bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 p-2 rounded-2xl border border-rose-400/40 shadow-md"
+            className="dg-icon-btn btn-3d !bg-rose-100 !text-rose-600"
           >
             <span className="material-symbols-outlined text-lg">logout</span>
           </button>
@@ -645,7 +663,7 @@ export const GamePage: React.FC = () => {
           <SoundToggle size="sm" />
           <button
             onClick={() => setShowMobileScoreboard(true)}
-            className="btn-3d bg-white/20 hover:bg-white/30 text-white p-2 rounded-2xl border border-white/30 shadow-md text-sm"
+            className="dg-icon-btn btn-3d !min-w-9 !min-h-9 text-sm"
             title="Xem bảng xếp hạng"
           >
             🏆
@@ -664,7 +682,7 @@ export const GamePage: React.FC = () => {
               }
             }}
             title="Rời phòng (về trang chủ)"
-            className="btn-3d bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 p-2 rounded-2xl border border-rose-400/40 shadow-md"
+            className="dg-icon-btn btn-3d !min-w-9 !min-h-9 !bg-rose-100 !text-rose-600"
           >
             <span className="material-symbols-outlined text-base leading-none">
               logout
@@ -674,9 +692,9 @@ export const GamePage: React.FC = () => {
       </div>
 
       {/* Main Game Arena Workspace */}
-      <main className="flex-1 flex gap-2 sm:gap-3 min-h-0 relative">
+      <main className="dg-game-arena flex-1 relative">
         {/* Left Column 1: Leaderboard (Bảng Xếp Hạng) - hidden on mobile, visible on md+ */}
-        <div className="hidden md:block w-48 sm:w-56 h-full shrink-0">
+        <div className="dg-game-score-column h-full min-h-0">
           <Scoreboard
             scores={gameState.scores}
             currentPlayerId={playerId}
@@ -687,14 +705,14 @@ export const GamePage: React.FC = () => {
         {/* Mobile Scoreboard Modal Overlay */}
         {showMobileScoreboard && (
           <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="glass-panel-dark max-w-sm w-full rounded-3xl p-4 max-h-[80vh] flex flex-col gap-3 shadow-2xl border border-white/20">
-              <div className="flex justify-between items-center pb-2 border-b border-white/15">
-                <h3 className="font-black text-sm text-white flex items-center gap-1.5">
+            <div className="glass-panel-dark max-w-sm w-full rounded-3xl p-4 max-h-[80vh] flex flex-col gap-3 shadow-2xl">
+              <div className="flex justify-between items-center pb-2 border-b-2 border-sky-100">
+                <h3 className="font-black text-sm text-slate-800 flex items-center gap-1.5">
                   <span>🏆</span> BẢNG XẾP HẠNG
                 </h3>
                 <button
                   onClick={() => setShowMobileScoreboard(false)}
-                  className="text-white/70 hover:text-white font-black text-sm p-1 rounded-lg"
+                  className="text-slate-500 hover:text-slate-800 font-black text-sm p-1 rounded-lg"
                 >
                   ✕
                 </button>
@@ -710,23 +728,21 @@ export const GamePage: React.FC = () => {
           </div>
         )}
 
-        {/* Left Column 2: Vertical Drawing Toolbar (Drawer Only) */}
-        {canDraw && (
-          <DrawingToolbar
-            color={brushColor}
-            size={brushSize}
-            activeTool={activeTool}
-            onColorChange={setBrushColor}
-            onSizeChange={setBrushSize}
-            onToolChange={setActiveTool}
-            onClearCanvas={handleClearCanvas}
-          />
-        )}
+        {/* Gartic-style center stage: tools beside a large drawing board */}
+        <div className="dg-game-canvas-column">
+          {canDraw && (
+            <DrawingToolbar
+              color={brushColor}
+              size={brushSize}
+              activeTool={activeTool}
+              onColorChange={setBrushColor}
+              onSizeChange={setBrushSize}
+              onToolChange={setActiveTool}
+              onClearCanvas={handleClearCanvas}
+            />
+          )}
 
-        {/* Center & Bottom: Canvas + Dual Split Panels (Guess & Chat) */}
-        <div className="flex-1 flex flex-col gap-2 sm:gap-3 min-w-0 h-full">
-          {/* Main Drawing Canvas */}
-          <div className="flex-1 min-h-0 relative">
+          <div className="flex-1 min-w-0 min-h-0 relative">
             <DrawingCanvas
               ref={canvasHandleRef}
               isDrawer={canDraw}
@@ -744,7 +760,10 @@ export const GamePage: React.FC = () => {
               onSelectWord={handleSelectWord}
             />
             {canGuess && !isGameOver && (
-              <ReactionBar onSend={handleSendReaction} />
+              <ReactionBar
+                onSend={handleSendReaction}
+                disabled={reactionOnCooldown}
+              />
             )}
             {reactions
               .filter(
@@ -761,33 +780,28 @@ export const GamePage: React.FC = () => {
                   <span className="text-4xl drop-shadow-lg">
                     {reaction.reactionType}
                   </span>
-                  <span className="mt-1 block rounded-full bg-slate-900/75 px-2 py-0.5 text-center text-[10px] font-bold text-white">
+                  <span className="mt-1 block rounded-full border border-sky-200 bg-white/90 px-2 py-0.5 text-center text-[10px] font-bold text-slate-800 shadow-sm">
                     {reaction.displayName}
                   </span>
                 </div>
               ))}
-            {/* Floating NET chip / Network Inspector — anchored inside the canvas
-                area so it never covers the chat panel or the guess input. */}
             <NetworkInspector />
           </div>
-
-          {/* Bottom Dual Panels: Guessing Feed on Left, Social Chat on Right */}
-          <div className="h-44 sm:h-48 grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 shrink-0">
-            {/* Left: TRẢ LỜI / ĐOÁN TỪ */}
-            <div className="h-full min-h-0">
-              <GuessInput
-                roomId={roomId}
-                disabled={isDrawer || isGameOver || !canGuess}
-                hasGuessed={hasGuessed}
-              />
-            </div>
-
-            {/* Right: TRÒ CHUYỆN */}
-            <div className="h-full min-h-0">
-              <ChatPanel roomId={roomId} />
-            </div>
-          </div>
         </div>
+
+        {/* Guessing and room chat stay visible beside the drawing board. */}
+        <aside className="dg-game-social-column">
+          <div className="h-full min-h-0">
+            <GuessInput
+              roomId={roomId}
+              disabled={isDrawer || isGameOver || !canGuess}
+              hasGuessed={hasGuessed}
+            />
+          </div>
+          <div className="h-full min-h-0">
+            <ChatPanel roomId={roomId} />
+          </div>
+        </aside>
       </main>
     </div>
   );

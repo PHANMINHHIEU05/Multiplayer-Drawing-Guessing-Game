@@ -214,8 +214,9 @@ public class GameCommandHandler {
                 : (node.has("roundCount") ? node.get("roundCount").asInt() : 5);
         int roundDuration = node.has("roundDuration") ? node.get("roundDuration").asInt()
                 : (node.has("drawTime") ? node.get("drawTime").asInt() : 60);
-        // TV8: bound room configuration (2..12 players, 1..20 rounds, 15..300s rounds)
-        maxPlayers = Math.max(2, Math.min(12, maxPlayers));
+        // Keep this bound aligned with RoomManagementService (2..10 players).
+        // Clamping here also protects older clients that still submit 11 or 12.
+        maxPlayers = Math.max(2, Math.min(10, maxPlayers));
         totalRounds = Math.max(1, Math.min(20, totalRounds));
         roundDuration = Math.max(15, Math.min(300, roundDuration));
 
