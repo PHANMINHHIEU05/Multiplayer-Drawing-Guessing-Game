@@ -6,7 +6,9 @@ import java.util.Locale;
 /** Stable room/game category identifiers shared with the canonical word pack. */
 public final class RoomCategories {
     public static final List<String> ALL = List.of(
-            "ANIMALS", "FOOD", "OBJECTS", "PLACES", "NATURE", "TECHNOLOGY");
+            "ANIMALS", "FOOD", "OBJECTS", "PLACES", "NATURE", "TECHNOLOGY",
+            "TRANSPORT", "SPORTS", "PROFESSIONS", "SCHOOL", "HOME",
+            "ENTERTAINMENT", "CLOTHING", "VIETNAM");
 
     private RoomCategories() {}
 

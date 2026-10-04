@@ -19,6 +19,8 @@ interface DrawingCanvasProps {
   activeTool?: 'pen' | 'eraser' | 'fill' | 'line' | 'circle' | 'rect';
   onDrawPoint?: (point: DrawPoint) => void;
   onDrawBatch?: (points: DrawPoint[]) => void;
+  /** Signals that the active stroke has finished (used by the binary protocol). */
+  onDrawEnd?: () => void;
   onClearCanvas?: () => void;
   externalPoints?: DrawPoint[];
   hideInternalToolbar?: boolean;
@@ -36,6 +38,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   activeTool = isEraser ? 'eraser' : 'pen',
   onDrawPoint,
   onDrawBatch,
+  onDrawEnd,
   onClearCanvas,
   externalPoints = [],
   hideInternalToolbar = true,
@@ -58,6 +61,15 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
   // Track the last rendered external point index to avoid re-rendering everything
   const lastRenderedIndexRef = useRef(0);
+  const externalPointsRef = useRef<DrawPoint[]>(externalPoints);
+  const renderFrameRef = useRef<number | null>(null);
+
+  // Keep the latest immutable store snapshot in a ref.  Drawing events arrive at
+  // up to 60 batches/s; coupling the ResizeObserver setup to this array caused the
+  // observer to be torn down and recreated for every incoming batch.
+  useEffect(() => {
+    externalPointsRef.current = externalPoints;
+  }, [externalPoints]);
 
   // ─── Batching Hook for Network Performance ─────────────────────────
   const handleFlushBatch = useCallback((points: DrawPoint[]) => {
@@ -213,11 +225,13 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       ctx.fillStyle = CANVAS_BG;
       ctx.fillRect(0, 0, width, height);
 
-      if (oldWidth > 0 && oldHeight > 0 && externalPoints.length > 0) {
-        renderAllPoints(ctx, externalPoints, width, height);
+      const pointsToRestore = externalPointsRef.current;
+      if (oldWidth > 0 && oldHeight > 0 && pointsToRestore.length > 0) {
+        renderAllPoints(ctx, pointsToRestore, width, height);
+        lastRenderedIndexRef.current = pointsToRestore.length;
       }
     }
-  }, [externalPoints, renderAllPoints]);
+  }, [renderAllPoints]);
 
   useEffect(() => {
     initCanvas();
@@ -234,8 +248,38 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   }, [initCanvas]);
 
   // ─── Remote Point Rendering (from WebSocket) ────────────────────────
+  // Coalesce all packets that arrive inside one animation frame.  The callback
+  // always reads the latest snapshot, so a busy room cannot queue several stale
+  // render passes for the same points.
+  const renderRemotePoints = useCallback(() => {
+    renderFrameRef.current = null;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = getDrawingContext(canvas);
+    if (!ctx) return;
+
+    const points = externalPointsRef.current;
+    if (points.length < lastRenderedIndexRef.current) {
+      renderAllPoints(ctx, points, canvas.width, canvas.height);
+      lastRenderedIndexRef.current = points.length;
+      return;
+    }
+
+    for (let index = lastRenderedIndexRef.current; index < points.length; index++) {
+      drawPointOnCanvas(points[index], ctx);
+    }
+    lastRenderedIndexRef.current = points.length;
+  }, [drawPointOnCanvas, renderAllPoints]);
+
   useEffect(() => {
-    if (isDrawer) return;
+    if (isDrawer) {
+      if (renderFrameRef.current !== null) {
+        cancelAnimationFrame(renderFrameRef.current);
+        renderFrameRef.current = null;
+      }
+      return;
+    }
 
     if (externalPoints.length === 0) {
       const canvas = canvasRef.current;
@@ -252,23 +296,17 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       return;
     }
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = getDrawingContext(canvas);
-    if (!ctx) return;
+    if (renderFrameRef.current === null) {
+      renderFrameRef.current = requestAnimationFrame(renderRemotePoints);
+    }
+  }, [externalPoints, isDrawer, renderRemotePoints]);
 
-    const startIndex = lastRenderedIndexRef.current;
-    if (startIndex >= externalPoints.length) return;
-
-    const newPoints = externalPoints.slice(startIndex);
-
-    requestAnimationFrame(() => {
-      for (const point of newPoints) {
-        drawPointOnCanvas(point, ctx);
-      }
-      lastRenderedIndexRef.current = externalPoints.length;
-    });
-  }, [externalPoints, drawPointOnCanvas, isDrawer]);
+  useEffect(() => () => {
+    if (renderFrameRef.current !== null) {
+      cancelAnimationFrame(renderFrameRef.current);
+      renderFrameRef.current = null;
+    }
+  }, []);
 
   // ─── Pointer Event Handlers (Drawer only) ──────────────────────────
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -446,6 +484,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
           { x: startNormX, y: startNormY, isNewPath: false, color: activeColor, size: activeSize, tool: 'BRUSH', strokeId, timestamp: Date.now() },
         ];
         handleFlushBatch(rectPoints);
+        onDrawEnd?.();
       } else {
         const cx = (startPX + endPX) / 2;
         const cy = (startPY + endPY) / 2;
@@ -478,6 +517,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
           });
         }
         handleFlushBatch(circlePoints);
+        onDrawEnd?.();
       }
 
       ctx.restore();
@@ -488,6 +528,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     }
 
     batcher.flush();
+    onDrawEnd?.();
   };
 
   // ─── Clear & Cancellation Handlers ─────────────────────────────────
@@ -537,6 +578,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
+          onPointerCancel={handlePointerUp}
           className={`w-full h-full touch-none ${
             !isDrawer
               ? 'cursor-not-allowed'

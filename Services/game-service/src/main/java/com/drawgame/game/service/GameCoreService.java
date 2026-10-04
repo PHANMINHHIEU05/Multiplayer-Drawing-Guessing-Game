@@ -43,7 +43,9 @@ public class GameCoreService {
     private static final int COUNTDOWN_SECONDS = 3;
     private static final int RECAP_SECONDS = 3;
     private static final List<String> DEFAULT_CATEGORIES =
-            List.of("ANIMALS", "FOOD", "OBJECTS", "PLACES", "NATURE", "TECHNOLOGY");
+            List.of("ANIMALS", "FOOD", "OBJECTS", "PLACES", "NATURE", "TECHNOLOGY",
+                    "TRANSPORT", "SPORTS", "PROFESSIONS", "SCHOOL", "HOME",
+                    "ENTERTAINMENT", "CLOTHING", "VIETNAM");
     private static final int[] HINT_PERCENTAGES = {35, 60, 80};
 
     private final RedisGameRepository redisGameRepository;

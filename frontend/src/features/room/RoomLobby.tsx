@@ -21,6 +21,14 @@ const CATEGORY_OPTIONS = [
   { id: "PLACES", label: "Địa điểm", icon: "📍" },
   { id: "NATURE", label: "Thiên nhiên", icon: "🌿" },
   { id: "TECHNOLOGY", label: "Công nghệ", icon: "💻" },
+  { id: "TRANSPORT", label: "Giao thông", icon: "🚌" },
+  { id: "SPORTS", label: "Thể thao", icon: "⚽" },
+  { id: "PROFESSIONS", label: "Nghề nghiệp", icon: "🧑‍🚒" },
+  { id: "SCHOOL", label: "Học đường", icon: "🎒" },
+  { id: "HOME", label: "Nhà cửa", icon: "🏠" },
+  { id: "ENTERTAINMENT", label: "Giải trí", icon: "🎭" },
+  { id: "CLOTHING", label: "Trang phục", icon: "👕" },
+  { id: "VIETNAM", label: "Việt Nam", icon: "🇻🇳" },
 ] as const;
 
 const sameCategories = (a: string[], b: string[]) =>

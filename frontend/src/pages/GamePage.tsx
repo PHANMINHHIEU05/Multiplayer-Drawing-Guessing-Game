@@ -27,6 +27,7 @@ import { reactionStore, useReactions } from "../store/reactionStore";
 import {
   encodeDrawStart,
   encodeDrawBatch,
+  encodeDrawEnd,
   encodeClearCanvas,
   generateStrokeId,
   decodeDrawingFrame,
@@ -34,18 +35,63 @@ import {
 import { SoundToggle } from "../components/SoundToggle";
 import { audioManager } from "../audio/AudioManager";
 
+type CanvasTool = "pen" | "eraser" | "fill" | "line" | "circle" | "rect";
+
+/**
+ * Keep high-frequency remote drawing updates inside the canvas subtree. Without
+ * this boundary, every incoming drawing packet also re-rendered the scoreboard,
+ * chat, header, and the rest of the game page.
+ */
+const GameDrawingSurface: React.FC<{
+  canvasHandleRef: React.MutableRefObject<DrawingCanvasHandle | null>;
+  isDrawer: boolean;
+  hasDrawerRole: boolean;
+  color: string;
+  size: number;
+  activeTool: CanvasTool;
+  onDrawBatch: (points: DrawPoint[]) => void;
+  onDrawEnd: () => void;
+  onClearCanvas: () => void;
+}> = ({
+  canvasHandleRef,
+  isDrawer,
+  hasDrawerRole,
+  color,
+  size,
+  activeTool,
+  onDrawBatch,
+  onDrawEnd,
+  onClearCanvas,
+}) => {
+  const remotePoints = useGameStore((state) => state.drawPoints);
+
+  return (
+    <DrawingCanvas
+      ref={(handle) => {
+        canvasHandleRef.current = handle;
+      }}
+      isDrawer={isDrawer}
+      color={color}
+      size={size}
+      activeTool={activeTool}
+      onDrawBatch={onDrawBatch}
+      onDrawEnd={onDrawEnd}
+      onClearCanvas={onClearCanvas}
+      externalPoints={hasDrawerRole ? undefined : remotePoints}
+      hideInternalToolbar={true}
+    />
+  );
+};
+
 export const GamePage: React.FC = () => {
   const gameState = useGameStore((s) => s.gameState);
-  const drawPoints = useGameStore((s) => s.drawPoints);
   const room = useRoomStore((s) => s.room);
   const { playerId } = usePlayerStore((s) => s);
 
   // Drawing Toolbar State (for Drawer)
   const [brushColor, setBrushColor] = useState<string>("#000000");
   const [brushSize, setBrushSize] = useState<number>(4);
-  const [activeTool, setActiveTool] = useState<
-    "pen" | "eraser" | "fill" | "line" | "circle" | "rect"
-  >("pen");
+  const [activeTool, setActiveTool] = useState<CanvasTool>("pen");
   const [showMobileScoreboard, setShowMobileScoreboard] = useState(false);
   const canvasHandleRef = useRef<DrawingCanvasHandle | null>(null);
 
@@ -455,6 +501,26 @@ export const GamePage: React.FC = () => {
     ],
   );
 
+  /** Complete binary strokes so the receiving client can discard per-stroke state. */
+  const handleDrawEnd = useCallback(() => {
+    if (
+      !roomId ||
+      !isDrawer ||
+      metricsStore.getState().drawingMode !== "BINARY_BATCH" ||
+      (gameStore.getState().gameState?.roundPhase &&
+        gameStore.getState().gameState?.roundPhase !== "DRAWING")
+    ) {
+      return;
+    }
+
+    wsClient.sendBinary(
+      encodeDrawEnd({
+        round: currentRound,
+        strokeId: currentStrokeIdRef.current,
+      }),
+    );
+  }, [roomId, currentRound, isDrawer]);
+
   /** Send clear canvas command to the server */
   const handleClearCanvas = useCallback(() => {
     if (
@@ -743,16 +809,16 @@ export const GamePage: React.FC = () => {
           )}
 
           <div className="flex-1 min-w-0 min-h-0 relative">
-            <DrawingCanvas
-              ref={canvasHandleRef}
+            <GameDrawingSurface
+              canvasHandleRef={canvasHandleRef}
               isDrawer={canDraw}
+              hasDrawerRole={isDrawer}
               color={brushColor}
               size={brushSize}
               activeTool={activeTool}
               onDrawBatch={handleDrawBatch}
+              onDrawEnd={handleDrawEnd}
               onClearCanvas={handleClearCanvas}
-              externalPoints={isDrawer ? undefined : drawPoints}
-              hideInternalToolbar={true}
             />
             <RoundPhaseOverlay
               gameState={gameState}

@@ -46,4 +46,18 @@ class RoomCategoryConfigurationTest {
                 () -> service.setCategories("A1B2C3", "host", List.of("ANIMALS", "RANDOM")));
         verifyNoInteractions(repository);
     }
+
+    @Test
+    void expandedCategoriesAreAcceptedInThePublishedCanonicalOrder() {
+        Room room = new Room("A1B2C3", "room", "host", RoomStatus.WAITING, 6, 3, 60,
+                List.of(), List.of("TRANSPORT", "SPORTS", "VIETNAM"));
+        when(repository.setCategories("A1B2C3", "host", List.of("TRANSPORT", "SPORTS", "VIETNAM")))
+                .thenReturn(room);
+
+        Room updated = service.setCategories("A1B2C3", "host",
+                List.of("VIETNAM", "TRANSPORT", "SPORTS", "VIETNAM"));
+
+        assertEquals(List.of("TRANSPORT", "SPORTS", "VIETNAM"), updated.selectedCategories());
+        verify(repository).setCategories("A1B2C3", "host", List.of("TRANSPORT", "SPORTS", "VIETNAM"));
+    }
 }
