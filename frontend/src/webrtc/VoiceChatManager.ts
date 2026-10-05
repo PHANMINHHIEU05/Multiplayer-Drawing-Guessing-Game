@@ -86,7 +86,17 @@ export class VoiceChatManager {
   public async startMic(): Promise<boolean> {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       voiceStore.setMicPermission("unsupported");
-      voiceStore.setMicError("Trình duyệt không hỗ trợ micro");
+      const isHttp =
+        typeof window !== "undefined" &&
+        window.location &&
+        window.location.protocol === "http:" &&
+        window.location.hostname !== "localhost" &&
+        window.location.hostname !== "127.0.0.1";
+      voiceStore.setMicError(
+        isHttp
+          ? "Microphone yêu cầu HTTPS (Trình duyệt chặn quyền truy cập mic trên HTTP qua IP)."
+          : "Trình duyệt không hỗ trợ micro"
+      );
       return false;
     }
 
