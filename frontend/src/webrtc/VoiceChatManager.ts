@@ -136,7 +136,9 @@ export class VoiceChatManager {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
+          autoGainControl: false, // Turn off AGC to prevent heavy volume amplification, clipping, and crackling
+          channelCount: 1, // Mono channel to avoid phase distortion
+          sampleRate: 48000,
           deviceId: voiceStore.getState().selectedDeviceId
             ? { exact: voiceStore.getState().selectedDeviceId! }
             : undefined,
@@ -263,6 +265,14 @@ export class VoiceChatManager {
     }
   }
 
+  public setMasterVolume(volume: number) {
+    const clamped = Math.max(0, Math.min(1, volume));
+    for (const [peerId, peer] of this.peers.entries()) {
+      peer.audioElement.volume = clamped;
+      voiceStore.setPeerVolume(peerId, clamped);
+    }
+  }
+
   public async refreshAudioDevices() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
       return;
@@ -314,7 +324,7 @@ export class VoiceChatManager {
     audioElement.autoplay = true;
     (audioElement as any).playsInline = true;
     audioElement.muted = voiceStore.getState().isDeafened;
-    const vol = voiceStore.getState().peerVolumes[remotePlayerId] ?? 1.0;
+    const vol = voiceStore.getState().peerVolumes[remotePlayerId] ?? 0.75;
     audioElement.volume = vol;
     if (audioElement.style) {
       audioElement.style.display = "none";
@@ -490,8 +500,37 @@ export class VoiceChatManager {
     }
   }
 
+  private optimizeOpusSdp(sdp: string): string {
+    const match = sdp.match(/a=rtpmap:(\d+) opus\/48000\/2/i);
+    if (!match) return sdp;
+    const pt = match[1];
+    const fmtpRegex = new RegExp(`a=fmtp:${pt} (.*)`);
+    if (fmtpRegex.test(sdp)) {
+      return sdp.replace(fmtpRegex, (line) => {
+        let updated = line;
+        if (!updated.includes("usedtx=")) updated += ";usedtx=1";
+        if (!updated.includes("stereo=")) updated += ";stereo=0;sprop-stereo=0";
+        return updated;
+      });
+    } else {
+      return sdp.replace(
+        new RegExp(`a=rtpmap:${pt} opus\\/48000\\/2`, "g"),
+        `a=rtpmap:${pt} opus/48000/2\r\na=fmtp:${pt} usedtx=1;stereo=0;sprop-stereo=0`,
+      );
+    }
+  }
+
   private sendSignal(targetPlayerId: string, signal: WebRTCSignalData) {
     if (!this.roomId) return;
+    if (signal.type === "description" && signal.sdp && signal.sdp.sdp) {
+      signal = {
+        ...signal,
+        sdp: {
+          ...signal.sdp,
+          sdp: this.optimizeOpusSdp(signal.sdp.sdp),
+        },
+      };
+    }
     wsClient.sendRaw(
       JSON.stringify({
         type: MessageType.VOICE_SIGNAL,

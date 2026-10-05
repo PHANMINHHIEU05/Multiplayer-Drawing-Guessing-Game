@@ -29,6 +29,7 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
   const selectedDeviceId = useVoiceStore((s) => s.selectedDeviceId);
 
   const [showSettings, setShowSettings] = useState(false);
+  const [masterVolume, setMasterVolume] = useState(0.75);
 
   const handleToggleMic = async () => {
     if (!isMicOn) {
@@ -171,22 +172,48 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
 
       {/* Settings dropdown */}
       {showSettings && (
-        <div className="pt-1.5 border-t border-slate-100 flex flex-col gap-1">
-          <label className="text-[10px] font-bold text-slate-600">
-            Chọn thiết bị micro:
-          </label>
-          <select
-            value={selectedDeviceId || ""}
-            onChange={handleDeviceChange}
-            className="text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1 text-slate-700 focus:outline-none focus:border-sky-400"
-          >
-            <option value="">Thiết bị mặc định</option>
-            {audioDevices.map((d, i) => (
-              <option key={d.deviceId || i} value={d.deviceId}>
-                {d.label || `Microphone ${i + 1}`}
-              </option>
-            ))}
-          </select>
+        <div className="pt-1.5 border-t border-slate-100 flex flex-col gap-2">
+          {/* Master volume slider */}
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center justify-between text-[10px] font-bold text-slate-600">
+              <span>Âm lượng nghe:</span>
+              <span className="text-emerald-600 font-extrabold">
+                {Math.round(masterVolume * 100)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={masterVolume}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setMasterVolume(val);
+                voiceChatManager.setMasterVolume(val);
+              }}
+              className="w-full accent-emerald-500 h-1.5 bg-slate-200 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Device selector */}
+          <div className="flex flex-col gap-0.5">
+            <label className="text-[10px] font-bold text-slate-600">
+              Chọn thiết bị micro:
+            </label>
+            <select
+              value={selectedDeviceId || ""}
+              onChange={handleDeviceChange}
+              className="text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-1 text-slate-700 focus:outline-none focus:border-sky-400"
+            >
+              <option value="">Thiết bị mặc định</option>
+              {audioDevices.map((d, i) => (
+                <option key={d.deviceId || i} value={d.deviceId}>
+                  {d.label || `Microphone ${i + 1}`}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
     </div>
