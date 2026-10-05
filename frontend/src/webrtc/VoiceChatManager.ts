@@ -73,7 +73,6 @@ export class VoiceChatManager {
     return servers;
   }
 
-
   public initSession(localPlayerId: string, roomId: string) {
     this.localPlayerId = localPlayerId;
     this.roomId = roomId;
@@ -95,7 +94,7 @@ export class VoiceChatManager {
       voiceStore.setMicError(
         isHttp
           ? "Microphone yêu cầu HTTPS (Trình duyệt chặn quyền truy cập mic trên HTTP qua IP)."
-          : "Trình duyệt không hỗ trợ micro"
+          : "Trình duyệt không hỗ trợ micro",
       );
       return false;
     }
@@ -129,7 +128,7 @@ export class VoiceChatManager {
         for (const peer of this.peers.values()) {
           const senders = peer.pc.getSenders();
           const existingSender = senders.find(
-            (s) => s.track && s.track.kind === "audio"
+            (s) => s.track && s.track.kind === "audio",
           );
           if (existingSender) {
             existingSender.replaceTrack(audioTrack);
@@ -153,7 +152,7 @@ export class VoiceChatManager {
       voiceStore.setMicError(
         isDenied
           ? "Bạn đã chặn quyền truy cập micro"
-          : "Không thể kết nối tới micro: " + (err.message || "")
+          : "Không thể kết nối tới micro: " + (err.message || ""),
       );
       voiceStore.setMicOn(false);
       return false;
@@ -344,11 +343,10 @@ export class VoiceChatManager {
     };
 
     pc.onconnectionstatechange = () => {
-      if (
-        pc.connectionState === "failed" ||
-        pc.connectionState === "closed"
-      ) {
-        console.debug(`Peer ${remotePlayerId} connection state: ${pc.connectionState}`);
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+        console.debug(
+          `Peer ${remotePlayerId} connection state: ${pc.connectionState}`,
+        );
       }
     };
 
@@ -358,10 +356,7 @@ export class VoiceChatManager {
   /**
    * Handle incoming WebRTC signal routed by Gateway via WebSocket
    */
-  public async handleSignal(
-    senderPlayerId: string,
-    signal: WebRTCSignalData
-  ) {
+  public async handleSignal(senderPlayerId: string, signal: WebRTCSignalData) {
     if (!senderPlayerId || senderPlayerId === this.localPlayerId) {
       return;
     }
@@ -382,7 +377,9 @@ export class VoiceChatManager {
 
         peer.ignoreOffer = !isPolite && offerCollision;
         if (peer.ignoreOffer) {
-          console.debug(`[WebRTC] Impolite peer ignored collision offer from ${senderPlayerId}`);
+          console.debug(
+            `[WebRTC] Impolite peer ignored collision offer from ${senderPlayerId}`,
+          );
           return;
         }
 
@@ -401,7 +398,10 @@ export class VoiceChatManager {
           await pc.addIceCandidate(signal.candidate);
         } catch (err) {
           if (!peer.ignoreOffer) {
-            console.debug(`Error adding candidate from ${senderPlayerId}:`, err);
+            console.debug(
+              `Error adding candidate from ${senderPlayerId}:`,
+              err,
+            );
           }
         }
       }
@@ -417,7 +417,7 @@ export class VoiceChatManager {
         type: MessageType.VOICE_SIGNAL,
         targetPlayerId,
         signal,
-      })
+      }),
     );
   }
 
@@ -431,7 +431,7 @@ export class VoiceChatManager {
       JSON.stringify({
         type: MessageType.VOICE_STATE_UPDATE,
         ...patch,
-      })
+      }),
     );
   }
 
