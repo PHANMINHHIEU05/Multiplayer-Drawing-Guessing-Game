@@ -496,7 +496,10 @@ export class VoiceChatManager {
         }
       }
     } catch (err) {
-      console.warn(`[WebRTC] Error handling WebRTC signal from ${senderPlayerId}:`, err);
+      console.warn(
+        `[WebRTC] Error handling WebRTC signal from ${senderPlayerId}:`,
+        err,
+      );
     }
   }
 
