@@ -154,6 +154,14 @@ public class ConnectionManager {
         return sessionToUsername.get(sessionId);
     }
 
+    public String getSessionForPlayer(String roomId, String playerId) {
+        if (roomId == null || playerId == null) {
+            return null;
+        }
+        return playerRoomToSession.get(playerId + ":" + roomId);
+    }
+
+
     public void sendToSession(String sessionId, String message) {
         sendFrame(sessionId, new OutboundFrame.TextFrame(message));
     }

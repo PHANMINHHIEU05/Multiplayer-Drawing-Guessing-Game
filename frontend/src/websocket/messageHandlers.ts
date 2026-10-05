@@ -18,8 +18,11 @@ import { reactionStore } from "../store/reactionStore";
 import { matchSummaryStore } from "../store/matchSummaryStore";
 import { translateError } from "../utils/errorTranslation";
 import { audioManager } from "../audio/AudioManager";
+import { voiceStore } from "../store/voiceStore";
+import { voiceChatManager } from "../webrtc/VoiceChatManager";
 
 export function setupMessageHandlers(
+
   onResponse?: (response: WSResponse) => void,
 ): (response: WSResponse) => void {
   return (response: WSResponse) => {
@@ -59,9 +62,13 @@ export function setupMessageHandlers(
           selectedCategories: Array.isArray(response.selectedCategories)
             ? response.selectedCategories
             : ["ANIMALS", "FOOD", "OBJECTS", "PLACES", "NATURE", "TECHNOLOGY"],
+          voiceChatEnabled: Boolean(response.voiceChatEnabled),
         };
 
         roomStore.setRoom(room);
+        voiceStore.setVoiceRoomEnabled(Boolean(response.voiceChatEnabled));
+        voiceChatManager.initSession(playerStore.getState().playerId, room.roomId);
+        voiceChatManager.syncPeers(room.players);
         break;
       }
 
@@ -81,6 +88,7 @@ export function setupMessageHandlers(
               },
             ];
             roomStore.updatePlayers(updatedPlayers);
+            voiceChatManager.syncPeers(updatedPlayers);
           }
         }
         const joinedUser = response.username || "Người chơi";
@@ -105,6 +113,7 @@ export function setupMessageHandlers(
         // before server-side cleanup finishes, this authoritative event must still
         // eject that same player locally and discard the stale resume credential.
         if (leftPlayerId && leftPlayerId === myPlayerId) {
+          voiceChatManager.cleanup();
           playerStore.clearSessionToken();
           roomStore.clearRoom();
           gameStore.clearGame();
@@ -122,6 +131,7 @@ export function setupMessageHandlers(
             ready: !!p.ready || p.playerId === response.hostPlayerId,
           }));
           roomStore.updatePlayers(updatedPlayers);
+          voiceChatManager.syncPeers(updatedPlayers);
           if (response.hostPlayerId && currentRoom) {
             roomStore.setRoom({
               ...currentRoom,
@@ -145,7 +155,9 @@ export function setupMessageHandlers(
             players: updatedPlayers,
             playerCount: updatedPlayers.length,
           });
+          voiceChatManager.syncPeers(updatedPlayers);
         }
+
 
         // Update gameState scores so scoreboard removes leaving player
         const currentGameState = gameStore.getState().gameState;
@@ -184,6 +196,7 @@ export function setupMessageHandlers(
       case MessageType.ROOM_LEFT: {
         // TV8: explicit leave — clear the signed credential + resume metadata so an
         // old token can never silently restore the player into this room.
+        voiceChatManager.cleanup();
         playerStore.clearSessionToken();
         roomStore.clearRoom();
         gameStore.clearGame();
@@ -203,6 +216,7 @@ export function setupMessageHandlers(
         }));
         if (players.length > 0) {
           roomStore.updatePlayers(players);
+          voiceChatManager.syncPeers(players);
         }
         break;
       }
@@ -238,6 +252,7 @@ export function setupMessageHandlers(
                 "NATURE",
                 "TECHNOLOGY",
               ],
+          voiceChatEnabled: currentRoom?.voiceChatEnabled,
         });
         // reset ALL match-specific frontend state
         gameStore.clearGame();
@@ -252,6 +267,7 @@ export function setupMessageHandlers(
         const myId = playerStore.getState().playerId;
         if (response.targetPlayerId === myId) {
           // You were kicked — clear everything and surface a clear message
+          voiceChatManager.cleanup();
           playerStore.clearSessionToken();
           roomStore.clearRoom();
           gameStore.clearGame();
@@ -274,9 +290,57 @@ export function setupMessageHandlers(
             ready: !!p.ready || p.playerId === currentRoom.hostPlayerId,
           }));
           roomStore.updatePlayers(updated);
+          voiceChatManager.syncPeers(updated);
         }
         break;
       }
+
+      // TV12: WebRTC Voice Chat events
+      case MessageType.VOICE_CHAT_SETTING_CHANGED: {
+        const enabled = Boolean(response.voiceChatEnabled);
+        const currentRoom = roomStore.getState().room;
+        if (currentRoom) {
+          roomStore.setRoom({ ...currentRoom, voiceChatEnabled: enabled });
+        }
+        voiceStore.setVoiceRoomEnabled(enabled);
+        noticeStore.pushNotice({
+          type: "INFO",
+          message: enabled
+            ? "Chủ phòng đã BẬT voice chat cho phòng."
+            : "Chủ phòng đã TẮT voice chat cho phòng.",
+          durationMs: 3500,
+        });
+        if (!enabled) {
+          voiceChatManager.stopMic();
+        }
+        break;
+      }
+
+      case MessageType.VOICE_SIGNAL: {
+        const senderPlayerId = response.senderPlayerId;
+        const signal = response.signal || {
+          type: response.signalType,
+          sdp: response.sdp,
+          candidate: response.candidate,
+        };
+        if (senderPlayerId && signal) {
+          voiceChatManager.handleSignal(senderPlayerId, signal);
+        }
+        break;
+      }
+
+      case MessageType.VOICE_STATE_UPDATE: {
+        const playerId = response.playerId;
+        if (playerId) {
+          voiceStore.setPeerVoiceState(playerId, {
+            isMuted: Boolean(response.isMuted),
+            isDeafened: Boolean(response.isDeafened),
+            isSpeaking: Boolean(response.isSpeaking),
+          });
+        }
+        break;
+      }
+
 
       case MessageType.GAME_STARTED:
       case MessageType.GAME_STATE: {

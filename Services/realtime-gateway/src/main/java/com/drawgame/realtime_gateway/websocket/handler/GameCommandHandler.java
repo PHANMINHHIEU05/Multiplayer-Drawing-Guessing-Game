@@ -124,6 +124,7 @@ public class GameCommandHandler {
                 case "SUBMIT_GUESS", "SEND_CHAT", "SEND_LOBBY_CHAT" -> SessionRateLimiter.Bucket.GUESS;
                 case "SEND_REACTION" -> SessionRateLimiter.Bucket.REACTION;
                 case "DRAW_POINT", "DRAW_BATCH", "CLEAR_CANVAS" -> SessionRateLimiter.Bucket.DRAW;
+                case "VOICE_SIGNAL", "VOICE_STATE_UPDATE" -> SessionRateLimiter.Bucket.VOICE;
                 default -> SessionRateLimiter.Bucket.CONTROL;
             };
             String limited = rateLimiter.tryAcquire(sessionId, bucket, requestId);
@@ -160,8 +161,13 @@ public class GameCommandHandler {
             case "CLEAR_CANVAS" -> handleClearCanvas(sessionId, json);
             // TV3: clear drawing cache when game finishes
             case "GAME_FINISHED" -> handleGameFinished(sessionId, json, requestId);
+            // TV12: WebRTC Voice Chat
+            case "SET_VOICE_CHAT_ENABLED" -> handleSetVoiceChatEnabled(sessionId, json, requestId);
+            case "VOICE_SIGNAL" -> handleVoiceSignal(sessionId, json, requestId);
+            case "VOICE_STATE_UPDATE" -> handleVoiceStateUpdate(sessionId, json, requestId);
             default -> Mono.just(createErrorJson(requestId, "UNKNOWN_COMMAND", "Unknown command type: " + type));
         };
+
     }
 
     private Mono<String> handlePing(String sessionId, JsonNode json, String requestId) {
@@ -459,6 +465,130 @@ public class GameCommandHandler {
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "SET_CATEGORIES_FAILED", e.getMessage())));
     }
+
+    /**
+     * TV12: Host-only room-level voice chat setting. Allowed in both WAITING and PLAYING states.
+     * Identity derived authoritatively from WebSocket session.
+     */
+    private Mono<String> handleSetVoiceChatEnabled(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+        boolean enabled = false;
+        if (node.has("voiceChatEnabled")) {
+            enabled = node.get("voiceChatEnabled").asBoolean();
+        } else if (node.has("enabled")) {
+            enabled = node.get("enabled").asBoolean();
+        }
+
+        return roomGrpcClient.setVoiceChatEnabled(roomId, playerId, enabled)
+                .map(room -> {
+                    Map<String, Object> event = new HashMap<>();
+                    event.put("type", "VOICE_CHAT_SETTING_CHANGED");
+                    event.put("roomId", roomId);
+                    event.put("voiceChatEnabled", room.getVoiceChatEnabled());
+                    event.put("updatedBy", playerId);
+                    String eventJson = toJson(event);
+                    controlBroadcast(roomId, null, "VOICE_CHAT_SETTING_CHANGED", eventJson);
+
+                    Map<String, Object> resp = new HashMap<>();
+                    resp.put("type", "VOICE_CHAT_SETTING_CHANGED");
+                    if (requestId != null && !requestId.isBlank()) {
+                        resp.put("requestId", requestId);
+                    }
+                    resp.put("roomId", roomId);
+                    resp.put("voiceChatEnabled", room.getVoiceChatEnabled());
+                    return toJson(resp);
+                })
+                .onErrorResume(e -> Mono.just(createErrorJson(requestId, "SET_VOICE_CHAT_FAILED", e.getMessage())));
+    }
+
+    /**
+     * TV12: Targeted peer-to-peer WebRTC signaling (SDP offer/answer, ICE candidates).
+     * The senderPlayerId is strictly and authoritatively derived from the WebSocket session.
+     */
+    private Mono<String> handleVoiceSignal(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String senderPlayerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || senderPlayerId == null || senderPlayerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+        String targetPlayerId = node.hasNonNull("targetPlayerId") ? node.get("targetPlayerId").asText().trim() : null;
+        if (targetPlayerId == null || targetPlayerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_TARGET", "targetPlayerId is required"));
+        }
+        if (targetPlayerId.equals(senderPlayerId)) {
+            return Mono.empty();
+        }
+
+        Map<String, Object> signalMsg = new HashMap<>();
+        signalMsg.put("type", "VOICE_SIGNAL");
+        signalMsg.put("roomId", roomId);
+        signalMsg.put("senderPlayerId", senderPlayerId); // Authoritative!
+        signalMsg.put("targetPlayerId", targetPlayerId);
+        if (node.has("signal")) {
+            signalMsg.put("signal", node.get("signal"));
+        }
+        if (node.has("signalType")) {
+            signalMsg.put("signalType", node.get("signalType").asText());
+        }
+        if (node.has("sdp")) {
+            signalMsg.put("sdp", node.get("sdp"));
+        }
+        if (node.has("candidate")) {
+            signalMsg.put("candidate", node.get("candidate"));
+        }
+        String signalJson = toJson(signalMsg);
+
+        // 1. Deliver locally if target is connected to this Gateway instance
+        String targetSessionId = connectionManager.getSessionForPlayer(roomId, targetPlayerId);
+        if (targetSessionId != null) {
+            connectionManager.sendToSession(targetSessionId, signalJson);
+        }
+
+        // 2. Publish to Redis so remote Gateways can deliver if target is connected there
+        if (controlEventRouter != null) {
+            controlEventRouter.publishToRedisOnly(roomId, "VOICE_SIGNAL", signalJson);
+        }
+
+        return Mono.empty();
+    }
+
+    /**
+     * TV12: Room-wide voice activity/state update (speaking indicator, mute/deafen toggle).
+     * Broadcasts to all peers in the room.
+     */
+    private Mono<String> handleVoiceStateUpdate(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        final String roomId = connectionManager.getRoomId(sessionId);
+        final String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+
+        Map<String, Object> event = new HashMap<>();
+        event.put("type", "VOICE_STATE_UPDATE");
+        event.put("roomId", roomId);
+        event.put("playerId", playerId);
+        if (node.has("isMuted")) {
+            event.put("isMuted", node.get("isMuted").asBoolean());
+        }
+        if (node.has("isDeafened")) {
+            event.put("isDeafened", node.get("isDeafened").asBoolean());
+        }
+        if (node.has("isSpeaking")) {
+            event.put("isSpeaking", node.get("isSpeaking").asBoolean());
+        }
+
+        String eventJson = toJson(event);
+        controlBroadcast(roomId, sessionId, "VOICE_STATE_UPDATE", eventJson);
+        return Mono.empty();
+    }
+
 
     /**
      * TV10 REMATCH: FINISHED -> WAITING. Room/members/config preserved;
@@ -1176,13 +1306,20 @@ public class GameCommandHandler {
                 controlEventRouter.broadcastToRoom(roomId, eventType, payloadJson);
             }
         } else {
-            if (senderSessionId != null) {
+            if ("lobby".equalsIgnoreCase(roomId)) {
+                if (senderSessionId != null) {
+                    connectionManager.broadcastToLobbyExcept(senderSessionId, payloadJson);
+                } else {
+                    connectionManager.broadcastToLobby(payloadJson);
+                }
+            } else if (senderSessionId != null) {
                 connectionManager.broadcastToRoomExcept(roomId, senderSessionId, payloadJson);
             } else {
                 connectionManager.broadcastToRoom(roomId, payloadJson);
             }
         }
     }
+
 
     private String extractRequestId(JsonNode json) {
         if (json.has("requestId") && !json.get("requestId").isNull()) {
@@ -1249,8 +1386,10 @@ public class GameCommandHandler {
         map.put("roundDuration", room.getRoundDuration());
         map.put("selectedCategories", room.getSelectedCategoriesList());
         map.put("playerCount", room.getPlayersCount());
+        map.put("voiceChatEnabled", room.getVoiceChatEnabled());
 
         List<Map<String, Object>> players = new ArrayList<>();
+
         for (PlayerMessage p : room.getPlayersList()) {
             Map<String, Object> pm = new HashMap<>();
             pm.put("playerId", p.getPlayerId());

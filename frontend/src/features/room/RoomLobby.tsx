@@ -12,7 +12,9 @@ import { noticeStore } from "../../store/noticeStore";
 import { translateError } from "../../utils/errorTranslation";
 import { copyToClipboard } from "../../utils/clipboard";
 import { SoundToggle } from "../../components/SoundToggle";
+import { VoiceControls } from "../../components/VoiceControls";
 import { audioManager } from "../../audio/AudioManager";
+
 
 const CATEGORY_OPTIONS = [
   { id: "ANIMALS", label: "Động vật", icon: "🐾" },
@@ -397,6 +399,8 @@ export const RoomLobby: React.FC = () => {
           </div>
         )}
 
+        <VoiceControls isHost={isHost} roomId={room.roomId} />
+
         <PlayerList
           players={room.players}
           hostPlayerId={room.hostPlayerId}
@@ -404,6 +408,7 @@ export const RoomLobby: React.FC = () => {
           onKick={handleKick}
           canKick={isHost && room.status === "WAITING"}
         />
+
       </div>
 
       {/* Right Column: Chat Panel */}

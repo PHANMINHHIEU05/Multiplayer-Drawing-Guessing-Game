@@ -33,7 +33,9 @@ import {
   decodeDrawingFrame,
 } from "../features/drawing/binaryCodec";
 import { SoundToggle } from "../components/SoundToggle";
+import { VoiceControls } from "../components/VoiceControls";
 import { audioManager } from "../audio/AudioManager";
+
 
 type CanvasTool = "pen" | "eraser" | "fill" | "line" | "circle" | "rect";
 
@@ -87,8 +89,10 @@ export const GamePage: React.FC = () => {
   const gameState = useGameStore((s) => s.gameState);
   const room = useRoomStore((s) => s.room);
   const { playerId } = usePlayerStore((s) => s);
+  const isHost = room?.hostPlayerId === playerId;
 
   // Drawing Toolbar State (for Drawer)
+
   const [brushColor, setBrushColor] = useState<string>("#000000");
   const [brushSize, setBrushSize] = useState<number>(4);
   const [activeTool, setActiveTool] = useState<CanvasTool>("pen");
@@ -759,14 +763,18 @@ export const GamePage: React.FC = () => {
 
       {/* Main Game Arena Workspace */}
       <main className="dg-game-arena flex-1 relative">
-        {/* Left Column 1: Leaderboard (Bảng Xếp Hạng) - hidden on mobile, visible on md+ */}
-        <div className="dg-game-score-column h-full min-h-0">
-          <Scoreboard
-            scores={gameState.scores}
-            currentPlayerId={playerId}
-            currentDrawerId={gameState.drawerId}
-          />
+        {/* Left Column 1: Voice Controls + Leaderboard - hidden on mobile, visible on md+ */}
+        <div className="dg-game-score-column h-full min-h-0 flex flex-col gap-2">
+          <VoiceControls isHost={isHost} roomId={roomId} />
+          <div className="flex-1 min-h-0">
+            <Scoreboard
+              scores={gameState.scores}
+              currentPlayerId={playerId}
+              currentDrawerId={gameState.drawerId}
+            />
+          </div>
         </div>
+
 
         {/* Mobile Scoreboard Modal Overlay */}
         {showMobileScoreboard && (

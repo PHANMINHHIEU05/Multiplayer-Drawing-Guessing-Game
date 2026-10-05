@@ -66,7 +66,7 @@ class RoomGrpcServiceTest {
         Room room = new Room("R12345", "My Room", "u01", RoomStatus.WAITING, 6, 3, 60, List.of(new RoomPlayer("u01", "Alice")));
         RoomResponse response = RoomResponse.newBuilder().setRoomId("R12345").setName("My Room").build();
 
-        when(roomService.createRoom("u01", "Alice", "My Room", 6, 3, 60)).thenReturn(room);
+        when(roomService.createRoom("u01", "Alice", "My Room", 6, 3, 60, false)).thenReturn(room);
         when(mapper.toResponse(room)).thenReturn(response);
 
         grpcService.createRoom(request, responseObserver);
@@ -80,7 +80,7 @@ class RoomGrpcServiceTest {
     @DisplayName("createRoom - IllegalArgumentException maps to Status.INVALID_ARGUMENT")
     void createRoom_invalidArgument() {
         CreateRoomRequest request = CreateRoomRequest.newBuilder().build();
-        when(roomService.createRoom(any(), any(), any(), anyInt(), anyInt(), anyInt()))
+        when(roomService.createRoom(any(), any(), any(), anyInt(), anyInt(), anyInt(), anyBoolean()))
                 .thenThrow(new IllegalArgumentException("Host id is required"));
 
         grpcService.createRoom(request, responseObserver);
@@ -91,6 +91,30 @@ class RoomGrpcServiceTest {
         StatusRuntimeException sre = (StatusRuntimeException) captor.getValue();
         assertEquals(Status.Code.INVALID_ARGUMENT, sre.getStatus().getCode());
     }
+
+    @Test
+    @DisplayName("setVoiceChatEnabled - Success should call onNext and onCompleted")
+    void setVoiceChatEnabled_success() {
+        com.drawgame.room.grpc.generated.SetVoiceChatEnabledRequest request =
+                com.drawgame.room.grpc.generated.SetVoiceChatEnabledRequest.newBuilder()
+                        .setRoomId("R12345")
+                        .setRequesterPlayerId("u01")
+                        .setVoiceChatEnabled(true)
+                        .build();
+
+        Room room = new Room("R12345", "My Room", "u01", RoomStatus.WAITING, 6, 3, 60,
+                List.of(new RoomPlayer("u01", "Alice")), com.drawgame.room.domain.RoomCategories.ALL, true);
+        RoomResponse response = RoomResponse.newBuilder().setRoomId("R12345").setVoiceChatEnabled(true).build();
+
+        when(roomService.setVoiceChatEnabled("R12345", "u01", true)).thenReturn(room);
+        when(mapper.toResponse(room)).thenReturn(response);
+
+        grpcService.setVoiceChatEnabled(request, responseObserver);
+
+        verify(responseObserver).onNext(response);
+        verify(responseObserver).onCompleted();
+    }
+
 
     @Test
     @DisplayName("getRoom - RoomNotFoundException maps to Status.NOT_FOUND")

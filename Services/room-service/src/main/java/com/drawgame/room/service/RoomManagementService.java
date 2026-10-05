@@ -36,7 +36,8 @@ public class RoomManagementService {
             String roomName,
             int maxPlayers,
             int roundCount,
-            int roundDuration
+            int roundDuration,
+            boolean voiceChatEnabled
     ) {
         validateCreateRoom(hostId, username, roomName, maxPlayers, roundCount, roundDuration);
 
@@ -50,13 +51,27 @@ public class RoomManagementService {
                 maxPlayers,
                 roundCount,
                 roundDuration,
-                List.of(host)
+                List.of(host),
+                RoomCategories.ALL,
+                voiceChatEnabled
         );
 
         Room savedRoom = repository.create(room);
-        log.info("ROOM_CREATED roomId={} hostId={} maxPlayers={}", roomId, hostId, maxPlayers);
+        log.info("ROOM_CREATED roomId={} hostId={} maxPlayers={} voiceChatEnabled={}", roomId, hostId, maxPlayers, voiceChatEnabled);
         return savedRoom;
     }
+
+    public Room createRoom(
+            String hostId,
+            String username,
+            String roomName,
+            int maxPlayers,
+            int roundCount,
+            int roundDuration
+    ) {
+        return createRoom(hostId, username, roomName, maxPlayers, roundCount, roundDuration, false);
+    }
+
 
     public Room getRoom(String roomId) {
         if (roomId == null || roomId.isBlank()) {
@@ -171,7 +186,18 @@ public class RoomManagementService {
         return repository.setCategories(roomId, requesterId, normalized);
     }
 
+    /** TV12: Host-only voice chat toggle. Allowed in both WAITING and PLAYING states. */
+    public Room setVoiceChatEnabled(String roomId, String requesterId, boolean enabled) {
+        if (roomId == null || roomId.isBlank() || requesterId == null || requesterId.isBlank()) {
+            throw new IllegalArgumentException("Room and requester IDs are required");
+        }
+        Room room = repository.setVoiceChatEnabled(roomId, requesterId, enabled);
+        log.info("VOICE_CHAT_ENABLED_CHANGED roomId={} hostId={} enabled={}", roomId, requesterId, enabled);
+        return room;
+    }
+
     public Room finishGame(String roomId) {
+
         if (roomId == null || roomId.isBlank()) {
             throw new IllegalArgumentException("Room ID cannot be blank");
         }

@@ -37,7 +37,7 @@ public class SessionRateLimiter {
 
     /** Replenish rate = capacity tokens per windowSeconds (fixed-window token bucket). */
     public enum Bucket {
-        GUESS, CONTROL, DRAW, REACTION
+        GUESS, CONTROL, DRAW, REACTION, VOICE
     }
 
     private static final class Window {
@@ -54,6 +54,7 @@ public class SessionRateLimiter {
     private final int controlMax;
     private final int drawMax;
     private final int reactionMax;
+    private final int voiceMax;
     private final long windowMs;
     private final int retryAfterMs;
 
@@ -64,7 +65,14 @@ public class SessionRateLimiter {
             @Value("${security.rate-limit.window-ms:1000}") long windowMs,
             @Value("${security.rate-limit.retry-after-ms:500}") int retryAfterMs
     ) {
-        this(guessMax, controlMax, drawMax, 1, windowMs, retryAfterMs);
+        this(guessMax, controlMax, drawMax, 1, 60, windowMs, retryAfterMs);
+    }
+
+    public SessionRateLimiter(
+            int guessMax, int controlMax, int drawMax, int reactionMax,
+            long windowMs, int retryAfterMs
+    ) {
+        this(guessMax, controlMax, drawMax, reactionMax, 60, windowMs, retryAfterMs);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -73,6 +81,7 @@ public class SessionRateLimiter {
             @Value("${security.rate-limit.control-max-per-window:10}") int controlMax,
             @Value("${security.rate-limit.draw-max-per-window:120}") int drawMax,
             @Value("${security.rate-limit.reaction-max-per-window:1}") int reactionMax,
+            @Value("${security.rate-limit.voice-max-per-window:60}") int voiceMax,
             @Value("${security.rate-limit.window-ms:1000}") long windowMs,
             @Value("${security.rate-limit.retry-after-ms:500}") int retryAfterMs
     ) {
@@ -80,11 +89,13 @@ public class SessionRateLimiter {
         this.controlMax = controlMax;
         this.drawMax = drawMax;
         this.reactionMax = reactionMax;
+        this.voiceMax = voiceMax;
         this.windowMs = windowMs;
         this.retryAfterMs = retryAfterMs;
-        log.info("SessionRateLimiter initialized: guess={}/{}ms control={}/{}ms draw={}/{}ms reaction={}/{}ms",
-                guessMax, windowMs, controlMax, windowMs, drawMax, windowMs, reactionMax, windowMs);
+        log.info("SessionRateLimiter initialized: guess={}/{}ms control={}/{}ms draw={}/{}ms reaction={}/{}ms voice={}/{}ms",
+                guessMax, windowMs, controlMax, windowMs, drawMax, windowMs, reactionMax, windowMs, voiceMax, windowMs);
     }
+
 
     /**
      * Try to consume one permit for the session/bucket.
@@ -107,7 +118,9 @@ public class SessionRateLimiter {
                 case CONTROL -> controlMax;
                 case DRAW -> drawMax;
                 case REACTION -> reactionMax;
+                case VOICE -> voiceMax;
             };
+
             if (used > max) {
                 log.debug("Rate limited: session={} bucket={} used={}/{}", sessionId, bucket, used, max);
                 return rateLimitedJson(requestId);

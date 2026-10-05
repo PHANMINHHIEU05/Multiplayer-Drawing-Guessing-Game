@@ -1,5 +1,7 @@
 import React, { useState } from "react";
+import { Mic, MicOff, VolumeX } from "lucide-react";
 import { Player } from "../types/room";
+import { useVoiceStore } from "../store/voiceStore";
 
 interface PlayerListProps {
   players: Player[];
@@ -31,6 +33,13 @@ export const PlayerList: React.FC<PlayerListProps> = ({
     null,
   );
 
+  const isVoiceRoomEnabled = useVoiceStore((s) => s.isVoiceRoomEnabled);
+  const speakingPlayers = useVoiceStore((s) => s.speakingPlayers);
+  const peerVoiceStates = useVoiceStore((s) => s.peerVoiceStates);
+  const isLocalMicOn = useVoiceStore((s) => s.isMicOn);
+  const isLocalMuted = useVoiceStore((s) => s.isMuted);
+
+
   return (
     <div className="glass-panel-game overflow-hidden select-none">
       <div className="dg-panel-heading">
@@ -45,6 +54,8 @@ export const PlayerList: React.FC<PlayerListProps> = ({
           const isDrawer = player.playerId === drawerId;
           const isConnected = player.connected !== false;
           const avatarColor = AVATAR_BG_COLORS[idx % AVATAR_BG_COLORS.length];
+          const isSpeaking = Boolean(speakingPlayers[player.playerId]);
+          const peerState = peerVoiceStates[player.playerId];
 
           return (
             <div
@@ -58,7 +69,11 @@ export const PlayerList: React.FC<PlayerListProps> = ({
               {/* Left side: Avatar + Username + Local Player tag + Presence */}
               <div className="flex items-center gap-3 min-w-0">
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black border-2 border-white shadow-sm shrink-0 ${avatarColor}`}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black border-2 border-white shadow-sm shrink-0 transition-all ${avatarColor} ${
+                    isSpeaking
+                      ? "ring-4 ring-emerald-400 ring-offset-2 ring-offset-white animate-pulse"
+                      : ""
+                  }`}
                 >
                   {player.username.charAt(0).toUpperCase()}
                 </div>
@@ -68,6 +83,11 @@ export const PlayerList: React.FC<PlayerListProps> = ({
                     {isCurrent && (
                       <span className="text-[9px] bg-primary text-white font-black px-1.5 py-0.5 rounded-md shrink-0">
                         Bạn
+                      </span>
+                    )}
+                    {isSpeaking && (
+                      <span className="text-[9px] font-black bg-emerald-500 text-white px-1.5 py-0.2 rounded-md animate-pulse">
+                        Đang nói
                       </span>
                     )}
                   </div>
@@ -87,13 +107,64 @@ export const PlayerList: React.FC<PlayerListProps> = ({
                 </div>
               </div>
 
-              {/* Right side: Role / Readiness Badges & Contextual Kick */}
+              {/* Right side: Voice Icon + Role / Readiness Badges & Contextual Kick */}
               <div className="flex items-center gap-2 shrink-0">
+                {isVoiceRoomEnabled && (
+                  <div className="flex items-center gap-1">
+                    {isCurrent ? (
+                      !isLocalMicOn ? (
+                        <span title="Chưa bật micro" className="p-1 rounded-lg bg-slate-100 text-slate-400">
+                          <MicOff className="w-3.5 h-3.5" />
+                        </span>
+                      ) : isLocalMuted ? (
+                        <span title="Micro đã tắt tiếng" className="p-1 rounded-lg bg-rose-100 text-rose-600">
+                          <MicOff className="w-3.5 h-3.5" />
+                        </span>
+                      ) : (
+                        <span
+                          title={isSpeaking ? "Đang nói..." : "Micro đang bật"}
+                          className={`p-1 rounded-lg ${
+                            isSpeaking
+                              ? "bg-emerald-500 text-white animate-pulse"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}
+                        >
+                          <Mic className="w-3.5 h-3.5" />
+                        </span>
+                      )
+                    ) : peerState?.isDeafened ? (
+                      <span title="Đang tắt tiếng nghe" className="p-1 rounded-lg bg-slate-100 text-slate-400">
+                        <VolumeX className="w-3.5 h-3.5" />
+                      </span>
+                    ) : peerState?.isMuted ? (
+                      <span title="Micro đã tắt tiếng" className="p-1 rounded-lg bg-rose-100 text-rose-500">
+                        <MicOff className="w-3.5 h-3.5" />
+                      </span>
+                    ) : peerState && !peerState.isMuted ? (
+                      <span
+                        title={isSpeaking ? "Đang nói..." : "Micro đang bật"}
+                        className={`p-1 rounded-lg ${
+                          isSpeaking
+                            ? "bg-emerald-500 text-white animate-pulse"
+                            : "bg-emerald-100 text-emerald-700"
+                        }`}
+                      >
+                        <Mic className="w-3.5 h-3.5" />
+                      </span>
+                    ) : (
+                      <span title="Chưa kết nối voice" className="p-1 rounded-lg bg-slate-100 text-slate-300">
+                        <MicOff className="w-3.5 h-3.5" />
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {isDrawer && (
                   <span className="text-[10px] bg-amber-100 text-amber-800 px-2.5 py-1 rounded-xl border border-amber-300 font-black flex items-center gap-1 shadow-sm">
                     ✏️ Người vẽ
                   </span>
                 )}
+
 
                 {isHost ? (
                   <span className="text-[10px] bg-purple-100 text-purple-800 px-2.5 py-1 rounded-xl border border-purple-300 font-black flex items-center gap-1 shadow-sm">

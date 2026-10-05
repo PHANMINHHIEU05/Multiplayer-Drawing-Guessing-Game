@@ -26,4 +26,6 @@ export interface Room {
   roundDuration: number;
   playerCount: number;
   selectedCategories: string[];
+  voiceChatEnabled?: boolean;
 }
+

@@ -11,7 +11,8 @@ public record Room(
         int roundCount,
         int roundDuration,
         List<RoomPlayer> players,
-        List<String> selectedCategories
+        List<String> selectedCategories,
+        boolean voiceChatEnabled
 ) {
     public Room {
         players = players == null ? List.of() : List.copyOf(players);
@@ -20,9 +21,17 @@ public record Room(
                 : List.copyOf(selectedCategories);
     }
 
+    /** Backward-compatible constructor for callers predating voice chat. */
+    public Room(String id, String name, String hostId, RoomStatus status,
+                int maxPlayers, int roundCount, int roundDuration, List<RoomPlayer> players,
+                List<String> selectedCategories) {
+        this(id, name, hostId, status, maxPlayers, roundCount, roundDuration, players, selectedCategories, false);
+    }
+
     /** Backward-compatible constructor for callers predating room categories. */
     public Room(String id, String name, String hostId, RoomStatus status,
                 int maxPlayers, int roundCount, int roundDuration, List<RoomPlayer> players) {
-        this(id, name, hostId, status, maxPlayers, roundCount, roundDuration, players, RoomCategories.ALL);
+        this(id, name, hostId, status, maxPlayers, roundCount, roundDuration, players, RoomCategories.ALL, false);
     }
 }
+

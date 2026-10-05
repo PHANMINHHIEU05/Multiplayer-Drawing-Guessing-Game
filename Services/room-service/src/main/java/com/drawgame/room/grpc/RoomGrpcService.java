@@ -51,8 +51,10 @@ public class RoomGrpcService extends RoomServiceGrpc.RoomServiceImplBase {
                     request.getRoomName(),
                     request.getMaxPlayers(),
                     request.getRoundCount(),
-                    request.getRoundDuration()
+                    request.getRoundDuration(),
+                    request.getVoiceChatEnabled()
             );
+
 
             RoomResponse response = mapper.toResponse(room);
             responseObserver.onNext(response);
@@ -215,6 +217,22 @@ public class RoomGrpcService extends RoomServiceGrpc.RoomServiceImplBase {
         try {
             Room room = roomService.setCategories(request.getRoomId(), request.getRequesterPlayerId(),
                     request.getSelectedCategoriesList());
+            responseObserver.onNext(mapper.toResponse(room));
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            handleException(e, responseObserver);
+        }
+    }
+
+    @Override
+    public void setVoiceChatEnabled(com.drawgame.room.grpc.generated.SetVoiceChatEnabledRequest request,
+                                    StreamObserver<RoomResponse> responseObserver) {
+        try {
+            Room room = roomService.setVoiceChatEnabled(
+                    request.getRoomId(),
+                    request.getRequesterPlayerId(),
+                    request.getVoiceChatEnabled()
+            );
             responseObserver.onNext(mapper.toResponse(room));
             responseObserver.onCompleted();
         } catch (Exception e) {

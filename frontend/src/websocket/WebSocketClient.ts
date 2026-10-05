@@ -612,4 +612,8 @@ export function resetAllSessionState(): void {
   metricsStore.resetStrokeSequence();
   recoveryStore.abort();
   noticeStore.clearAll();
+  try {
+    import("../webrtc/VoiceChatManager").then((m) => m.voiceChatManager.cleanup());
+  } catch {}
 }
+

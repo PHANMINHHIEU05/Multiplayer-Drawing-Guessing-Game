@@ -1,5 +1,6 @@
 import React from "react";
 import { PlayerScore } from "../types/game";
+import { useVoiceStore } from "../store/voiceStore";
 
 interface ScoreboardProps {
   scores: PlayerScore[];
@@ -21,6 +22,8 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
   currentPlayerId,
   currentDrawerId,
 }) => {
+  const isVoiceRoomEnabled = useVoiceStore((s) => s.isVoiceRoomEnabled);
+  const speakingPlayers = useVoiceStore((s) => s.speakingPlayers);
   const sortedScores = [...scores].sort((a, b) => b.score - a.score);
 
   return (
@@ -35,6 +38,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
           const isDrawer = s.playerId === currentDrawerId;
           const avatarColor = AVATAR_BG_COLORS[index % AVATAR_BG_COLORS.length];
           const initial = (s.username || "P").charAt(0).toUpperCase();
+          const isSpeaking = isVoiceRoomEnabled && Boolean(speakingPlayers[s.playerId]);
 
           return (
             <div
@@ -50,10 +54,15 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
               {/* Avatar with status icon */}
               <div className="relative shrink-0">
                 <div
-                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-black text-xs sm:text-sm border-2 border-[#15375f] shadow-sm ${avatarColor}`}
+                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-black text-xs sm:text-sm border-2 border-[#15375f] shadow-sm transition-all ${avatarColor} ${
+                    isSpeaking
+                      ? "ring-4 ring-emerald-400 ring-offset-2 ring-offset-white animate-pulse"
+                      : ""
+                  }`}
                 >
                   {initial}
                 </div>
+
 
                 {isDrawer && (
                   <div className="absolute -bottom-1 -right-1 bg-amber-400 text-slate-950 rounded-full p-0.5 shadow text-[9px] font-bold">

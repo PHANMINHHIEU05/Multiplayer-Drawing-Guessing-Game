@@ -86,6 +86,18 @@ public class RedisRoomRepository implements RoomRepository {
                     """,
             Long.class);
 
+    private static final RedisScript<Long> SET_VOICE_CHAT_ENABLED_SCRIPT = new DefaultRedisScript<>(
+            """
+                    if redis.call('EXISTS', KEYS[1]) == 0 then return -1 end
+                    if redis.call('HGET', KEYS[1], 'hostId') ~= ARGV[1] then return -2 end
+                    redis.call('HSET', KEYS[1], 'voiceChatEnabled', ARGV[2])
+                    local ttl = tonumber(ARGV[3])
+                    if ttl > 0 then redis.call('EXPIRE', KEYS[1], ttl) end
+                    return 0
+                    """,
+            Long.class);
+
+
     private static final RedisScript<Long> LEAVE_ROOM_SCRIPT = new DefaultRedisScript<>(
             """
                     local roomKey = KEYS[1]
@@ -169,7 +181,9 @@ public class RedisRoomRepository implements RoomRepository {
                 "maxPlayers", String.valueOf(room.maxPlayers()),
                 "roundCount", String.valueOf(room.roundCount()),
                 "roundDuration", String.valueOf(room.roundDuration()),
-                "selectedCategories", String.join(",", room.selectedCategories()));
+                "selectedCategories", String.join(",", room.selectedCategories()),
+                "voiceChatEnabled", String.valueOf(room.voiceChatEnabled()));
+
 
         redis.opsForHash().putAll(key, meta);
         redis.delete(List.of(playersKey, orderKey));
@@ -231,6 +245,9 @@ public class RedisRoomRepository implements RoomRepository {
                 ? RoomCategories.ALL
                 : Arrays.asList(categoriesValue.split(","));
 
+        boolean voiceChatEnabled = values.get("voiceChatEnabled") != null
+                && Boolean.parseBoolean(values.get("voiceChatEnabled").toString());
+
         Room room = new Room(
                 roomId,
                 values.get("name").toString(),
@@ -240,10 +257,12 @@ public class RedisRoomRepository implements RoomRepository {
                 Integer.parseInt(values.get("roundCount").toString()),
                 Integer.parseInt(values.get("roundDuration").toString()),
                 roomPlayers,
-                categories);
+                categories,
+                voiceChatEnabled);
 
         return Optional.of(room);
     }
+
 
     @Override
     public List<Room> findJoinableRooms(int limit) {
@@ -486,4 +505,25 @@ public class RedisRoomRepository implements RoomRepository {
         return findById(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("Room not found after category update: " + roomId));
     }
+
+    @Override
+    public Room setVoiceChatEnabled(String roomId, String requesterId, boolean enabled) {
+        Long result = redis.execute(SET_VOICE_CHAT_ENABLED_SCRIPT,
+                List.of(roomKey(roomId)),
+                requesterId,
+                String.valueOf(enabled),
+                String.valueOf(roomTtlSeconds));
+        if (result == null) {
+            throw new IllegalStateException("Redis voice chat update returned null");
+        }
+        if (result == -1) {
+            throw new RoomNotFoundException("Room not found: " + roomId);
+        }
+        if (result == -2) {
+            throw new IllegalArgumentException("Requester is not host of room " + roomId);
+        }
+        return findById(roomId)
+                .orElseThrow(() -> new RoomNotFoundException("Room not found after voice chat update: " + roomId));
+    }
 }
+

@@ -818,4 +818,90 @@ class GameCommandHandlerTest {
 
         verify(gameGrpcClient, never()).getGameState(anyString(), anyString());
     }
+
+    @Test
+    void handleSetVoiceChatEnabled_Success() throws Exception {
+        when(connectionManager.getRoomId("session-1")).thenReturn("room-1");
+        when(connectionManager.getPlayerId("session-1")).thenReturn("player-1");
+
+        RoomResponse roomResponse = RoomResponse.newBuilder()
+                .setRoomId("room-1")
+                .setName("Test Room")
+                .setStatus("WAITING")
+                .setHostId("player-1")
+                .setVoiceChatEnabled(true)
+                .build();
+
+        when(roomGrpcClient.setVoiceChatEnabled("room-1", "player-1", true))
+                .thenReturn(Mono.just(roomResponse));
+
+        String jsonStr = """
+                {
+                    "type": "SET_VOICE_CHAT_ENABLED",
+                    "requestId": "req-1",
+                    "payload": {
+                        "voiceChatEnabled": true
+                    }
+                }
+                """;
+        JsonNode json = objectMapper.readTree(jsonStr);
+
+        StepVerifier.create(handler.handleCommand("session-1", json))
+                .assertNext(res -> {
+                    assertTrue(res.contains("VOICE_CHAT_SETTING_CHANGED"));
+                    assertTrue(res.contains("\"voiceChatEnabled\":true"));
+                })
+                .verifyComplete();
+
+        verify(roomGrpcClient).setVoiceChatEnabled("room-1", "player-1", true);
+    }
+
+    @Test
+    void handleVoiceSignal_TargetedLocalDelivery() throws Exception {
+        when(connectionManager.getRoomId("session-1")).thenReturn("room-1");
+        when(connectionManager.getPlayerId("session-1")).thenReturn("player-1");
+        when(connectionManager.getSessionForPlayer("room-1", "player-2")).thenReturn("session-2");
+
+        String jsonStr = """
+                {
+                    "type": "VOICE_SIGNAL",
+                    "payload": {
+                        "targetPlayerId": "player-2",
+                        "signal": { "type": "offer", "sdp": "v=0..." }
+                    }
+                }
+                """;
+        JsonNode json = objectMapper.readTree(jsonStr);
+
+        StepVerifier.create(handler.handleCommand("session-1", json))
+                .verifyComplete();
+
+        verify(connectionManager).sendToSession(eq("session-2"), argThat(msg ->
+                msg.contains("VOICE_SIGNAL")
+                && msg.contains("\"senderPlayerId\":\"player-1\"")
+                && msg.contains("\"targetPlayerId\":\"player-2\"")
+        ));
+    }
+
+    @Test
+    void handleVoiceSignal_MissingTarget_ReturnsError() throws Exception {
+        when(connectionManager.getRoomId("session-1")).thenReturn("room-1");
+        when(connectionManager.getPlayerId("session-1")).thenReturn("player-1");
+
+        String jsonStr = """
+                {
+                    "type": "VOICE_SIGNAL",
+                    "requestId": "req-vs-err",
+                    "payload": {
+                        "signal": { "type": "offer" }
+                    }
+                }
+                """;
+        JsonNode json = objectMapper.readTree(jsonStr);
+
+        StepVerifier.create(handler.handleCommand("session-1", json))
+                .assertNext(res -> assertTrue(res.contains("INVALID_TARGET")))
+                .verifyComplete();
+    }
 }
+

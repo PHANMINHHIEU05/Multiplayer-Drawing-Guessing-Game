@@ -1,22 +1,50 @@
-import React from "react";
+import React, { useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   useMatchSummaryStore,
   matchSummaryStore,
 } from "../store/matchSummaryStore";
 import { usePlayerStore } from "../store/playerStore";
+import { roomStore } from "../store/roomStore";
 import { Scoreboard } from "./Scoreboard";
 
 export const MatchRecapModal: React.FC = () => {
   const { summary, isOpen } = useMatchSummaryStore((s) => s);
   const { playerId } = usePlayerStore((s) => s);
+  const navigate = useNavigate();
+
+  /**
+   * The recap is shown after GAME_FINISHED, so closing it must always reveal the
+   * waiting room instead of merely hiding an overlay above the finished game.
+   */
+  const handleClose = useCallback(() => {
+    const room = roomStore.getState().room;
+    if (room) {
+      // The normal GAME_FINISHED handler already performs this update. Keeping
+      // this small fallback makes the close action reliable if its GET_ROOM
+      // refresh arrives late or an old server omits the WAITING transition.
+      if (room.status !== "WAITING" && room.status !== "LOBBY") {
+        roomStore.setRoom({ ...room, status: "WAITING" });
+      }
+      navigate("/lobby", { replace: true });
+    } else {
+      navigate("/", { replace: true });
+    }
+    matchSummaryStore.close();
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") handleClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleClose, isOpen]);
 
   if (!isOpen || !summary) {
     return null;
   }
-
-  const handleClose = () => {
-    matchSummaryStore.close();
-  };
 
   const sortedScores = [...(summary.scores || [])].sort(
     (a, b) => b.score - a.score,
@@ -28,9 +56,11 @@ export const MatchRecapModal: React.FC = () => {
       <div className="glass-panel-dark rounded-3xl p-6 max-h-[90vh] max-w-md w-full overflow-y-auto text-center space-y-4 shadow-2xl relative">
         {/* Close button at top right */}
         <button
+          type="button"
           onClick={handleClose}
-          className="absolute top-4 right-4 text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 w-8 h-8 rounded-full flex items-center justify-center transition-all font-black text-sm"
+          className="absolute z-10 top-4 right-4 text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 w-9 h-9 rounded-full flex items-center justify-center transition-all font-black text-base cursor-pointer pointer-events-auto"
           title="Đóng bảng tổng kết"
+          aria-label="Đóng tổng kết và vào phòng chờ"
         >
           ✕
         </button>
@@ -98,6 +128,7 @@ export const MatchRecapModal: React.FC = () => {
         {/* Action Button: Đóng và vào phòng chờ */}
         <div className="pt-2">
           <button
+            type="button"
             onClick={handleClose}
             className="dg-success-button bouncy-btn w-full py-3.5 text-sm flex items-center justify-center gap-2"
           >
