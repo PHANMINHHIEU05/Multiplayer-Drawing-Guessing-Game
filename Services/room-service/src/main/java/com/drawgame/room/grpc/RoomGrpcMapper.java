@@ -24,6 +24,8 @@ public interface RoomGrpcMapper {
         RoomResponse.Builder builder = RoomResponse.newBuilder();
         mapRoom(room, builder);
         builder.addAllSelectedCategories(room.selectedCategories());
+        builder.setVoiceChatEnabled(room.voiceChatEnabled());
+
 
         if (room.players() != null) {
             room.players()

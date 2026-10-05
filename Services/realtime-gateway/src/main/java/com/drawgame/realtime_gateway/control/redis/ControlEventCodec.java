@@ -52,4 +52,17 @@ final class ControlEventCodec {
             return null;
         }
     }
+
+    static String readTargetPlayerId(String payloadJson) {
+        try {
+            com.fasterxml.jackson.databind.JsonNode node = MAPPER.readTree(payloadJson);
+            if (node.hasNonNull("targetPlayerId")) {
+                return node.get("targetPlayerId").asText();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to extract targetPlayerId: {}", e.getMessage());
+        }
+        return null;
+    }
 }
+

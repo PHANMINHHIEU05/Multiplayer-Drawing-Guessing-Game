@@ -60,4 +60,11 @@ public class ControlEventRouter {
         log.debug("Control event routed: type={} room={} sender excluded={} (local + redis)",
                 eventType, roomId, senderSessionId);
     }
+
+    /** Publish to Redis only without local room broadcast (e.g. for targeted unicast signaling). */
+    public void publishToRedisOnly(String roomId, String eventType, String payloadJson) {
+        redisPublisher.publish(roomId, eventType, payloadJson).subscribe();
+        log.debug("Control event routed to Redis only: type={} room={}", eventType, roomId);
+    }
 }
+

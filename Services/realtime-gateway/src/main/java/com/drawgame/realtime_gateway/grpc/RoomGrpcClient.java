@@ -150,4 +150,17 @@ public class RoomGrpcClient {
             return blockingStub.setCategories(request);
         }).subscribeOn(Schedulers.boundedElastic());
     }
+
+    /** TV12: Host-only voice chat toggle (allowed in WAITING and PLAYING). */
+    public Mono<RoomResponse> setVoiceChatEnabled(String roomId, String requesterPlayerId, boolean enabled) {
+        return Mono.fromCallable(() -> {
+            SetVoiceChatEnabledRequest request = SetVoiceChatEnabledRequest.newBuilder()
+                    .setRoomId(roomId)
+                    .setRequesterPlayerId(requesterPlayerId)
+                    .setVoiceChatEnabled(enabled)
+                    .build();
+            return blockingStub.setVoiceChatEnabled(request);
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
 }
+

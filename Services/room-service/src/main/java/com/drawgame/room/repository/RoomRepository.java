@@ -32,5 +32,8 @@ public interface RoomRepository {
 
     Room setCategories(String roomId, String requesterId, List<String> categories);
 
+    Room setVoiceChatEnabled(String roomId, String requesterId, boolean enabled);
+
     void delete(String roomId);
 }
+

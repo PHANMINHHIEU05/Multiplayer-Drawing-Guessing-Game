@@ -41,6 +41,9 @@ service RoomService {
 
   rpc SetCategories(SetCategoriesRequest)
       returns (RoomResponse);
+
+  rpc SetVoiceChatEnabled(SetVoiceChatEnabledRequest)
+      returns (RoomResponse);
 }
 
 message BeginGameRequest {
@@ -65,6 +68,8 @@ message CreateRoomRequest {
   int32 round_count = 5;
 
   int32 round_duration = 6;
+
+  bool voice_chat_enabled = 7;
 }
 
 message GetRoomRequest {
@@ -119,6 +124,12 @@ message SetCategoriesRequest {
   repeated string selected_categories = 3;
 }
 
+message SetVoiceChatEnabledRequest {
+  string room_id = 1;
+  string requester_player_id = 2;
+  bool voice_chat_enabled = 3;
+}
+
 message PlayerMessage {
 
   string player_id = 1;
@@ -146,4 +157,6 @@ message RoomResponse {
 
   repeated PlayerMessage players = 8;
   repeated string selected_categories = 9;
+  bool voice_chat_enabled = 10;
 }
+

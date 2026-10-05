@@ -112,6 +112,22 @@ public class ControlRedisSubscriber {
             return;
         }
 
+        // TV12: Targeted peer-to-peer WebRTC signaling delivery across Gateways
+        if ("VOICE_SIGNAL".equals(envelope.eventType())) {
+            String targetPlayerId = ControlEventCodec.readTargetPlayerId(envelope.payload());
+            if (targetPlayerId != null) {
+                String targetSessionId = connectionManager.getSessionForPlayer(envelope.targetRoomId(), targetPlayerId);
+                if (targetSessionId != null) {
+                    connectionManager.sendToSession(targetSessionId, envelope.payload());
+                    broadcastCount++;
+                    log.debug("ControlRedisSubscriber targeted VOICE_SIGNAL delivered: target={} room={}",
+                            targetPlayerId, envelope.targetRoomId());
+                }
+            }
+            return;
+        }
+
+
         // Keep the drawing authorization cache in sync with server-authoritative
         // round transitions (affects ALL Gateways, not just the one with the drawer).
         // TV7: also drive Canvas-recovery lifecycle (reset on new round, cleanup on finish).

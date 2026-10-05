@@ -163,4 +163,29 @@ class ControlRedisSubscriberTest {
         verify(drawingRoomStateCache, never()).remove(any());
         verify(connectionManager).broadcastToRoom("ROOM01", payload);
     }
+
+    @Test
+    @DisplayName("TV12: VOICE_SIGNAL delivers targeted to session when target player is on this Gateway")
+    void voiceSignalDeliversTargeted() {
+        String payload = "{\"type\":\"VOICE_SIGNAL\",\"roomId\":\"ROOM01\",\"senderPlayerId\":\"p1\",\"targetPlayerId\":\"p2\",\"signal\":{\"type\":\"offer\"}}";
+        when(connectionManager.getSessionForPlayer("ROOM01", "p2")).thenReturn("sess-p2");
+
+        deliver(new ControlEventEnvelope("gateway-2", "ROOM01", "VOICE_SIGNAL", "evt-voice-1", payload));
+
+        verify(connectionManager).sendToSession("sess-p2", payload);
+        verify(connectionManager, never()).broadcastToRoom(any(), any());
+    }
+
+    @Test
+    @DisplayName("TV12: VOICE_SIGNAL is not broadcast when target player is not on this Gateway")
+    void voiceSignalDroppedWhenTargetNotLocal() {
+        String payload = "{\"type\":\"VOICE_SIGNAL\",\"roomId\":\"ROOM01\",\"senderPlayerId\":\"p1\",\"targetPlayerId\":\"p3\",\"signal\":{\"type\":\"offer\"}}";
+        when(connectionManager.getSessionForPlayer("ROOM01", "p3")).thenReturn(null);
+
+        deliver(new ControlEventEnvelope("gateway-2", "ROOM01", "VOICE_SIGNAL", "evt-voice-2", payload));
+
+        verify(connectionManager, never()).sendToSession(any(), any());
+        verify(connectionManager, never()).broadcastToRoom(any(), any());
+    }
 }
+
