@@ -16,7 +16,7 @@ interface PeerConnectionWrapper {
   makingOffer: boolean;
   ignoreOffer: boolean;
   audioElement: HTMLAudioElement;
-  remoteStream: MediaStream;
+  pendingCandidates: RTCIceCandidateInit[];
 }
 
 export class VoiceChatManager {
@@ -30,8 +30,11 @@ export class VoiceChatManager {
   private roomId: string | null = null;
   private isSpeaking: boolean = false;
   private lastSpeakingChangeTime: number = 0;
+  private audioUnlockInitialized: boolean = false;
 
-  private constructor() {}
+  private constructor() {
+    this.initAudioUnlock();
+  }
 
   public static getInstance(): VoiceChatManager {
     if (!VoiceChatManager.instance) {
@@ -40,11 +43,32 @@ export class VoiceChatManager {
     return VoiceChatManager.instance;
   }
 
+  private initAudioUnlock() {
+    if (this.audioUnlockInitialized || typeof window === "undefined") return;
+    this.audioUnlockInitialized = true;
+
+    const unlock = () => {
+      for (const peer of this.peers.values()) {
+        if (
+          peer.audioElement &&
+          peer.audioElement.paused &&
+          peer.audioElement.srcObject
+        ) {
+          peer.audioElement.play().catch(() => {});
+        }
+      }
+    };
+
+    window.addEventListener("click", unlock, { passive: true });
+    window.addEventListener("keydown", unlock, { passive: true });
+    window.addEventListener("touchstart", unlock, { passive: true });
+  }
+
   private getIceServers(): RTCIceServer[] {
     const servers: RTCIceServer[] = [];
     const env = ((import.meta as any).env || {}) as Record<string, string>;
 
-    // STUN config from env or fallback to Google public STUN
+    // STUN config from env or fallback to multiple Google public STUN servers
     const stunEnv = env.VITE_STUN_URLS;
     if (stunEnv) {
       const urls = stunEnv
@@ -55,7 +79,15 @@ export class VoiceChatManager {
         servers.push({ urls });
       }
     } else {
-      servers.push({ urls: ["stun:stun.l.google.com:19302"] });
+      servers.push({
+        urls: [
+          "stun:stun.l.google.com:19302",
+          "stun:stun1.l.google.com:19302",
+          "stun:stun2.l.google.com:19302",
+          "stun:stun3.l.google.com:19302",
+          "stun:stun4.l.google.com:19302",
+        ],
+      });
     }
 
     // Optional TURN config from env
@@ -127,11 +159,13 @@ export class VoiceChatManager {
       if (audioTrack) {
         for (const peer of this.peers.values()) {
           const senders = peer.pc.getSenders();
-          const existingSender = senders.find(
-            (s) => s.track && s.track.kind === "audio",
+          const audioSender = senders.find(
+            (s) => (s.track && s.track.kind === "audio") || !s.track,
           );
-          if (existingSender) {
-            existingSender.replaceTrack(audioTrack);
+          if (audioSender) {
+            audioSender.replaceTrack(audioTrack).catch((err) => {
+              console.warn(`[WebRTC] replaceTrack error:`, err);
+            });
           } else {
             peer.pc.addTrack(audioTrack, stream);
           }
@@ -181,7 +215,7 @@ export class VoiceChatManager {
       const senders = peer.pc.getSenders();
       for (const sender of senders) {
         if (sender.track && sender.track.kind === "audio") {
-          peer.pc.removeTrack(sender);
+          sender.replaceTrack(null).catch(() => {});
         }
       }
     }
@@ -282,9 +316,18 @@ export class VoiceChatManager {
     audioElement.muted = voiceStore.getState().isDeafened;
     const vol = voiceStore.getState().peerVolumes[remotePlayerId] ?? 1.0;
     audioElement.volume = vol;
-
-    const remoteStream = new MediaStream();
-    audioElement.srcObject = remoteStream;
+    if (audioElement.style) {
+      audioElement.style.display = "none";
+    }
+    if (
+      typeof Node !== "undefined" &&
+      audioElement instanceof Node &&
+      typeof document !== "undefined" &&
+      document.body &&
+      typeof document.body.appendChild === "function"
+    ) {
+      document.body.appendChild(audioElement);
+    }
 
     const peerWrapper: PeerConnectionWrapper = {
       playerId: remotePlayerId,
@@ -293,15 +336,21 @@ export class VoiceChatManager {
       makingOffer: false,
       ignoreOffer: false,
       audioElement,
-      remoteStream,
+      pendingCandidates: [],
     };
     this.peers.set(remotePlayerId, peerWrapper);
 
-    // If local microphone stream is already active, add track
+    // If local microphone stream is already active, add track; otherwise add audio transceiver
     if (this.localStream) {
       const track = this.localStream.getAudioTracks()[0];
       if (track) {
         pc.addTrack(track, this.localStream);
+      }
+    } else {
+      try {
+        pc.addTransceiver("audio", { direction: "sendrecv" });
+      } catch {
+        // Fallback for browsers or testing environments lacking addTransceiver
       }
     }
 
@@ -317,7 +366,7 @@ export class VoiceChatManager {
           });
         }
       } catch (err) {
-        console.warn(`Negotiation error with ${remotePlayerId}:`, err);
+        console.warn(`[WebRTC] Negotiation error with ${remotePlayerId}:`, err);
       } finally {
         peerWrapper.makingOffer = false;
       }
@@ -333,21 +382,32 @@ export class VoiceChatManager {
     };
 
     pc.ontrack = (event) => {
-      event.streams[0]?.getTracks().forEach((track) => {
-        if (!remoteStream.getTracks().includes(track)) {
-          remoteStream.addTrack(track);
-        }
+      console.log(
+        `[WebRTC] Received remote track from ${remotePlayerId}: kind=${event.track?.kind}, streamCount=${event.streams?.length || 0}`,
+      );
+      const stream =
+        event.streams && event.streams[0]
+          ? event.streams[0]
+          : new MediaStream([event.track]);
+      audioElement.srcObject = stream;
+      audioElement.play().catch((err) => {
+        console.warn(
+          `[WebRTC] Autoplay play() rejected for ${remotePlayerId}:`,
+          err,
+        );
       });
-      // Ensure audio plays
-      audioElement.play().catch(() => {});
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-        console.debug(
-          `Peer ${remotePlayerId} connection state: ${pc.connectionState}`,
-        );
-      }
+      console.log(
+        `[WebRTC] Peer ${remotePlayerId} connectionState: ${pc.connectionState}`,
+      );
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log(
+        `[WebRTC] Peer ${remotePlayerId} iceConnectionState: ${pc.iceConnectionState}`,
+      );
     };
 
     return peerWrapper;
@@ -377,13 +437,29 @@ export class VoiceChatManager {
 
         peer.ignoreOffer = !isPolite && offerCollision;
         if (peer.ignoreOffer) {
-          console.debug(
+          console.log(
             `[WebRTC] Impolite peer ignored collision offer from ${senderPlayerId}`,
           );
           return;
         }
 
         await pc.setRemoteDescription(description);
+
+        // Drain buffered candidates
+        if (peer.pendingCandidates.length > 0) {
+          console.log(
+            `[WebRTC] Draining ${peer.pendingCandidates.length} queued ICE candidates for ${senderPlayerId}`,
+          );
+          for (const cand of peer.pendingCandidates) {
+            try {
+              await pc.addIceCandidate(cand);
+            } catch (err) {
+              console.warn(`[WebRTC] Error adding buffered candidate:`, err);
+            }
+          }
+          peer.pendingCandidates = [];
+        }
+
         if (description.type === "offer") {
           await pc.setLocalDescription();
           if (pc.localDescription) {
@@ -394,19 +470,23 @@ export class VoiceChatManager {
           }
         }
       } else if (signal.type === "candidate" && signal.candidate) {
-        try {
-          await pc.addIceCandidate(signal.candidate);
-        } catch (err) {
-          if (!peer.ignoreOffer) {
-            console.debug(
-              `Error adding candidate from ${senderPlayerId}:`,
-              err,
-            );
+        if (!pc.remoteDescription || !pc.remoteDescription.type) {
+          peer.pendingCandidates.push(signal.candidate);
+        } else {
+          try {
+            await pc.addIceCandidate(signal.candidate);
+          } catch (err) {
+            if (!peer.ignoreOffer) {
+              console.warn(
+                `[WebRTC] Error adding candidate from ${senderPlayerId}:`,
+                err,
+              );
+            }
           }
         }
       }
     } catch (err) {
-      console.warn(`Error handling WebRTC signal from ${senderPlayerId}:`, err);
+      console.warn(`[WebRTC] Error handling WebRTC signal from ${senderPlayerId}:`, err);
     }
   }
 
@@ -500,6 +580,9 @@ export class VoiceChatManager {
       peer.pc.close();
       peer.audioElement.pause();
       peer.audioElement.srcObject = null;
+      if (peer.audioElement.parentNode) {
+        peer.audioElement.parentNode.removeChild(peer.audioElement);
+      }
     } catch {}
     this.peers.delete(playerId);
     voiceStore.removePeer(playerId);

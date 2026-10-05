@@ -77,6 +77,7 @@ describe("WebRTC Voice Chat - VoiceChatManager", () => {
       play: vi.fn().mockResolvedValue(undefined),
       pause: vi.fn(),
       srcObject: null,
+      style: {},
     };
     vi.stubGlobal("Audio", vi.fn(() => mockAudio));
 
@@ -94,6 +95,7 @@ describe("WebRTC Voice Chat - VoiceChatManager", () => {
     const mockRTCPeerConnection = vi.fn().mockImplementation(() => ({
       getSenders: vi.fn().mockReturnValue([]),
       addTrack: vi.fn(),
+      addTransceiver: vi.fn(),
       removeTrack: vi.fn(),
       close: vi.fn(),
       setLocalDescription: vi.fn().mockResolvedValue(undefined),
