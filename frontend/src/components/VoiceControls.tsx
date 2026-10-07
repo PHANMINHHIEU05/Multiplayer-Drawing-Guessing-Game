@@ -47,12 +47,12 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
     voiceChatManager.setDeafen(!isDeafened);
   };
 
-  const handleDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleDeviceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const deviceId = e.target.value;
     voiceStore.setSelectedDeviceId(deviceId);
     if (isMicOn) {
       voiceChatManager.stopMic();
-      setTimeout(() => voiceChatManager.startMic(), 150);
+      await voiceChatManager.startMic();
     }
   };
 
@@ -219,4 +219,3 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
     </div>
   );
 };
-

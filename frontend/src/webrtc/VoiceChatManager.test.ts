@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { voiceStore } from "../store/voiceStore";
 import { voiceChatManager } from "./VoiceChatManager";
 import { Player } from "../types/room";
+import { createVoicePipeline } from "./voicePipeline";
+
+vi.mock("./voicePipeline", () => ({ createVoicePipeline: vi.fn() }));
 
 describe("WebRTC Voice Chat - voiceStore", () => {
   beforeEach(() => {
@@ -111,6 +114,53 @@ describe("WebRTC Voice Chat - VoiceChatManager", () => {
   afterEach(() => {
     voiceChatManager.cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("shares one pending microphone request across repeated clicks", async () => {
+    let resolveCapture!: (stream: any) => void;
+    const rawTrack = { stop: vi.fn(), kind: "audio", enabled: true };
+    const raw = { getTracks: () => [rawTrack], getAudioTracks: () => [rawTrack] };
+    const getUserMedia = vi.fn(() => new Promise<any>(resolve => { resolveCapture = resolve; }));
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+    vi.mocked(createVoicePipeline).mockResolvedValue({ stream: raw as any, dispose: vi.fn() });
+    const first = voiceChatManager.startMic();
+    const second = voiceChatManager.startMic();
+    expect(first).toBe(second);
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    resolveCapture(raw);
+    expect(await first).toBe(true);
+  });
+
+  it("stops a late permission result after the user turned mic off", async () => {
+    let resolveCapture!: (stream: any) => void;
+    const track = { stop: vi.fn() };
+    vi.stubGlobal("navigator", { mediaDevices: {
+      getUserMedia: vi.fn(() => new Promise<any>(resolve => { resolveCapture = resolve; })),
+    } });
+    const pending = voiceChatManager.startMic();
+    voiceChatManager.stopMic();
+    resolveCapture({ getTracks: () => [track] });
+    expect(await pending).toBe(false);
+    expect(track.stop).toHaveBeenCalledTimes(1);
+    expect(voiceStore.getState().isMicOn).toBe(false);
+  });
+
+  it("releases hardware immediately if stopped while the filter is loading", async () => {
+    const track = { stop: vi.fn(), kind: "audio", enabled: true };
+    const raw = { getTracks: () => [track], getAudioTracks: () => [track] };
+    let resolvePipeline!: (pipeline: any) => void;
+    const dispose = vi.fn();
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(raw) } });
+    vi.mocked(createVoicePipeline).mockImplementationOnce(() => new Promise(resolve => { resolvePipeline = resolve; }));
+    const pending = voiceChatManager.startMic();
+    await vi.waitFor(() => expect(resolvePipeline).toBeTypeOf("function"));
+    voiceChatManager.stopMic();
+    expect(track.stop).toHaveBeenCalled();
+    resolvePipeline({ stream: raw, dispose });
+    expect(await pending).toBe(false);
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(voiceStore.getState().isMicOn).toBe(false);
   });
 
   it("syncs peers according to room roster", () => {

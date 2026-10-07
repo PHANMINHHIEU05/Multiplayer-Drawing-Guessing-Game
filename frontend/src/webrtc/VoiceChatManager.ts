@@ -2,6 +2,7 @@ import { wsClient } from "../websocket/WebSocketClient";
 import { MessageType } from "../websocket/protocol";
 import { voiceStore } from "../store/voiceStore";
 import { Player } from "../types/room";
+import { createVoicePipeline, VoicePipeline } from "./voicePipeline";
 
 export interface WebRTCSignalData {
   type?: "offer" | "answer" | "candidate" | "description";
@@ -23,6 +24,10 @@ export class VoiceChatManager {
   private static instance: VoiceChatManager | null = null;
 
   private localStream: MediaStream | null = null;
+  private rawStream: MediaStream | null = null;
+  private pipeline: VoicePipeline | null = null;
+  private micStart: Promise<boolean> | null = null;
+  private micGeneration = 0;
   private audioContext: AudioContext | null = null;
   private vadInterval: ReturnType<typeof setInterval> | null = null;
   private peers: Map<string, PeerConnectionWrapper> = new Map();
@@ -114,7 +119,19 @@ export class VoiceChatManager {
    * Request microphone permission and start local audio track.
    * Only called on explicit user unmute.
    */
-  public async startMic(): Promise<boolean> {
+  public startMic(): Promise<boolean> {
+    if (this.localStream) return Promise.resolve(true);
+    if (this.micStart) return this.micStart;
+    const generation = ++this.micGeneration;
+    const pending = this.acquireMic(generation);
+    this.micStart = pending;
+    void pending.finally(() => {
+      if (this.micStart === pending) this.micStart = null;
+    });
+    return pending;
+  }
+
+  private async acquireMic(generation: number): Promise<boolean> {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       voiceStore.setMicPermission("unsupported");
       const isHttp =
@@ -136,7 +153,7 @@ export class VoiceChatManager {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: false, // Turn off AGC to prevent heavy volume amplification, clipping, and crackling
+          autoGainControl: true,
           channelCount: 1, // Mono channel to avoid phase distortion
           sampleRate: 48000,
           deviceId: voiceStore.getState().selectedDeviceId
@@ -146,8 +163,36 @@ export class VoiceChatManager {
         video: false,
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const raw = await navigator.mediaDevices.getUserMedia(constraints);
+      if (generation !== this.micGeneration) {
+        raw.getTracks().forEach(track => track.stop());
+        return false;
+      }
+      // Allow stopMic to release hardware even while the worklet module is loading.
+      this.rawStream = raw;
+      let pipeline: VoicePipeline | null = null;
+      try {
+        pipeline = await createVoicePipeline(raw);
+      } catch (error) {
+        console.warn("[Voice] Advanced filtering unavailable; using browser echo/noise suppression", error);
+      }
+      if (generation !== this.micGeneration) {
+        pipeline?.dispose();
+        raw.getTracks().forEach(track => track.stop());
+        return false;
+      }
+      this.rawStream = raw;
+      this.pipeline = pipeline;
+      const stream = pipeline?.stream ?? raw;
       this.localStream = stream;
+      raw.getAudioTracks().forEach(track => {
+        track.onended = () => {
+          if (this.rawStream === raw) {
+            this.stopMic();
+            voiceStore.setMicError("Microphone đã ngắt kết nối. Hãy chọn thiết bị và bật lại mic.");
+          }
+        };
+      });
       voiceStore.setMicPermission("granted");
       voiceStore.setMicOn(true);
       voiceStore.setMuted(false);
@@ -181,6 +226,8 @@ export class VoiceChatManager {
       this.sendVoiceStateUpdate({ isMuted: false, isSpeaking: false });
       return true;
     } catch (err: any) {
+      if (generation !== this.micGeneration) return false;
+      this.stopMic();
       console.warn("Failed to acquire microphone:", err);
       const isDenied =
         err.name === "NotAllowedError" || err.name === "PermissionDeniedError";
@@ -199,6 +246,12 @@ export class VoiceChatManager {
    * Stop local mic track completely and detach from peers.
    */
   public stopMic() {
+    ++this.micGeneration;
+    this.micStart = null;
+    this.pipeline?.dispose();
+    this.pipeline = null;
+    this.rawStream?.getTracks().forEach(track => track.stop());
+    this.rawStream = null;
     if (this.vadInterval) {
       clearInterval(this.vadInterval);
       this.vadInterval = null;
@@ -233,6 +286,7 @@ export class VoiceChatManager {
   }
 
   public setMute(muted: boolean) {
+    this.rawStream?.getAudioTracks().forEach(track => { track.enabled = !muted; });
     if (this.localStream) {
       const audioTrack = this.localStream.getAudioTracks()[0];
       if (audioTrack) {
