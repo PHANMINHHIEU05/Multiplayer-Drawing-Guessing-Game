@@ -544,6 +544,9 @@ export class WebSocketClient {
             );
           }
           if (permanent) {
+            playerStore.clearSessionToken();
+            void import("../webrtc/VoiceChatManager").then(m => m.voiceChatManager.cleanup());
+            gameStore.clearGame();
             roomStore.clearRoom();
           }
         });

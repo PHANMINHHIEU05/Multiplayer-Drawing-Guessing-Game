@@ -3,6 +3,7 @@ import { voiceStore } from "../store/voiceStore";
 import { voiceChatManager } from "./VoiceChatManager";
 import { Player } from "../types/room";
 import { createVoicePipeline } from "./voicePipeline";
+import { wsClient } from "../websocket/WebSocketClient";
 
 vi.mock("./voicePipeline", () => ({ createVoicePipeline: vi.fn() }));
 
@@ -194,6 +195,32 @@ describe("WebRTC Voice Chat - VoiceChatManager", () => {
       type: "candidate",
       candidate: { candidate: "candidate:1...", sdpMid: "0" },
     });
+  });
+
+  it.each(["offer", "answer"] as const)("preserves prototype-backed SDP type for %s", async (type) => {
+    voiceChatManager.initSession("player-local", "room-1");
+    voiceChatManager.syncPeers([{ playerId: "player-remote", username: "Remote" }]);
+    const pc = vi.mocked(RTCPeerConnection).mock.results[0].value;
+    // Reproduce native RTCSessionDescription, unlike a plain object mock.
+    pc.localDescription = Object.create({
+      get type() { return type; },
+      get sdp() { return "v=0\r\na=rtpmap:111 opus/48000/2\r\na=fmtp:111 useinbandfec=1\r\n"; },
+    });
+    const send = vi.spyOn(wsClient, "sendRaw").mockImplementation(() => {});
+    await pc.onnegotiationneeded();
+    const message = JSON.parse(send.mock.calls[0][0] as string);
+    expect(message.signal.sdp.type).toBe(type);
+    expect(message.signal.sdp.sdp).toContain("usedtx=1");
+  });
+
+  it("rejects malformed SDP before creating a peer", async () => {
+    voiceChatManager.initSession("player-local", "room-1");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await voiceChatManager.handleSignal("player-remote", {
+      type: "description", sdp: { sdp: "v=0" } as RTCSessionDescriptionInit,
+    });
+    expect(RTCPeerConnection).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
   });
 
   it("controls deafen and mute across peer audio elements", () => {

@@ -88,9 +88,6 @@ export class VoiceChatManager {
         urls: [
           "stun:stun.l.google.com:19302",
           "stun:stun1.l.google.com:19302",
-          "stun:stun2.l.google.com:19302",
-          "stun:stun3.l.google.com:19302",
-          "stun:stun4.l.google.com:19302",
         ],
       });
     }
@@ -481,7 +478,13 @@ export class VoiceChatManager {
    * Handle incoming WebRTC signal routed by Gateway via WebSocket
    */
   public async handleSignal(senderPlayerId: string, signal: WebRTCSignalData) {
-    if (!senderPlayerId || senderPlayerId === this.localPlayerId) {
+    if (!this.roomId || !senderPlayerId || senderPlayerId === this.localPlayerId) {
+      return;
+    }
+
+    if (signal.type === "description" &&
+        (!signal.sdp || !["offer", "answer"].includes(signal.sdp.type) || typeof signal.sdp.sdp !== "string")) {
+      console.warn("[WebRTC] Ignoring invalid session description from", senderPlayerId);
       return;
     }
 
@@ -583,7 +586,9 @@ export class VoiceChatManager {
       signal = {
         ...signal,
         sdp: {
-          ...signal.sdp,
+          // RTCSessionDescription exposes these as prototype getters, not own
+          // enumerable fields. Object spread drops `type` in real browsers.
+          type: signal.sdp.type,
           sdp: this.optimizeOpusSdp(signal.sdp.sdp),
         },
       };
