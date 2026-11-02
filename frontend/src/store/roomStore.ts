@@ -4,6 +4,8 @@ import { Room, Player } from '../types/room';
 interface RoomState {
   room: Room | null;
   isInRoom: boolean;
+  isRestoring: boolean;
+  restoreError: string | null;
 }
 
 const STORAGE_KEY_ROOM = 'app_last_room_id';
@@ -42,6 +44,8 @@ function safeRemoveItem(key: string): void {
 let state: RoomState = {
   room: null,
   isInRoom: false,
+  isRestoring: false,
+  restoreError: null,
 };
 
 const listeners = new Set<() => void>();
@@ -54,6 +58,17 @@ export const roomStore = {
   getState: () => state,
   /** TV7: last joined roomId — used to auto-RESUME after a page refresh. */
   getLastRoomId: (): string | null => safeGetItem(STORAGE_KEY_ROOM),
+  setLastRoomId: (roomId: string) => {
+    safeSetItem(STORAGE_KEY_ROOM, roomId);
+  },
+  setIsRestoring: (isRestoring: boolean) => {
+    state = { ...state, isRestoring };
+    notify();
+  },
+  setRestoreError: (restoreError: string | null) => {
+    state = { ...state, restoreError };
+    notify();
+  },
   setRoom: (room: Room | null) => {
     if (room) {
       safeSetItem(STORAGE_KEY_ROOM, room.roomId);
@@ -61,8 +76,11 @@ export const roomStore = {
       safeRemoveItem(STORAGE_KEY_ROOM);
     }
     state = {
+      ...state,
       room,
       isInRoom: !!room,
+      isRestoring: false,
+      restoreError: null,
     };
     notify();
   },
@@ -82,7 +100,7 @@ export const roomStore = {
   /** TV7: explicit leave — clears resume metadata so reconnect cannot silently rejoin. */
   clearRoom: () => {
     safeRemoveItem(STORAGE_KEY_ROOM);
-    state = { room: null, isInRoom: false };
+    state = { room: null, isInRoom: false, isRestoring: false, restoreError: null };
     notify();
   },
   subscribe: (listener: () => void) => {

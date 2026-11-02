@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { wsClient } from "../../websocket/WebSocketClient";
 import { MessageType } from "../../websocket/protocol";
 import { usePlayerStore } from "../../store/playerStore";
@@ -35,36 +35,30 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
     return () => window.clearTimeout(timer);
   }, [error]);
 
-  useEffect(() => {
+  const loadRooms = useCallback(async () => {
     if (connectionStatus !== "CONNECTED") {
       setPublicRooms([]);
       return;
     }
 
-    let active = true;
-    const loadRooms = async () => {
-      setRoomsLoading(true);
-      try {
-        const response = await wsClient.send(MessageType.LIST_ROOMS, {
-          limit: 10,
-        });
-        if (active) {
-          setPublicRooms(Array.isArray(response.rooms) ? response.rooms : []);
-        }
-      } catch {
-        if (active) setPublicRooms([]);
-      } finally {
-        if (active) setRoomsLoading(false);
-      }
-    };
+    setRoomsLoading(true);
+    try {
+      const response = await wsClient.send(MessageType.LIST_ROOMS, {
+        limit: 10,
+      });
+      setPublicRooms(Array.isArray(response.rooms) ? response.rooms : []);
+    } catch {
+      // Giữ danh sách hiện tại nếu có lỗi mạng tạm thời
+    } finally {
+      setRoomsLoading(false);
+    }
+  }, [connectionStatus]);
 
+  useEffect(() => {
     void loadRooms();
     const timer = window.setInterval(loadRooms, 5000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [connectionStatus]);
+    return () => window.clearInterval(timer);
+  }, [loadRooms]);
 
   const handleDigitChange = (index: number, val: string) => {
     const char = val.slice(-1).toUpperCase();
@@ -181,9 +175,28 @@ export const JoinRoomForm: React.FC<JoinRoomFormProps> = ({ onSuccess }) => {
       {/* Public Rooms List */}
       <div className="dg-field-card p-3">
         <div className="flex justify-between items-center mb-2 px-1">
-          <label className="text-xs font-extrabold text-slate-500 uppercase">
-            Phòng Chờ Phổ Biến
-          </label>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-extrabold text-slate-500 uppercase">
+              Phòng Chờ Phổ Biến
+            </label>
+            <button
+              type="button"
+              onClick={() => void loadRooms()}
+              disabled={roomsLoading || connectionStatus !== "CONNECTED"}
+              className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-sky-700 bg-sky-100 hover:bg-sky-200 active:scale-95 rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Tìm và làm mới danh sách phòng"
+              aria-label="Tải lại danh sách phòng"
+            >
+              <span
+                className={`material-symbols-outlined text-xs ${
+                  roomsLoading ? "animate-spin" : ""
+                }`}
+              >
+                refresh
+              </span>
+              <span>{roomsLoading ? "Đang tìm..." : "Làm mới"}</span>
+            </button>
+          </div>
           <span className="text-[10px] font-bold text-sky-600">
             Đang hoạt động
           </span>
