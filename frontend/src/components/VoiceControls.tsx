@@ -30,6 +30,17 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
 
   const [showSettings, setShowSettings] = useState(false);
   const [masterVolume, setMasterVolume] = useState(0.75);
+  const [checking, setChecking] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<Awaited<ReturnType<typeof voiceChatManager.getDiagnostics>> | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const checkVoice = async () => {
+    voiceChatManager.unlockPlayback();
+    setChecking(true);
+    setCopied(false);
+    try { setDiagnostics(await voiceChatManager.getDiagnostics()); }
+    finally { setChecking(false); }
+  };
 
   const handleToggleMic = async () => {
     if (!isMicOn) {
@@ -174,6 +185,34 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
       {showSettings && (
         <div className="pt-1.5 border-t border-slate-100 flex flex-col gap-2">
           {/* Master volume slider */}
+          <div className="flex flex-col gap-1 text-xs text-slate-700">
+            <button type="button" disabled={checking} onClick={checkVoice}
+              className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-2 font-bold disabled:opacity-60">
+              {checking ? "Đang kiểm tra — hãy nói vào mic…" : "Kiểm tra âm thanh mic"}
+            </button>
+            {diagnostics && (
+              <div className="rounded-lg border border-slate-200 bg-white p-2 space-y-1" aria-live="polite">
+                <p>Mic: {diagnostics.micOn ? (diagnostics.muted ? "đang tắt tiếng" : "đã bật") : "chưa bật"}.</p>
+                {!diagnostics.peers.length && <p>Chưa có người khác để kiểm tra kết nối.</p>}
+                {diagnostics.peers.map((peer, i) => <div key={i}>
+                  <p className="font-bold">Kết nối {i + 1}: {peer.connection !== "connected"
+                    ? "Chưa kết nối được âm thanh (mạng/NAT)."
+                    : peer.receivedPackets === 0
+                      ? "Chưa nhận được gói âm thanh từ người kia."
+                      : peer.receivedEnergy === 0
+                        ? "Nhận được gói nhưng nguồn mic bên kia đang im lặng."
+                        : peer.playbackPaused || peer.playbackMuted || peer.playbackVolume === 0
+                          ? "Đã nhận tiếng, nhưng đang bị chặn phát hoặc tắt âm lượng."
+                          : "Đã nhận và phát tiếng — kiểm tra âm lượng tab/loa nếu chưa nghe."}</p>
+                  <p>Gói gửi: {peer.sentPackets} · Gói nhận: {peer.receivedPackets}</p>
+                </div>)}
+                <button type="button" className="font-bold text-sky-700 underline" onClick={async () => {
+                  try { await navigator.clipboard.writeText(JSON.stringify(diagnostics)); setCopied(true); }
+                  catch { setCopied(false); }
+                }}>{copied ? "Đã sao chép" : "Sao chép chẩn đoán"}</button>
+              </div>
+            )}
+          </div>
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center justify-between text-[10px] font-bold text-slate-600">
               <span>Âm lượng nghe:</span>

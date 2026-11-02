@@ -123,6 +123,7 @@ public class GameCommandHandler {
             SessionRateLimiter.Bucket bucket = switch (type) {
                 case "SUBMIT_GUESS", "SEND_CHAT", "SEND_LOBBY_CHAT" -> SessionRateLimiter.Bucket.GUESS;
                 case "SEND_REACTION" -> SessionRateLimiter.Bucket.REACTION;
+                case "SEND_PING" -> SessionRateLimiter.Bucket.PING;
                 case "DRAW_POINT", "DRAW_BATCH", "CLEAR_CANVAS" -> SessionRateLimiter.Bucket.DRAW;
                 case "VOICE_SIGNAL", "VOICE_STATE_UPDATE" -> SessionRateLimiter.Bucket.VOICE;
                 default -> SessionRateLimiter.Bucket.CONTROL;
@@ -155,6 +156,7 @@ public class GameCommandHandler {
             case "SEND_LOBBY_CHAT" -> handleSendLobbyChat(sessionId, json, requestId);
             case "GET_LOBBY_CHAT" -> handleGetLobbyChat(sessionId, json, requestId);
             case "SEND_REACTION" -> handleSendReaction(sessionId, json, requestId);
+            case "SEND_PING" -> handleSendPing(sessionId, json, requestId);
             case "GET_RECENT_CHAT" -> handleGetRecentChat(sessionId, json, requestId);
             case "DRAW_POINT" -> handleDrawPoint(sessionId, json);
             case "DRAW_BATCH" -> handleDrawBatch(sessionId, json);
@@ -1132,6 +1134,9 @@ public class GameCommandHandler {
 
     private static final java.util.Set<String> ALLOWED_REACTIONS = java.util.Set.of("😂", "👍", "🔥", "😮", "🤔", "❤️");
 
+    private static final java.util.Set<String> ALLOWED_PING_TYPES = java.util.Set.of(
+            "DANGER", "MISSING", "ON_MY_WAY", "RETREAT", "HOLD", "ASSIST", "WARD", "BAIT");
+
     /**
      * Ephemeral, room-scoped reaction: never persisted to chat or drawing recovery.
      */
@@ -1173,6 +1178,61 @@ public class GameCommandHandler {
                     return Mono.just(toJson(event));
                 })
                 .onErrorResume(e -> Mono.just(createErrorJson(requestId, "SEND_REACTION_FAILED", e.getMessage())));
+    }
+
+    /**
+     * Ephemeral, room-scoped canvas ping (LoL-style ping wheel): same lifecycle
+     * as reactions — never persisted, drawing-phase only, identity from the
+     * bound session. Coordinates arrive normalized (0..1) and are clamped
+     * server-side; pingType must be one of the wheel flavours.
+     */
+    private Mono<String> handleSendPing(String sessionId, JsonNode json, String requestId) {
+        JsonNode node = getPayloadOrRoot(json);
+        String roomId = connectionManager.getRoomId(sessionId);
+        String playerId = connectionManager.getPlayerId(sessionId);
+        if (roomId == null || roomId.isBlank() || playerId == null || playerId.isBlank()) {
+            return Mono.just(createErrorJson(requestId, "INVALID_SESSION", "Session is not bound to a room"));
+        }
+        String pingType = extractString(node, "pingType", "");
+        if (!ALLOWED_PING_TYPES.contains(pingType)) {
+            return Mono.just(createErrorJson(requestId, "INVALID_PING", "Unsupported ping type"));
+        }
+        double rawX = node.path("x").asDouble(Double.NaN);
+        double rawY = node.path("y").asDouble(Double.NaN);
+        if (!Double.isFinite(rawX) || !Double.isFinite(rawY)) {
+            return Mono.just(createErrorJson(requestId, "INVALID_PING", "Ping coordinates are required"));
+        }
+        final double x = Math.max(0.0, Math.min(1.0, rawX));
+        final double y = Math.max(0.0, Math.min(1.0, rawY));
+        return gameGrpcClient.getGameState(roomId, playerId)
+                .flatMap(state -> {
+                    boolean member = state.getScoresList().stream()
+                            .anyMatch(score -> playerId.equals(score.getPlayerId()));
+                    if (!member) {
+                        return Mono.just(createErrorJson(requestId, "ROOM_MEMBERSHIP_REQUIRED",
+                                "Player is not an active match member"));
+                    }
+                    if (!"PLAYING".equalsIgnoreCase(state.getStatus()) || !"DRAWING".equals(state.getRoundPhase())) {
+                        return Mono.just(createErrorJson(requestId, "PING_NOT_ALLOWED",
+                                "Pings are available during drawing only"));
+                    }
+                    Map<String, Object> event = new HashMap<>();
+                    event.put("type", "PING");
+                    event.put("roomId", roomId);
+                    event.put("gameId", state.getGameId());
+                    event.put("roundNumber", state.getCurrentRound());
+                    event.put("playerId", playerId);
+                    String displayName = connectionManager.getUsername(sessionId);
+                    event.put("displayName", displayName == null || displayName.isBlank() ? playerId : displayName);
+                    event.put("pingType", pingType);
+                    event.put("x", x);
+                    event.put("y", y);
+                    String eventJson = toJson(event);
+                    controlBroadcast(roomId, sessionId, "PING", eventJson);
+                    event.put("requestId", requestId);
+                    return Mono.just(toJson(event));
+                })
+                .onErrorResume(e -> Mono.just(createErrorJson(requestId, "SEND_PING_FAILED", e.getMessage())));
     }
 
     private Mono<String> handleGetRecentChat(String sessionId, JsonNode json, String requestId) {

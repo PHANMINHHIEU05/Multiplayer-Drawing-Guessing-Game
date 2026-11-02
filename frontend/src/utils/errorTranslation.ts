@@ -30,6 +30,10 @@ const ERROR_CODE_MAP: Record<string, string> = {
   GAME_NOT_ACTIVE: "Ván đấu hiện không hoạt động.",
   PLAYER_NOT_IN_ROOM: "Bạn không còn trong phòng này.",
   INVALID_SESSION: "Phiên kết nối không hợp lệ.",
+  ROOM_MEMBERSHIP_REQUIRED: "Bạn không còn trong ván đấu này.",
+  INVALID_PING: "Ping không hợp lệ.",
+  PING_NOT_ALLOWED: "Chỉ được ping khi lượt vẽ đang diễn ra.",
+  SEND_PING_FAILED: "Không gửi được ping, vui lòng thử lại.",
 };
 
 export function translateError(error: any): string {

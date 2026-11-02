@@ -15,6 +15,7 @@ import { ChatMessage } from "../types/chat";
 import { metricsStore } from "../store/metricsStore";
 import { noticeStore } from "../store/noticeStore";
 import { reactionStore } from "../store/reactionStore";
+import { pingStore } from "../store/pingStore";
 import { matchSummaryStore } from "../store/matchSummaryStore";
 import { translateError } from "../utils/errorTranslation";
 import { audioManager } from "../audio/AudioManager";
@@ -494,6 +495,7 @@ export function setupMessageHandlers(
           guessStore.clearGuesses();
           metricsStore.resetStrokeSequence();
           reactionStore.clear();
+          pingStore.clear();
         }
         const rid = roomStore.getState().room?.roomId || current?.roomId;
         const pid = playerStore.getState().playerId;
@@ -546,6 +548,31 @@ export function setupMessageHandlers(
             gameId: payload.gameId || current.gameId || "",
             roundNumber: Number(payload.roundNumber || payload.currentRound),
           });
+        }
+        break;
+      }
+
+      case MessageType.PING: {
+        const payload = response.payload || response;
+        const current = gameStore.getState().gameState;
+        if (
+          current &&
+          current.roundPhase === "DRAWING" &&
+          (!payload.gameId || payload.gameId === current.gameId) &&
+          Number(payload.roundNumber || payload.currentRound) ===
+            current.currentRound
+        ) {
+          pingStore.add({
+            playerId: payload.playerId || "",
+            displayName:
+              payload.displayName || payload.username || "Người chơi",
+            gameId: payload.gameId || current.gameId || "",
+            roundNumber: Number(payload.roundNumber || payload.currentRound),
+            pingType: payload.pingType || "MISSING",
+            x: Number(payload.x) || 0,
+            y: Number(payload.y) || 0,
+          });
+          audioManager.playSFX("ping");
         }
         break;
       }

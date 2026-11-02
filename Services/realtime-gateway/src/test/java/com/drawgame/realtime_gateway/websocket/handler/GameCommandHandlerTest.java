@@ -228,6 +228,68 @@ class GameCommandHandlerTest {
     }
 
     @Test
+    void handleSendPing_UsesBoundIdentityAndBroadcastsCoordinates() throws Exception {
+        when(connectionManager.getUsername("session-1")).thenReturn("Minh");
+        when(gameGrpcClient.getGameState("room-1", "player-1")).thenReturn(Mono.just(GameStateResponse.newBuilder()
+                .setStatus("PLAYING").setRoundPhase("DRAWING").setGameId("game-1").setCurrentRound(2)
+                .addScores(com.drawgame.game.grpc.generated.PlayerScoreMessage.newBuilder().setPlayerId("player-1")
+                        .build())
+                .build()));
+        JsonNode command = objectMapper.readTree("""
+                {"type":"SEND_PING","payload":{"x":0.25,"y":0.75,"pingType":"DANGER","playerId":"spoofed"}}
+                """);
+        StepVerifier.create(handler.handleCommand("session-1", command))
+                .assertNext(json -> {
+                    assertTrue(json.contains("\"type\":\"PING\""));
+                    assertTrue(json.contains("\"playerId\":\"player-1\""));
+                    assertTrue(json.contains("\"displayName\":\"Minh\""));
+                    assertTrue(json.contains("\"pingType\":\"DANGER\""));
+                    assertTrue(json.contains("\"x\":0.25"));
+                    assertTrue(json.contains("\"y\":0.75"));
+                    assertFalse(json.contains("spoofed"));
+                }).verifyComplete();
+        verify(connectionManager).broadcastToRoomExcept(eq("room-1"), eq("session-1"), anyString());
+        verify(gameGrpcClient).getGameState("room-1", "player-1");
+    }
+
+    @Test
+    void handleSendPing_RejectsNonNumericCoordinatesBeforeGameLookup() throws Exception {
+        JsonNode command = objectMapper.readTree("""
+                {"type":"SEND_PING","payload":{"x":"not-a-number","y":0.5,"pingType":"DANGER"}}
+                """);
+        StepVerifier.create(handler.handleCommand("session-1", command))
+                .assertNext(json -> assertTrue(json.contains("INVALID_PING")))
+                .verifyComplete();
+        verify(gameGrpcClient, never()).getGameState(anyString(), anyString());
+    }
+
+    @Test
+    void handleSendPing_RejectsUnknownPingTypeBeforeGameLookup() throws Exception {
+        JsonNode command = objectMapper.readTree("""
+                {"type":"SEND_PING","payload":{"x":0.5,"y":0.5,"pingType":"<script>"}}
+                """);
+        StepVerifier.create(handler.handleCommand("session-1", command))
+                .assertNext(json -> assertTrue(json.contains("INVALID_PING")))
+                .verifyComplete();
+        verify(gameGrpcClient, never()).getGameState(anyString(), anyString());
+    }
+
+    @Test
+    void handleSendPing_RejectsOutsideDrawingPhase() throws Exception {
+        when(gameGrpcClient.getGameState("room-1", "player-1")).thenReturn(Mono.just(GameStateResponse.newBuilder()
+                .setStatus("PLAYING").setRoundPhase("WORD_SELECTION").setGameId("game-1").setCurrentRound(1)
+                .addScores(com.drawgame.game.grpc.generated.PlayerScoreMessage.newBuilder().setPlayerId("player-1")
+                        .build())
+                .build()));
+        JsonNode command = objectMapper.readTree("""
+                {"type":"SEND_PING","payload":{"x":0.5,"y":0.5,"pingType":"MISSING"}}
+                """);
+        StepVerifier.create(handler.handleCommand("session-1", command))
+                .assertNext(json -> assertTrue(json.contains("PING_NOT_ALLOWED")))
+                .verifyComplete();
+    }
+
+    @Test
     void handleSendChat_RateLimited_ReturnsErrorJson() throws Exception {
         String jsonStr = """
                 {

@@ -359,11 +359,12 @@ export class WebSocketClient {
           pending.reject(error);
 
           const errorCode = response.code || response.error?.code;
-          // Reaction spam is intentionally dropped by the server. The reaction
-          // bar already applies a cooldown, so do not turn this harmless case
+          // Reaction/ping spam is intentionally dropped by the server. The UI
+          // already applies a cooldown, so do not turn these harmless cases
           // into a global error toast.
           suppressListenerDispatch =
-            pending.type === MessageType.SEND_REACTION &&
+            (pending.type === MessageType.SEND_REACTION ||
+              pending.type === MessageType.SEND_PING) &&
             errorCode === "RATE_LIMITED";
         } else {
           pending.resolve(response);

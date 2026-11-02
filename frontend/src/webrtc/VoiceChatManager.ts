@@ -16,6 +16,8 @@ interface PeerConnectionWrapper {
   isPolite: boolean;
   makingOffer: boolean;
   ignoreOffer: boolean;
+  isSettingRemoteAnswerPending: boolean;
+  signalChain: Promise<void>;
   audioElement: HTMLAudioElement;
   pendingCandidates: RTCIceCandidateInit[];
 }
@@ -26,6 +28,7 @@ export class VoiceChatManager {
   private localStream: MediaStream | null = null;
   private rawStream: MediaStream | null = null;
   private pipeline: VoicePipeline | null = null;
+  private processingContext: AudioContext | null = null;
   private micStart: Promise<boolean> | null = null;
   private micGeneration = 0;
   private audioContext: AudioContext | null = null;
@@ -53,6 +56,9 @@ export class VoiceChatManager {
     this.audioUnlockInitialized = true;
 
     const unlock = () => {
+      for (const context of [this.processingContext, this.audioContext]) {
+        if (context?.state === "suspended") void context.resume().catch(() => {});
+      }
       for (const peer of this.peers.values()) {
         if (
           peer.audioElement &&
@@ -146,6 +152,15 @@ export class VoiceChatManager {
     }
 
     try {
+      // Unlock Web Audio synchronously inside the mic-button gesture. Firefox
+      // may otherwise suspend a context created after getUserMedia resolves.
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        try {
+          this.processingContext = new AudioCtx({ latencyHint: "interactive" });
+          void this.processingContext!.resume().catch(() => {});
+        } catch { this.processingContext = null; }
+      }
       const constraints: MediaStreamConstraints = {
         audio: {
           echoCancellation: true,
@@ -169,7 +184,7 @@ export class VoiceChatManager {
       this.rawStream = raw;
       let pipeline: VoicePipeline | null = null;
       try {
-        pipeline = await createVoicePipeline(raw);
+        pipeline = await createVoicePipeline(raw, this.processingContext ?? undefined);
       } catch (error) {
         console.warn("[Voice] Advanced filtering unavailable; using browser echo/noise suppression", error);
       }
@@ -247,6 +262,10 @@ export class VoiceChatManager {
     this.micStart = null;
     this.pipeline?.dispose();
     this.pipeline = null;
+    if (this.processingContext && this.processingContext.state !== "closed") {
+      void this.processingContext.close().catch(() => {});
+    }
+    this.processingContext = null;
     this.rawStream?.getTracks().forEach(track => track.stop());
     this.rawStream = null;
     if (this.vadInterval) {
@@ -324,6 +343,56 @@ export class VoiceChatManager {
     }
   }
 
+  public unlockPlayback() {
+    for (const context of [this.processingContext, this.audioContext]) {
+      if (context?.state === "suspended") void context.resume().catch(() => {});
+    }
+    for (const peer of this.peers.values()) {
+      if (peer.audioElement.srcObject) void peer.audioElement.play().catch(() => {});
+    }
+  }
+
+  /** Inspect transport without exposing SDP, network addresses or credentials. */
+  public async getDiagnostics() {
+    const peers = [...this.peers.values()];
+    const read = async (peer: PeerConnectionWrapper) => {
+      try {
+        const stats = [...(await peer.pc.getStats()).values()];
+        const audio = stats.filter(s => s.kind === "audio" || s.mediaType === "audio");
+        const sum = (type: string, field: string) => audio.filter(s => s.type === type)
+          .reduce((n, s) => n + (typeof s[field] === "number" ? s[field] : 0), 0);
+        return {
+          sent: sum("outbound-rtp", "packetsSent"),
+          received: sum("inbound-rtp", "packetsReceived"),
+          energy: sum("inbound-rtp", "totalAudioEnergy"),
+          hasEnergy: audio.some(s => s.type === "inbound-rtp" && typeof s.totalAudioEnergy === "number"),
+        };
+      } catch { return { sent: 0, received: 0, energy: 0, hasEnergy: false }; }
+    };
+    const before = await Promise.all(peers.map(read));
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    const after = await Promise.all(peers.map(read));
+    const state = voiceStore.getState();
+    return {
+      version: "voice-diagnostics-1",
+      micOn: state.isMicOn, muted: state.isMuted, deafened: state.isDeafened,
+      inputTrack: this.rawStream?.getAudioTracks()[0]?.readyState ?? "none",
+      filter: this.pipeline ? "advanced" : "browser",
+      processingState: this.processingContext?.state ?? "none",
+      turnConfigured: this.getIceServers().some(s => [s.urls].flat().some(url => /^turns?:/.test(url))),
+      peers: peers.map((peer, i) => ({
+        connection: peer.pc.connectionState, ice: peer.pc.iceConnectionState,
+        signaling: peer.pc.signalingState,
+        sentPackets: Math.max(0, after[i].sent - before[i].sent),
+        receivedPackets: Math.max(0, after[i].received - before[i].received),
+        receivedEnergy: after[i].hasEnergy ? Math.max(0, after[i].energy - before[i].energy) : null,
+        playbackPaused: peer.audioElement.paused,
+        playbackMuted: peer.audioElement.muted,
+        playbackVolume: peer.audioElement.volume,
+      })),
+    };
+  }
+
   public async refreshAudioDevices() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
       return;
@@ -396,6 +465,8 @@ export class VoiceChatManager {
       isPolite,
       makingOffer: false,
       ignoreOffer: false,
+      isSettingRemoteAnswerPending: false,
+      signalChain: Promise.resolve(),
       audioElement,
       pendingCandidates: [],
     };
@@ -493,14 +564,25 @@ export class VoiceChatManager {
       peer = this.createPeerConnection(senderPlayerId);
     }
 
-    const { pc, isPolite } = peer;
+    // Redis/WebSocket messages can arrive while a previous SDP operation is
+    // still pending. Process them in wire order, including ICE candidates.
+    const currentPeer = peer;
+    peer.signalChain = peer.signalChain.then(async () => {
+      if (this.peers.get(senderPlayerId) !== currentPeer) return;
+      await this.applySignal(currentPeer, signal);
+    });
+    await peer.signalChain;
+  }
+
+  private async applySignal(peer: PeerConnectionWrapper, signal: WebRTCSignalData) {
+    const { pc, isPolite, playerId: senderPlayerId } = peer;
 
     try {
       if (signal.type === "description" && signal.sdp) {
         const description = signal.sdp;
-        const offerCollision =
-          description.type === "offer" &&
-          (peer.makingOffer || pc.signalingState !== "stable");
+        const readyForOffer = !peer.makingOffer &&
+          (pc.signalingState === "stable" || peer.isSettingRemoteAnswerPending);
+        const offerCollision = description.type === "offer" && !readyForOffer;
 
         peer.ignoreOffer = !isPolite && offerCollision;
         if (peer.ignoreOffer) {
@@ -510,7 +592,12 @@ export class VoiceChatManager {
           return;
         }
 
-        await pc.setRemoteDescription(description);
+        peer.isSettingRemoteAnswerPending = description.type === "answer";
+        try {
+          await pc.setRemoteDescription(description);
+        } finally {
+          peer.isSettingRemoteAnswerPending = false;
+        }
 
         // Drain buffered candidates
         if (peer.pendingCandidates.length > 0) {
@@ -537,6 +624,7 @@ export class VoiceChatManager {
           }
         }
       } else if (signal.type === "candidate" && signal.candidate) {
+        if (peer.ignoreOffer) return;
         if (!pc.remoteDescription || !pc.remoteDescription.type) {
           peer.pendingCandidates.push(signal.candidate);
         } else {

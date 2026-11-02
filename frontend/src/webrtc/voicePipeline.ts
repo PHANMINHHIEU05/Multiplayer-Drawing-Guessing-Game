@@ -4,10 +4,22 @@ export interface VoicePipeline {
 }
 
 /** Native echo/noise suppression runs before this graph. Never monitor the mic locally. */
-export async function createVoicePipeline(input: MediaStream): Promise<VoicePipeline> {
-  const context = new AudioContext({ latencyHint: "interactive" });
+export async function createVoicePipeline(input: MediaStream, preparedContext?: AudioContext): Promise<VoicePipeline> {
+  const context = preparedContext ?? new AudioContext({ latencyHint: "interactive" });
   try {
-    await context.resume();
+    // A denied/suspended Web Audio context can leave resume pending forever.
+    // Fall back to native microphone processing instead of hanging "Bật Mic".
+    let resumeTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        context.resume(),
+        new Promise<never>((_, reject) => {
+          resumeTimeout = setTimeout(() => reject(new Error("Web Audio could not start")), 1500);
+        }),
+      ]);
+    } finally {
+      clearTimeout(resumeTimeout);
+    }
     await context.audioWorklet.addModule(new URL("./voiceProcessor.worklet.js", import.meta.url).href);
     const source = context.createMediaStreamSource(input);
     const highpass = context.createBiquadFilter();
