@@ -147,6 +147,22 @@ describe("WebRTC Voice Chat - VoiceChatManager", () => {
     expect(voiceStore.getState().isMicOn).toBe(false);
   });
 
+  it("unlocks Web Audio before awaiting microphone permission", async () => {
+    const resume = vi.fn().mockResolvedValue(undefined);
+    const close = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("AudioContext", vi.fn(() => ({ resume, close, state: "running" })));
+    let resolveCapture!: (stream: any) => void;
+    vi.stubGlobal("navigator", { mediaDevices: {
+      getUserMedia: vi.fn(() => new Promise<any>(resolve => { resolveCapture = resolve; })),
+    } });
+    const pending = voiceChatManager.startMic();
+    expect(resume).toHaveBeenCalledOnce();
+    voiceChatManager.stopMic();
+    expect(close).toHaveBeenCalled();
+    resolveCapture({ getTracks: () => [{ stop: vi.fn() }] });
+    expect(await pending).toBe(false);
+  });
+
   it("releases hardware immediately if stopped while the filter is loading", async () => {
     const track = { stop: vi.fn(), kind: "audio", enabled: true };
     const raw = { getTracks: () => [track], getAudioTracks: () => [track] };
@@ -221,6 +237,49 @@ describe("WebRTC Voice Chat - VoiceChatManager", () => {
     });
     expect(RTCPeerConnection).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
+  });
+
+  it("accepts an offer arriving while the preceding answer is being applied", async () => {
+    voiceChatManager.initSession("z-local", "room-1");
+    voiceChatManager.syncPeers([{ playerId: "a-remote", username: "Remote" }]);
+    const pc = vi.mocked(RTCPeerConnection).mock.results[0].value;
+    pc.signalingState = "have-local-offer";
+    let finishAnswer!: () => void;
+    pc.setRemoteDescription.mockImplementationOnce(() => new Promise<void>(resolve => {
+      finishAnswer = () => { pc.signalingState = "stable"; resolve(); };
+    }));
+    const answer = voiceChatManager.handleSignal("a-remote", {
+      type: "description", sdp: { type: "answer", sdp: "v=0" },
+    });
+    await vi.waitFor(() => expect(pc.setRemoteDescription).toHaveBeenCalledTimes(1));
+    const offer = voiceChatManager.handleSignal("a-remote", {
+      type: "description", sdp: { type: "offer", sdp: "v=0" },
+    });
+    expect(pc.setRemoteDescription).toHaveBeenCalledTimes(1);
+    finishAnswer();
+    await Promise.all([answer, offer]);
+    expect(pc.setRemoteDescription.mock.calls.map((call: any[]) => call[0].type)).toEqual(["answer", "offer"]);
+  });
+
+  it("reports recent audio flow without copying network addresses", async () => {
+    vi.useFakeTimers();
+    try {
+      voiceChatManager.initSession("local", "room-1");
+      voiceChatManager.syncPeers([{ playerId: "remote", username: "Remote" }]);
+      const pc = vi.mocked(RTCPeerConnection).mock.results[0].value;
+      const reports = (sent: number, received: number, energy: number) => new Map<string, any>([
+        ["out", { type: "outbound-rtp", kind: "audio", packetsSent: sent }],
+        ["in", { type: "inbound-rtp", kind: "audio", packetsReceived: received, totalAudioEnergy: energy }],
+        ["candidate", { type: "local-candidate", address: "private-network-address" }],
+      ]);
+      pc.getStats = vi.fn().mockResolvedValueOnce(reports(10, 20, 0.1)).mockResolvedValueOnce(reports(15, 26, 0.2));
+      const pending = voiceChatManager.getDiagnostics();
+      await vi.advanceTimersByTimeAsync(1201);
+      const result = await pending;
+      expect(result.peers[0]).toMatchObject({ sentPackets: 5, receivedPackets: 6 });
+      expect(result.peers[0].receivedEnergy).toBeCloseTo(0.1);
+      expect(JSON.stringify(result)).not.toContain("private-network-address");
+    } finally { vi.useRealTimers(); }
   });
 
   it("controls deafen and mute across peer audio elements", () => {

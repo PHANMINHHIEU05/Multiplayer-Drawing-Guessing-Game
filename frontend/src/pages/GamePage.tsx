@@ -15,6 +15,7 @@ import {
   ReactionBar,
   RoundPhaseOverlay,
 } from "../features/game/RoundPhaseOverlay";
+import { PingClickLayer, PingMarkerLayer } from "../features/game/PingLayer";
 import { ConnectionStatus } from "../components/ConnectionStatus";
 import { NetworkInspector } from "../components/NetworkInspector";
 import { wsClient, resetAllSessionState } from "../websocket/WebSocketClient";
@@ -827,6 +828,11 @@ export const GamePage: React.FC = () => {
               onDrawBatch={handleDrawBatch}
               onDrawEnd={handleDrawEnd}
               onClearCanvas={handleClearCanvas}
+            />
+            <PingClickLayer enabled={canGuess && !isDrawer && !isGameOver} />
+            <PingMarkerLayer
+              gameId={gameState.gameId}
+              roundNumber={currentRound}
             />
             <RoundPhaseOverlay
               gameState={gameState}

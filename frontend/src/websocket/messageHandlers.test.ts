@@ -5,6 +5,7 @@ import { gameStore } from "../store/gameStore";
 import { playerStore } from "../store/playerStore";
 import { roomStore } from "../store/roomStore";
 import { guessStore } from "../store/guessStore";
+import { pingStore } from "../store/pingStore";
 
 const { send } = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock("./WebSocketClient", () => ({ wsClient: { send } }));
@@ -146,5 +147,67 @@ describe("DRAW_EVENT fill synchronization", () => {
         tool: "FILL",
       }),
     ]);
+  });
+});
+
+describe("PING canvas marker", () => {
+  afterEach(() => {
+    gameStore.clearGame();
+    pingStore.clear();
+  });
+
+  const drawingState = {
+    gameId: "match-1",
+    currentRound: 2,
+    roundPhase: "DRAWING",
+    drawerId: "drawer-1",
+    scores: [],
+  };
+
+  it("routes an in-round ping into the ping store with its coordinates", () => {
+    gameStore.setGameState(drawingState as any);
+
+    setupMessageHandlers()({
+      type: MessageType.PING,
+      payload: {
+        playerId: "guesser-1",
+        displayName: "Lan",
+        gameId: "match-1",
+        roundNumber: 2,
+        pingType: "DANGER",
+        x: 0.4,
+        y: 0.6,
+      },
+    });
+
+    expect(pingStore.getState()).toHaveLength(1);
+    expect(pingStore.getState()[0]).toMatchObject({
+      playerId: "guesser-1",
+      displayName: "Lan",
+      gameId: "match-1",
+      roundNumber: 2,
+      pingType: "DANGER",
+      x: 0.4,
+      y: 0.6,
+    });
+  });
+
+  it("ignores pings from a different round", () => {
+    gameStore.setGameState(drawingState as any);
+
+    setupMessageHandlers()({
+      type: MessageType.PING,
+      payload: {
+        playerId: "guesser-1",
+        displayName: "Lan",
+        gameId: "match-1",
+        roundNumber: 5,
+        pingType: "DANGER",
+        x: 0.4,
+        y: 0.6,
+      },
+    });
+
+    expect(pingStore.getState()).toHaveLength(0);
   });
 });

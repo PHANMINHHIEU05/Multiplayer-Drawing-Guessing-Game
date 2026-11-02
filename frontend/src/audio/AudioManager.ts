@@ -20,7 +20,8 @@ export type SFXType =
   | 'countdown_go'
   | 'gameover'
   | 'tool_click'
-  | 'draw_start';
+  | 'draw_start'
+  | 'ping';
 
 class AudioManager {
   private ctx: AudioContext | null = null;
@@ -183,6 +184,9 @@ class AudioManager {
         case 'draw_start':
           this.synthDrawStart(ctx);
           break;
+        case 'ping':
+          this.synthPing(ctx);
+          break;
       }
     } catch (e) {
       console.warn('[AudioManager] Failed to play SFX:', e);
@@ -265,6 +269,45 @@ class AudioManager {
 
     osc.start(now);
     osc.stop(now + 0.09);
+  }
+
+  /** Bright two-note "ding-ding!" call-attention cue (smart-ping style) */
+  private synthPing(ctx: AudioContext) {
+    const now = ctx.currentTime;
+
+    // Bell-like note: sine fundamental + soft octave partial, fast attack
+    const bell = (freq: number, at: number, dur: number, vol: number) => {
+      const osc = ctx.createOscillator();
+      const partial = ctx.createOscillator();
+      const partialGain = ctx.createGain();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + at);
+      partial.type = 'triangle';
+      partial.frequency.setValueAtTime(freq * 2, now + at);
+
+      partialGain.gain.setValueAtTime(vol * 0.28, now + at);
+      partialGain.gain.exponentialRampToValueAtTime(0.0008, now + at + dur);
+
+      gain.gain.setValueAtTime(0.0001, now + at);
+      gain.gain.linearRampToValueAtTime(vol, now + at + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0008, now + at + dur);
+
+      osc.connect(gain);
+      partial.connect(partialGain);
+      partialGain.connect(gain);
+      gain.connect(this.sfxGain!);
+
+      osc.start(now + at);
+      osc.stop(now + at + dur + 0.02);
+      partial.start(now + at);
+      partial.stop(now + at + dur + 0.02);
+    };
+
+    // Rising pair, D6 -> G6 — the classic smart-ping motif
+    bell(1174.66, 0, 0.14, 0.2);
+    bell(1567.98, 0.085, 0.34, 0.24);
   }
 
   /** Crisp countdown tick (woodblock/marimba pulse) */
