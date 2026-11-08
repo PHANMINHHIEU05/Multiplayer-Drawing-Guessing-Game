@@ -17,6 +17,7 @@ describe('roomStore', () => {
       roundCount: 3,
       roundDuration: 60,
       playerCount: 1,
+      selectedCategories: ['ANIMALS'],
     });
 
     const state = roomStore.getState();
