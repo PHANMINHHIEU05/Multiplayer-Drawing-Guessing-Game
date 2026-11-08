@@ -193,22 +193,7 @@ export const GamePage: React.FC = () => {
     }
   }, [roomId, playerId, gameState?.status, room?.status]);
 
-  // Clean exit when closing tab or navigating away
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (roomId && playerId) {
-        wsClient
-          .send("LEAVE_ROOM", {
-            roomId,
-            playerId,
-            username: playerStore.getState().username || "Người chơi",
-          })
-          .catch(() => {});
-      }
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [roomId, playerId]);
+
 
   // ─── Binary WebSocket Drawing Listener ──────────────────────────────
   useEffect(() => {

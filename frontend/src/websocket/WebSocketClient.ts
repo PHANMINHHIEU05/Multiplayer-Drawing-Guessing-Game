@@ -157,6 +157,18 @@ export class WebSocketClient {
         this.startHeartbeat();
         noticeStore.removeNotice("connection_reconnecting");
 
+        // Check URL for /game/:roomId or /lobby/:roomId
+        let urlRoomId: string | undefined;
+        if (typeof window !== "undefined" && window.location) {
+          const match = window.location.pathname.match(/^\/(?:game|lobby)\/([A-Za-z0-9_-]+)/);
+          if (match && match[1]) {
+            urlRoomId = match[1].toUpperCase();
+          }
+        }
+
+        const targetRoomId = urlRoomId || roomStore.getLastRoomId();
+        const { playerId } = playerStore.getState();
+
         if (wasReconnecting) {
           noticeStore.pushNotice({
             id: "connection_reconnected",
@@ -164,14 +176,14 @@ export class WebSocketClient {
             message: "Đã kết nối lại.",
             durationMs: 3000,
           });
-          this.restoreStateAfterReconnect();
+          if (targetRoomId && playerId) {
+            void this.restoreStateAfterReconnect(targetRoomId);
+          }
         } else {
-          // TV7 (RC-003): fresh page load — if the player was in a room (persisted
-          // roomId + playerId), resume instead of dropping them back to Home.
-          const persistedRoomId = roomStore.getLastRoomId();
-          const { playerId } = playerStore.getState();
-          if (persistedRoomId && playerId) {
-            this.restoreStateAfterReconnect();
+          // TV7 (RC-003): fresh page load (F5) — if the player was in a room (persisted
+          // roomId or URL param + playerId), resume instead of dropping them back to Home.
+          if (targetRoomId && playerId) {
+            void this.restoreStateAfterReconnect(targetRoomId);
           }
         }
       };
@@ -459,105 +471,139 @@ export class WebSocketClient {
     }, delay);
   }
 
-  /** Re-bind the new WebSocket session and refresh room/game context after reconnecting. */
-  private restoreStateAfterReconnect(): void {
-    const { playerId } = playerStore.getState();
+  /** Re-bind the new WebSocket session and refresh room/game context after reconnecting or page refresh. */
+  public async restoreStateAfterReconnect(explicitRoomId?: string): Promise<boolean> {
+    const { playerId, username } = playerStore.getState();
     const currentRoom = roomStore.getState().room;
-    // TV7: page refresh loses in-memory room — fall back to the persisted last room id
-    const roomId = currentRoom?.roomId || roomStore.getLastRoomId() || null;
-    // TV8: signed game-session credential — the ONLY accepted resume proof.
-    // A raw playerId without a token is rejected server-side (no legacy fallback).
+    // TV7: page refresh loses in-memory room — fall back to explicitRoomId or persisted last room id
+    const roomId = (explicitRoomId && explicitRoomId.trim().toUpperCase()) || currentRoom?.roomId || roomStore.getLastRoomId() || null;
     const token = playerStore.getSessionToken();
 
-    if (roomId && playerId && token) {
+    if (!roomId) {
+      roomStore.setIsRestoring(false);
+      return false;
+    }
+
+    roomStore.setLastRoomId(roomId);
+    roomStore.setIsRestoring(true);
+    roomStore.setRestoreError(null);
+
+    if (playerId && token) {
       if (IS_DEV) {
         console.log(`[WebSocket] Restoring session in room ${roomId}...`);
       }
-      // Re-bind the new WebSocket session without mutating room membership.
-      this.send(
-        MessageType.RESUME_SESSION,
-        {
-          roomId,
-          playerId, // compatibility only — server verifies it matches the token subject
-          token,
-        },
-        5000,
-      )
-        .then((resumeResponse) => {
-          if (IS_DEV) {
-            console.log("[WebSocket] Session resumed successfully");
-          }
-          // TV8: the server rotates the credential on every successful resume
-          if (resumeResponse.sessionToken) {
-            playerStore.setSessionToken(resumeResponse.sessionToken);
-          }
-          return this.send(MessageType.GET_ROOM, {}, 5000).then(
-            (roomResponse) => {
-              const resumedStatus = resumeResponse.payload?.roomStatus;
-              const roomStatus = roomResponse.status || resumedStatus;
+      try {
+        // Re-bind the new WebSocket session without mutating room membership.
+        const resumeResponse = await this.send(
+          MessageType.RESUME_SESSION,
+          {
+            roomId,
+            playerId, // compatibility only — server verifies it matches the token subject
+            token,
+          },
+          5000,
+        );
 
-              // Room Service uses PLAYING; the frontend may still have the legacy IN_GAME value.
-              if (roomStatus === "PLAYING" || roomStatus === "IN_GAME") {
-                return this.send(MessageType.GET_GAME_STATE, {}, 5000).then(
-                  (gameResponse) => {
-                    // TV7: current-round canvas recovery after game state is known
-                    if (
-                      gameResponse.status === "PLAYING" &&
-                      gameResponse.currentRound &&
-                      (!gameResponse.roundPhase ||
-                        gameResponse.roundPhase === "DRAWING")
-                    ) {
-                      this.recoverCanvas(gameResponse.currentRound);
-                    }
-                    return gameResponse;
-                  },
-                );
-              }
+        if (IS_DEV) {
+          console.log("[WebSocket] Session resumed successfully");
+        }
+        // TV8: the server rotates the credential on every successful resume
+        if (resumeResponse.sessionToken) {
+          playerStore.setSessionToken(resumeResponse.sessionToken);
+        }
 
-              return roomResponse;
-            },
+        const roomResponse = await this.send(MessageType.GET_ROOM, {}, 5000);
+        const resumedStatus = resumeResponse.payload?.roomStatus;
+        const roomStatus = roomResponse.status || resumedStatus;
+
+        // Room Service uses PLAYING; the frontend may still have the legacy IN_GAME value.
+        if (roomStatus === "PLAYING" || roomStatus === "IN_GAME") {
+          try {
+            const gameResponse = await this.send(MessageType.GET_GAME_STATE, {}, 5000);
+            // TV7: current-round canvas recovery after game state is known
+            if (
+              gameResponse.status === "PLAYING" &&
+              gameResponse.currentRound &&
+              (!gameResponse.roundPhase ||
+                gameResponse.roundPhase === "DRAWING")
+            ) {
+              this.recoverCanvas(gameResponse.currentRound);
+            }
+          } catch (gameErr) {
+            console.warn("[WebSocket] GET_GAME_STATE during restore failed:", gameErr);
+          }
+        }
+
+        roomStore.setIsRestoring(false);
+        return true;
+      } catch (err: any) {
+        console.warn("[WebSocket] Failed to restore room/game state via RESUME:", err);
+
+        // Fallback: nếu RESUME_SESSION thất bại (ví dụ sessionToken hết hạn hoặc membership tạm gián đoạn),
+        // thử JOIN_ROOM nếu có tên người chơi
+        if (username && username.trim()) {
+          try {
+            if (IS_DEV) {
+              console.log(`[WebSocket] Fallback JOIN_ROOM for room ${roomId}...`);
+            }
+            await this.send(MessageType.JOIN_ROOM, {
+              roomId,
+              playerId,
+              username: username.trim(),
+            }, 5000);
+            roomStore.setIsRestoring(false);
+            return true;
+          } catch (joinErr) {
+            console.warn("[WebSocket] Fallback JOIN_ROOM also failed:", joinErr);
+          }
+        }
+
+        const code = err?.wsError?.code || "";
+        const authFailure = [
+          "SESSION_TOKEN_EXPIRED",
+          "INVALID_SESSION_TOKEN",
+          "AUTH_REQUIRED",
+          "ROOM_SCOPE_MISMATCH",
+        ].includes(code);
+
+        if (authFailure) {
+          playerStore.clearSessionToken();
+          connectionStore.setLastError(
+            "Phiên chơi đã hết hạn. Vui lòng vào lại phòng.",
           );
-        })
-        .catch((err: any) => {
-          console.warn("[WebSocket] Failed to restore room/game state:", err);
-          const code = err?.wsError?.code || "";
-          // TV8: credential failures are terminal — stop retrying, clear resume
-          // metadata and surface "Phiên chơi đã hết hạn" instead of looping forever.
-          const authFailure = [
-            "SESSION_TOKEN_EXPIRED",
-            "INVALID_SESSION_TOKEN",
-            "AUTH_REQUIRED",
-            "ROOM_SCOPE_MISMATCH",
-          ].includes(code);
-          const permanent =
-            authFailure ||
-            [
-              "PLAYER_NOT_IN_ROOM",
-              "ROOM_NOT_FOUND",
-              "INVALID_SESSION",
-              "RESUME_RETRYABLE",
-            ].includes(code) ||
-            /not a member|not found|resume/i.test(String(err.message || ""));
-          if (authFailure) {
-            playerStore.clearSessionToken();
-            connectionStore.setLastError(
-              "Phiên chơi đã hết hạn. Vui lòng vào lại phòng.",
-            );
-          }
-          if (permanent) {
-            playerStore.clearSessionToken();
-            void import("../webrtc/VoiceChatManager").then(m => m.voiceChatManager.cleanup());
-            gameStore.clearGame();
-            roomStore.clearRoom();
-          }
-        });
-    } else if (roomId && playerId) {
-      // TV8 migration: persisted roomId but no signed token (legacy browser) —
-      // resume is impossible; clear stale metadata once and require a clean rejoin.
-      console.warn(
-        "[WebSocket] No game-session token — clearing stale resume metadata (rejoin required)",
-      );
-      roomStore.clearRoom();
+        }
+
+        playerStore.clearSessionToken();
+        roomStore.setIsRestoring(false);
+        roomStore.setRestoreError(
+          "Không thể khôi phục phòng " + roomId + ". Phòng có thể đã kết thúc hoặc không tồn tại.",
+        );
+        return false;
+      }
+    } else if (roomId && playerId && username && username.trim()) {
+      // Có roomId và username nhưng không có token: thử JOIN_ROOM trực tiếp
+      try {
+        if (IS_DEV) {
+          console.log(`[WebSocket] Joining room ${roomId} without session token...`);
+        }
+        await this.send(MessageType.JOIN_ROOM, {
+          roomId,
+          playerId,
+          username: username.trim(),
+        }, 5000);
+        roomStore.setIsRestoring(false);
+        return true;
+      } catch (err: any) {
+        console.warn("[WebSocket] Joining room without token failed:", err);
+        roomStore.setIsRestoring(false);
+        roomStore.setRestoreError(
+          "Không thể vào phòng " + roomId + ". Vui lòng kiểm tra lại mã phòng.",
+        );
+        return false;
+      }
+    } else {
+      roomStore.setIsRestoring(false);
+      return false;
     }
   }
 
