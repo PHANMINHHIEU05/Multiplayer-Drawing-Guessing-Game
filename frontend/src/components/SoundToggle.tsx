@@ -1,4 +1,5 @@
 import React from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
 import { useAudio } from '../audio/useAudio';
 
 interface SoundToggleProps {
@@ -11,6 +12,7 @@ export const SoundToggle: React.FC<SoundToggleProps> = ({
   size = 'md',
 }) => {
   const { isMuted, toggleMute } = useAudio();
+  const Icon = isMuted ? VolumeX : Volume2;
 
   const sizeClasses = {
     sm: 'p-1.5 rounded-lg text-base',
@@ -30,9 +32,7 @@ export const SoundToggle: React.FC<SoundToggleProps> = ({
           : 'bg-white hover:bg-sky-50 text-[#15375f]'
       } ${sizeClasses[size]} ${className}`}
     >
-      <span className="material-symbols-outlined leading-none">
-        {isMuted ? 'volume_off' : 'volume_up'}
-      </span>
+      <Icon className="w-[1em] h-[1em] shrink-0" aria-hidden="true" />
     </button>
   );
 };

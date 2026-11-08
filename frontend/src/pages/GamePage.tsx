@@ -1,6 +1,8 @@
 import React, { useEffect, useCallback, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { HelpCircle, LogOut } from "lucide-react";
 import { useGameStore, gameStore } from "../store/gameStore";
-import { usePlayerStore, playerStore } from "../store/playerStore";
+import { usePlayerStore } from "../store/playerStore";
 import { useRoomStore } from "../store/roomStore";
 import { GameHeader } from "../features/game/GameHeader";
 import {
@@ -87,6 +89,7 @@ const GameDrawingSurface: React.FC<{
 };
 
 export const GamePage: React.FC = () => {
+  const navigate = useNavigate();
   const gameState = useGameStore((s) => s.gameState);
   const room = useRoomStore((s) => s.room);
   const { playerId } = usePlayerStore((s) => s);
@@ -98,6 +101,7 @@ export const GamePage: React.FC = () => {
   const [brushSize, setBrushSize] = useState<number>(4);
   const [activeTool, setActiveTool] = useState<CanvasTool>("pen");
   const [showMobileScoreboard, setShowMobileScoreboard] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const canvasHandleRef = useRef<DrawingCanvasHandle | null>(null);
 
   // Stroke Tracking for Binary Mode
@@ -115,6 +119,19 @@ export const GamePage: React.FC = () => {
   // C9: lock guess input after this player has guessed correctly in the current round
   const hasGuessed = !!gameState?.scores?.find((s) => s.playerId === playerId)
     ?.hasGuessed;
+
+  const leaveRoom = async () => {
+    if (leaving || !window.confirm("Bạn có chắc muốn rời phòng về trang chủ?")) return;
+    setLeaving(true);
+    try {
+      await wsClient.send(MessageType.LEAVE_ROOM, { roomId });
+    } catch (error) {
+      console.warn("[GamePage] Leave room failed:", error);
+    } finally {
+      navigate("/", { replace: true });
+      resetAllSessionState();
+    }
+  };
   // TV7: reconnect/recovery UX states (small banner, game stays visible)
   const canvasMode = useRecoveryStore((s) => s.mode);
   const connStatus = useConnectionStore((s) => s.status);
@@ -124,6 +141,25 @@ export const GamePage: React.FC = () => {
     connStatus === "RECONNECTING" ||
     connStatus === "CONNECTING" ||
     connStatus === "FAILING_OVER";
+
+  // Keep hooks in the same order while waiting for the game state on reconnect.
+  const isGameOver = gameState?.status === "GAME_OVER" || gameState?.status === "FINISHED";
+  const prevGameOverRef = useRef(false);
+  const hasGameState = Boolean(gameState);
+  useEffect(() => {
+    if (!hasGameState) return;
+    if (isGameOver) {
+      if (!prevGameOverRef.current) {
+        prevGameOverRef.current = true;
+        audioManager.stopBGM();
+        audioManager.playSFX("gameover");
+      }
+    } else {
+      prevGameOverRef.current = false;
+      audioManager.playBGM("game");
+    }
+    return () => audioManager.stopBGM();
+  }, [hasGameState, isGameOver]);
 
   // BUG-3: Fallback timeout to prevent infinite spinner if gameState is never received
   const [loadTimedOut, setLoadTimedOut] = useState<boolean>(false);
@@ -172,7 +208,7 @@ export const GamePage: React.FC = () => {
         room?.status === "PLAYING") &&
       gameState?.status !== "FINISHED" &&
       gameState?.status !== "GAME_OVER";
-    if (roomId && isGameActive) {
+    if (roomId && isGameActive && !leaving) {
       const interval = setInterval(() => {
         wsClient
           .send(MessageType.GET_GAME_STATE, { roomId, playerId }, 5000)
@@ -191,7 +227,7 @@ export const GamePage: React.FC = () => {
       }, 5000);
       return () => clearInterval(interval);
     }
-  }, [roomId, playerId, gameState?.status, room?.status]);
+  }, [roomId, playerId, gameState?.status, room?.status, leaving]);
 
 
 
@@ -617,31 +653,8 @@ export const GamePage: React.FC = () => {
     );
   }
 
-  // TV5 regression fix: game-service reports "FINISHED" when the game ends
-  // (legacy "GAME_OVER" kept for compatibility with older payloads).
-  const isGameOver =
-    gameState.status === "GAME_OVER" || gameState.status === "FINISHED";
-
-  // Audio: Background Music during gameplay & Game Over victory fanfare
-  const prevGameOverRef = useRef(false);
-  useEffect(() => {
-    if (isGameOver) {
-      if (!prevGameOverRef.current) {
-        prevGameOverRef.current = true;
-        audioManager.stopBGM();
-        audioManager.playSFX("gameover");
-      }
-    } else {
-      prevGameOverRef.current = false;
-      audioManager.playBGM("game");
-    }
-    return () => {
-      audioManager.stopBGM();
-    };
-  }, [isGameOver]);
-
   return (
-    <div className="dg-page dg-game-page w-screen flex flex-col p-2 sm:p-3 gap-2 sm:gap-3 overflow-hidden text-slate-800 select-none">
+    <div className="dg-page dg-game-page w-full flex flex-col p-2 sm:p-3 gap-2 sm:gap-3 text-slate-800 select-none">
       {/* TV7: reconnect / recovery banners — small, non-blocking */}
       {showReconnectBanner && (
         <div className="shrink-0 px-4 py-2 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-700 text-xs font-bold flex items-center justify-between gap-2 animate-pulse shadow-sm">
@@ -672,84 +685,32 @@ export const GamePage: React.FC = () => {
         </div>
       )}
       {/* Top Bar Header */}
-      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        <div className="flex-1 min-w-0">
-          <GameHeader
-            gameState={gameState}
-            isDrawer={isDrawer}
-            roomId={roomId}
-          />
-        </div>
-        {/* Desktop actions */}
-        <div className="hidden md:flex items-center gap-2">
-          <SoundToggle />
+      <GameHeader gameState={gameState} isDrawer={isDrawer} roomId={roomId} actions={<>
+          <SoundToggle className="dg-game-action" />
           <button
             onClick={() => setShowMobileScoreboard(true)}
-            className="dg-icon-btn btn-3d xl:hidden"
+            className="dg-game-action dg-game-score-toggle dg-icon-btn btn-3d"
             title="Xem bảng xếp hạng"
           >
             🏆
           </button>
-          <button className="dg-icon-btn btn-3d" title="Trợ giúp">
-            <span className="material-symbols-outlined text-lg">help</span>
+          <button className="dg-game-action dg-game-wide-action dg-icon-btn btn-3d" title="Trợ giúp">
+            <HelpCircle className="h-[18px] w-[18px]" aria-hidden="true" />
           </button>
           <button
-            onClick={() => {
-              if (window.confirm("Bạn có chắc muốn rời phòng về trang chủ?")) {
-                wsClient
-                  .send("LEAVE_ROOM", {
-                    roomId,
-                    playerId,
-                    username: playerStore.getState().username || "Người chơi",
-                  })
-                  .catch(() => {});
-                resetAllSessionState();
-              }
-            }}
+            onClick={leaveRoom}
+            disabled={leaving}
             title="Rời phòng (về trang chủ)"
-            className="dg-icon-btn btn-3d !bg-rose-100 !text-rose-600"
+            className="dg-game-action dg-icon-btn btn-3d !bg-rose-100 !text-rose-600"
           >
-            <span className="material-symbols-outlined text-lg">logout</span>
+            <LogOut className="h-[18px] w-[18px]" aria-hidden="true" />
           </button>
-          <ConnectionStatus />
-        </div>
-
-        {/* Mobile actions */}
-        <div className="flex md:hidden items-center gap-1.5 shrink-0">
-          <SoundToggle size="sm" />
-          <button
-            onClick={() => setShowMobileScoreboard(true)}
-            className="dg-icon-btn btn-3d !min-w-9 !min-h-9 text-sm"
-            title="Xem bảng xếp hạng"
-          >
-            🏆
-          </button>
-          <button
-            onClick={() => {
-              if (window.confirm("Bạn có chắc muốn rời phòng về trang chủ?")) {
-                wsClient
-                  .send("LEAVE_ROOM", {
-                    roomId,
-                    playerId,
-                    username: playerStore.getState().username || "Người chơi",
-                  })
-                  .catch(() => {});
-                resetAllSessionState();
-              }
-            }}
-            title="Rời phòng (về trang chủ)"
-            className="dg-icon-btn btn-3d !min-w-9 !min-h-9 !bg-rose-100 !text-rose-600"
-          >
-            <span className="material-symbols-outlined text-base leading-none">
-              logout
-            </span>
-          </button>
-        </div>
-      </div>
+          <div className="dg-game-wide-action"><ConnectionStatus /></div>
+      </>} />
 
       {/* Main Game Arena Workspace */}
       <main className="dg-game-arena flex-1 relative">
-        {/* Left Column 1: Voice Controls + Leaderboard - hidden on mobile, visible on md+ */}
+        {/* On narrower layouts the same controls are shown in the scoreboard panel. */}
         <div className="dg-game-score-column h-full min-h-0 flex flex-col gap-2">
           <VoiceControls isHost={isHost} roomId={roomId} />
           <div className="flex-1 min-h-0">
@@ -778,6 +739,7 @@ export const GamePage: React.FC = () => {
                 </button>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto">
+                <VoiceControls isHost={isHost} roomId={roomId} className="mb-2" />
                 <Scoreboard
                   scores={gameState.scores}
                   currentPlayerId={playerId}
@@ -802,7 +764,7 @@ export const GamePage: React.FC = () => {
             />
           )}
 
-          <div className="flex-1 min-w-0 min-h-0 relative">
+          <div className="dg-game-board flex-1 min-w-0 min-h-0 relative">
             <GameDrawingSurface
               canvasHandleRef={canvasHandleRef}
               isDrawer={canDraw}

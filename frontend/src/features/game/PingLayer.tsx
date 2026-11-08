@@ -52,7 +52,7 @@ export const PingClickLayer: React.FC<{ enabled: boolean }> = ({ enabled }) => {
       onDoubleClick={handleDoubleClick}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <span className="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-slate-950/60 px-3 py-1 text-[11px] font-semibold text-white/90 shadow-sm">
+      <span className="dg-ping-hint pointer-events-none absolute right-3 top-3 z-10 rounded-full bg-slate-950/60 px-3 py-1 text-[11px] font-semibold text-white/90 shadow-sm">
         {isTouch ? "Chạm 2 lần để ping ❓" : "Nhấn 2 lần chuột để ping ❓"}
       </span>
     </div>

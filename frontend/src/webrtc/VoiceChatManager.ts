@@ -778,13 +778,15 @@ export class VoiceChatManager {
   }
 
   public cleanup() {
+    // ROOM_LEFT is received after the gateway unbinds the socket. Teardown
+    // must not send a final VOICE_STATE_UPDATE to the room we just left.
+    this.roomId = null;
     this.stopMic();
     for (const [peerId, peer] of this.peers.entries()) {
       this.closePeer(peerId, peer);
     }
     this.peers.clear();
     this.localPlayerId = null;
-    this.roomId = null;
     voiceStore.reset();
   }
 }

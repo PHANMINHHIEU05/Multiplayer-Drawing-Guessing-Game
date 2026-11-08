@@ -8,12 +8,14 @@ interface GameHeaderProps {
   gameState: GameState;
   isDrawer: boolean;
   roomId?: string;
+  actions?: React.ReactNode;
 }
 
 export const GameHeader: React.FC<GameHeaderProps> = ({
   gameState,
   isDrawer,
   roomId,
+  actions,
 }) => {
   const phase = gameState.roundPhase || "DRAWING";
   const timerDeadline =
@@ -35,12 +37,12 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   const drawerName = drawerPlayer?.username || "Người chơi";
 
   return (
-    <div className="glass-panel-game !bg-white px-3 sm:px-4 py-2 flex items-center justify-between gap-2 sm:gap-4 shrink-0">
+    <header className="dg-game-header glass-panel-game !bg-white px-3 sm:px-4 py-2 shrink-0">
       {/* Left: Logo, Room info & Drawer badge */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        <span className="grid place-items-center w-8 h-8 rounded-full bg-sky-100 border-2 border-[#15375f] text-base shrink-0">🎨</span>
-        <div>
-          <div className="flex items-center gap-1.5">
+      <div className="dg-game-identity flex min-w-0 items-center gap-2 sm:gap-3">
+        <span className="dg-game-logo-icon grid place-items-center w-8 h-8 rounded-full bg-sky-100 border-2 border-[#15375f] text-base shrink-0">🎨</span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
             <span className="dg-brand-name text-sm sm:text-lg leading-none block">
               Dopamine<span className="dg-brand-dot">.io</span>
             </span>
@@ -56,24 +58,21 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
                 <span>✏️</span> Bạn đang vẽ
               </span>
             ) : (
-              <span className="text-[10px] sm:text-[11px] font-extrabold text-sky-700 flex items-center gap-1">
-                <span>🎨</span>{" "}
-                <span className="text-slate-800 font-black">{drawerName}</span> đang
-                vẽ
+              <span className="text-[10px] sm:text-[11px] font-extrabold text-sky-700 flex items-center gap-1 min-w-0">
+                <span aria-hidden="true">🎨</span>
+                <span className="truncate text-slate-800 font-black" title={drawerName}>{drawerName}</span>
+                <span className="shrink-0">đang vẽ</span>
               </span>
             )}
           </div>
         </div>
       </div>
 
-      {/* Center: Round & Secret Word / Word Hint */}
-      <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-center max-w-lg">
-        {/* Round Badge */}
-        <div className="bg-[#15375f] border-2 border-[#15375f] text-white font-black text-[10px] sm:text-xs px-2.5 sm:px-3 py-1 rounded-full shadow-md whitespace-nowrap">
+      <div className="dg-game-round bg-[#15375f] border-2 border-[#15375f] text-white font-black text-[10px] sm:text-xs px-2 sm:px-3 py-1 rounded-full shadow-md whitespace-nowrap">
           VÒNG {gameState.currentRound} / {gameState.totalRounds}
-        </div>
+      </div>
 
-        {/* Word or Hint */}
+      <div className="dg-game-word min-w-0">
         {isDrawer && phase !== "ROUND_RECAP" ? (
           <SecretWord secretWord={gameState.secretWord || "???"} />
         ) : (
@@ -82,12 +81,13 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
       </div>
 
       {/* Right: Round Timer */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="dg-game-timer whitespace-nowrap">
         <RoundTimer
           roundEndsAt={timerDeadline}
           totalDurationSeconds={timerDuration}
         />
       </div>
-    </div>
+      {actions && <div className="dg-game-actions flex items-center justify-end gap-1.5 sm:gap-2">{actions}</div>}
+    </header>
   );
 };

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Timer } from 'lucide-react';
 
 interface RoundTimerProps {
   roundEndsAt: number;
@@ -30,7 +31,7 @@ export const RoundTimer: React.FC<RoundTimerProps> = ({
   return (
     <div className="flex flex-col items-center gap-1">
       <div className="bg-rose-500 border-2 border-[#15375f] text-white font-black text-xs sm:text-sm px-3.5 py-1 rounded-full shadow-[0_2px_0_rgba(21,55,95,.35)] flex items-center gap-1">
-        <span className="material-symbols-outlined text-sm">timer</span>
+        <Timer className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
         <span>{timeLeft}s</span>
       </div>
 

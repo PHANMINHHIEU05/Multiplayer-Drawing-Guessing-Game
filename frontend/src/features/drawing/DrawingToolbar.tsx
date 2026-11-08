@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Circle, Eraser, PaintBucket, Pencil, RectangleHorizontal, Trash2 } from 'lucide-react';
 import { ColorWheelModal } from './ColorWheelModal';
 import { audioManager } from '../../audio/AudioManager';
 
@@ -48,12 +49,12 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
 
   return (
     <>
-      <div className="glass-panel-game !bg-[#e8f6fc] w-16 sm:w-[76px] flex flex-col items-center py-2.5 px-1.5 h-full shrink-0 gap-2 overflow-y-auto custom-scrollbar select-none">
+      <div className="dg-drawing-toolbar glass-panel-game !bg-[#e8f6fc] w-16 sm:w-[76px] flex flex-col items-center py-2.5 px-1.5 h-full shrink-0 gap-2 overflow-y-auto custom-scrollbar select-none">
         <span className="text-[9px] font-black uppercase tracking-wider text-sky-800">
           Công cụ
         </span>
         {/* Tool Actions in 2-Column Grid */}
-        <div className="grid grid-cols-2 gap-1.5 w-full">
+        <div className="dg-drawing-tools grid grid-cols-2 gap-1.5 w-full">
           {/* Bút vẽ */}
           <button
             type="button"
@@ -65,7 +66,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
                 : 'bg-white text-[#15375f] hover:bg-sky-50'
             }`}
           >
-            <span className="material-symbols-outlined text-base sm:text-lg">edit</span>
+            <Pencil className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
           </button>
 
           {/* Tẩy nét */}
@@ -79,7 +80,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
                 : 'bg-white text-[#15375f] hover:bg-sky-50'
             }`}
           >
-            <span className="material-symbols-outlined text-base sm:text-lg">ink_eraser</span>
+            <Eraser className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
           </button>
 
           {/* Hình chữ nhật */}
@@ -93,7 +94,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
                 : 'bg-white text-[#15375f] hover:bg-sky-50'
             }`}
           >
-            <span className="material-symbols-outlined text-base sm:text-lg">rectangle</span>
+            <RectangleHorizontal className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
           </button>
 
           {/* Hình tròn */}
@@ -107,7 +108,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
                 : 'bg-white text-[#15375f] hover:bg-sky-50'
             }`}
           >
-            <span className="material-symbols-outlined text-base sm:text-lg">circle</span>
+            <Circle className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
           </button>
 
           {/* Thùng sơn đổ màu */}
@@ -121,7 +122,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
                 : 'bg-white text-[#15375f] hover:bg-sky-50'
             }`}
           >
-            <span className="material-symbols-outlined text-base sm:text-lg">format_color_fill</span>
+            <PaintBucket className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
           </button>
 
           {/* Xóa trắng bảng */}
@@ -134,14 +135,14 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
             }}
             className="dg-tool-button btn-3d w-full aspect-square rounded-lg bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center transition-all"
           >
-            <span className="material-symbols-outlined text-base sm:text-lg">delete</span>
+            <Trash2 className="h-4 w-4 sm:h-[18px] sm:w-[18px]" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="w-full h-0.5 bg-sky-200 my-0.5" />
+        <div className="dg-drawing-divider w-full h-0.5 bg-sky-200 my-0.5" />
 
         {/* 2-Column Palette */}
-        <div className="grid grid-cols-2 gap-1.5 w-full">
+        <div className="dg-drawing-palette grid grid-cols-2 gap-1.5 w-full">
           {PALETTE_COLORS.map((c) => (
             <button
               key={c}

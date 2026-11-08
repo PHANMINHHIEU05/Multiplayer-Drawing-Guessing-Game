@@ -7,10 +7,11 @@ interface ChatMessageListProps {
 }
 
 export const ChatMessageList: React.FC<ChatMessageListProps> = ({ messages, currentPlayerId }) => {
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const list = listRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
   }, [messages]);
 
   const formatTime = (ts: number) => {
@@ -18,7 +19,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({ messages, curr
   };
 
   return (
-    <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar min-h-0">
+    <div ref={listRef} className="flex-1 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar min-h-0">
       {messages.length === 0 ? (
         <div className="h-full flex items-center justify-center text-xs text-slate-400 italic text-center">
           Chưa có tin nhắn nào trong phòng...
@@ -60,7 +61,6 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({ messages, curr
           );
         })
       )}
-      <div ref={bottomRef} />
     </div>
   );
 };

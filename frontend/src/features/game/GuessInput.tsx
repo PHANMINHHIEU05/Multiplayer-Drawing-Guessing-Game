@@ -109,7 +109,8 @@ export const GuessInput: React.FC<GuessInputProps> = ({
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    const list = scrollRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
   }, [guesses]);
 
   const inputDisabled = disabled || hasGuessed;
@@ -182,7 +183,7 @@ export const GuessInput: React.FC<GuessInputProps> = ({
       </div>
 
       {/* Guesses Feed - Only displays guess attempts and correct guess notifications */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-1.5 custom-scrollbar bg-[#edf8fd] text-xs">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-1.5 custom-scrollbar bg-[#edf8fd] text-xs">
         {guesses.length === 0 ? (
           <div className="h-full flex items-center justify-center text-xs text-slate-400 italic text-center">
             {disabled
@@ -231,7 +232,6 @@ export const GuessInput: React.FC<GuessInputProps> = ({
             );
           })
         )}
-        <div ref={scrollRef} />
       </div>
 
       {/* Input or Distinct Status Banners */}

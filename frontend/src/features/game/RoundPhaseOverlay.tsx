@@ -67,7 +67,7 @@ export const RoundPhaseOverlay: React.FC<Props> = ({
         className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/40 backdrop-blur-[2px] p-3"
         role="status"
       >
-        <section className="w-full max-w-xl rounded-3xl border-[3px] border-[#15375f] bg-white p-5 text-center shadow-2xl sm:p-7">
+        <section className="w-full max-w-xl max-h-full overflow-y-auto rounded-3xl border-[3px] border-[#15375f] bg-white p-3 text-center shadow-2xl sm:p-7">
           <p className="text-xs font-black tracking-[.22em] text-sky-700 uppercase">
             {isDrawer ? "CHỌN MỘT TỪ ĐỂ VẼ" : "ĐANG CHỌN TỪ KHÓA"}
           </p>
@@ -87,7 +87,7 @@ export const RoundPhaseOverlay: React.FC<Props> = ({
                     setSelected(true);
                     onSelectWord(choice.choiceId);
                   }}
-                  className="dg-yellow-button min-h-16 px-3 py-4 text-base disabled:cursor-not-allowed disabled:opacity-50"
+                  className="dg-yellow-button min-h-11 break-words px-3 py-2 text-sm sm:min-h-16 sm:py-4 sm:text-base disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {choice.displayWord}
                 </button>

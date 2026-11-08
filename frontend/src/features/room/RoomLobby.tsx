@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useRoomStore } from "../../store/roomStore";
 import { usePlayerStore, playerStore } from "../../store/playerStore";
 import {
@@ -9,7 +10,7 @@ import { MessageType } from "../../websocket/protocol";
 import { PlayerList } from "../../components/PlayerList";
 import { ChatPanel } from "../chat/ChatPanel";
 import { noticeStore } from "../../store/noticeStore";
-import { translateError } from "../../utils/errorTranslation";
+import { isLateReadyError, translateError } from "../../utils/errorTranslation";
 import { copyToClipboard } from "../../utils/clipboard";
 import { SoundToggle } from "../../components/SoundToggle";
 import { VoiceControls } from "../../components/VoiceControls";
@@ -51,6 +52,7 @@ function readinessSummary(room: {
 }
 
 export const RoomLobby: React.FC = () => {
+  const navigate = useNavigate();
   const room = useRoomStore((s) => s.room);
   const { playerId } = usePlayerStore((s) => s);
   const [starting, setStarting] = useState(false);
@@ -149,7 +151,9 @@ export const RoomLobby: React.FC = () => {
     try {
       await wsClient.send(MessageType.SET_READY, { ready: !myReady });
     } catch (err: any) {
-      setError(translateError(err));
+      if (!isLateReadyError(err?.wsError?.code, err?.message)) {
+        setError(translateError(err));
+      }
     } finally {
       setTogglingReady(false);
     }
@@ -170,6 +174,7 @@ export const RoomLobby: React.FC = () => {
   };
 
   const handleLeaveRoom = async () => {
+    if (leaving) return;
     setLeaving(true);
     try {
       await wsClient.send(MessageType.LEAVE_ROOM, {
@@ -180,7 +185,7 @@ export const RoomLobby: React.FC = () => {
     } catch (err: any) {
       console.error("Leave room failed:", err);
     } finally {
-      setLeaving(false);
+      navigate("/", { replace: true });
       resetAllSessionState();
     }
   };

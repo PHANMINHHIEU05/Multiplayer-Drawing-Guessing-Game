@@ -32,6 +32,9 @@ export function setupMessageHandlers(
       case MessageType.ROOM_JOINED:
       case MessageType.ROOM_CATEGORIES_UPDATED:
       case MessageType.ROOM_INFO: {
+        if (response.type === MessageType.ROOM_CREATED || response.type === MessageType.ROOM_JOINED) {
+          connectionStore.setLastError(null);
+        }
         // TV8: the Gateway issues a signed game-session credential on CREATE/JOIN —
         // persist it; it is the only accepted resume proof from now on.
         if (

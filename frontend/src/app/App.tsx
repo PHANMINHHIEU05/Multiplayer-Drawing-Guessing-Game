@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -29,6 +29,12 @@ const RouteSync: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  useLayoutEffect(() => {
+    // The lobby and arena share the document; don't carry the lobby's scroll
+    // offset into the first frame of the game on narrow screens.
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
   useEffect(() => {
     if (isInRoom && room?.roomId) {
       const isLobby = room.status === "LOBBY" || room.status === "WAITING";
@@ -53,20 +59,29 @@ export const RoomRoute: React.FC = () => {
   const { room, isInRoom, isRestoring, restoreError } = useRoomStore((s) => s);
   const connectionStatus = useConnectionStore((s) => s.status);
   const navigate = useNavigate();
+  const activeRoomId = useRef<string | null>(null);
 
   useEffect(() => {
     if (!normalizedRoomId) return;
 
     // Đã ở đúng phòng rồi
     if (isInRoom && room?.roomId === normalizedRoomId) {
+      activeRoomId.current = normalizedRoomId;
+      return;
+    }
+
+    // ROOM_LEFT clears the store before the leave handler can change the URL.
+    // A route that just lost its live room is not a fresh load to restore.
+    if (activeRoomId.current === normalizedRoomId && !isInRoom) {
+      navigate("/", { replace: true });
       return;
     }
 
     // Nếu WebSocket đã kết nối và chưa trong quá trình khôi phục: kích hoạt khôi phục session
-    if (connectionStatus === "CONNECTED" && !isRestoring) {
+    if (connectionStatus === "CONNECTED" && !isRestoring && !restoreError && !roomStore.getState().isRestoring) {
       void wsClient.restoreStateAfterReconnect(normalizedRoomId);
     }
-  }, [normalizedRoomId, isInRoom, room?.roomId, connectionStatus, isRestoring]);
+  }, [normalizedRoomId, isInRoom, room?.roomId, connectionStatus, isRestoring, restoreError, navigate]);
 
   // Nếu người chơi đã ở trong phòng khớp với roomId trên URL
   if (isInRoom && room && room.roomId === normalizedRoomId) {

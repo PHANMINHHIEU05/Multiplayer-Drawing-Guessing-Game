@@ -378,7 +378,34 @@
 
 .dg-game-page {
   height: 100vh;
+  height: 100dvh;
   min-height: 680px;
+}
+
+.dg-game-header {
+  display: grid;
+  grid-template-areas: 'identity round word timer actions';
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.5fr) auto auto;
+  align-items: center;
+  gap: .75rem;
+}
+
+.dg-game-identity { grid-area: identity; }
+.dg-game-round { grid-area: round; justify-self: start; }
+.dg-game-word { grid-area: word; }
+.dg-game-timer { grid-area: timer; justify-self: end; }
+.dg-game-actions { grid-area: actions; }
+.dg-game-actions .dg-game-score-toggle { display: none; }
+
+.dg-word-pill {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.dg-word-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .dg-game-arena {
@@ -473,13 +500,21 @@
   .dg-game-score-column {
     display: none;
   }
+
+  .dg-game-actions .dg-game-score-toggle { display: inline-grid; }
+  .dg-game-wide-action { display: none; }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 960px) {
   .dg-game-page {
     height: auto;
-    min-height: 100vh;
-    overflow-y: auto !important;
+    min-height: 100dvh;
+  }
+
+  .dg-game-header {
+    grid-template-areas: 'identity identity actions' 'round word timer';
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: .5rem;
   }
 
   .dg-game-arena {
@@ -488,12 +523,30 @@
     min-height: auto;
   }
 
+  .dg-game-board {
+    height: clamp(320px, 57dvh, 540px);
+    flex: none;
+    width: 100%;
+  }
+
   .dg-game-canvas-column {
-    min-height: 620px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dg-game-canvas-column:has(> .dg-drawing-toolbar) {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dg-drawing-toolbar {
+    /* Let the board set the row height; scroll tools in shorter windows. */
+    min-height: 0;
+    height: 0;
+    min-block-size: 100%;
   }
 
   .dg-game-social-column {
-    height: 420px;
+    height: clamp(235px, 34dvh, 360px);
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: minmax(0, 1fr);
   }
@@ -520,16 +573,64 @@
     padding-inline: .7rem;
   }
 
-  .dg-game-canvas-column {
-    min-height: 560px;
+  .dg-game-canvas-column,
+  .dg-game-canvas-column:has(> .dg-drawing-toolbar) {
+    grid-template-columns: minmax(0, 1fr);
     gap: .45rem;
   }
 
+  .dg-game-actions .dg-game-action {
+    width: 2.25rem;
+    height: 2.25rem;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    padding: 0;
+  }
+
+  .dg-word-label { display: none; }
+
+  .dg-drawing-toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    width: 100%;
+    height: auto;
+    min-block-size: 0;
+    padding: .5rem;
+    gap: .35rem .55rem;
+    overflow: visible;
+  }
+
+  .dg-drawing-tools { grid-column: 2; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .dg-drawing-tools button { aspect-ratio: auto; min-height: 2rem; }
+  .dg-drawing-divider { display: none; }
+  .dg-drawing-palette { grid-column: 1 / -1; grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .dg-drawing-palette button { width: min(100%, 1.5rem); }
+
+  .dg-ping-hint {
+    top: 3rem;
+    right: .75rem;
+    max-width: calc(100% - 1.5rem);
+  }
+
   .dg-game-social-column {
-    height: 620px;
+    height: 490px;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: repeat(2, minmax(0, 1fr));
   }
+}
+
+@media (max-width: 480px) {
+  .dg-game-header {
+    grid-template-areas: 'identity actions' 'round timer' 'word word';
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .dg-game-word { justify-self: stretch; }
+}
+
+@media (max-width: 380px) {
+  .dg-game-logo-icon { display: none; }
+  .dg-drawing-palette { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
 
 /* Entrance Spring Pop-in Animation */

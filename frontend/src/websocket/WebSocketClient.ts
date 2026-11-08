@@ -10,6 +10,7 @@ import { noticeStore } from "../store/noticeStore";
 import { chatStore } from "../store/chatStore";
 import { guessStore } from "../store/guessStore";
 import { matchSummaryStore } from "../store/matchSummaryStore";
+import { isLateReadyError } from "../utils/errorTranslation";
 
 interface PendingRequest {
   resolve: (value: WSResponse | PromiseLike<WSResponse>) => void;
@@ -364,20 +365,18 @@ export class WebSocketClient {
           const errMsg =
             response.message || response.error?.message || "Gateway error";
           const error = new Error(errMsg) as Error & { wsError?: unknown };
-          error.wsError = response.error || {
-            code: response.code,
-            message: errMsg,
-          };
+          const errorCode = response.code || response.error?.code;
+          error.wsError = { code: errorCode, message: errMsg };
           pending.reject(error);
 
-          const errorCode = response.code || response.error?.code;
           // Reaction/ping spam is intentionally dropped by the server. The UI
           // already applies a cooldown, so do not turn these harmless cases
           // into a global error toast.
           suppressListenerDispatch =
-            (pending.type === MessageType.SEND_REACTION ||
+            (pending.type === MessageType.SET_READY && isLateReadyError(errorCode, errMsg)) ||
+            ((pending.type === MessageType.SEND_REACTION ||
               pending.type === MessageType.SEND_PING) &&
-            errorCode === "RATE_LIMITED";
+              errorCode === "RATE_LIMITED");
         } else {
           pending.resolve(response);
         }
@@ -653,6 +652,7 @@ export const wsClient = new WebSocketClient();
 
 export function resetAllSessionState(): void {
   wsClient.cancelReconnect();
+  connectionStore.setLastError(null);
   playerStore.clearSessionToken();
   roomStore.clearRoom();
   gameStore.clearGame();
@@ -662,8 +662,8 @@ export function resetAllSessionState(): void {
   metricsStore.resetStrokeSequence();
   recoveryStore.abort();
   noticeStore.clearAll();
-  try {
-    import("../webrtc/VoiceChatManager").then((m) => m.voiceChatManager.cleanup());
-  } catch {}
+  void import("../webrtc/VoiceChatManager").then((m) => {
+    if (!roomStore.getState().isInRoom) m.voiceChatManager.cleanup();
+  });
 }
 

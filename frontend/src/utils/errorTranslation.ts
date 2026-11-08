@@ -4,6 +4,7 @@
  */
 
 const ERROR_CODE_MAP: Record<string, string> = {
+  SET_READY_FAILED: "Không thể đổi trạng thái sẵn sàng, vui lòng thử lại.",
   ROOM_NOT_FOUND: "Không tìm thấy phòng.",
   ROOM_FULL: "Phòng đã đủ số lượng người chơi.",
   AUTH_REQUIRED: "Phiên chơi không hợp lệ hoặc đã hết hạn.",
@@ -35,6 +36,11 @@ const ERROR_CODE_MAP: Record<string, string> = {
   PING_NOT_ALLOWED: "Chỉ được ping khi lượt vẽ đang diễn ra.",
   SEND_PING_FAILED: "Không gửi được ping, vui lòng thử lại.",
 };
+
+export function isLateReadyError(code: unknown, message: unknown): boolean {
+  return code === "SET_READY_FAILED" && typeof message === "string" &&
+    /^FAILED_PRECONDITION:\s*Room is not in WAITING state:/i.test(message);
+}
 
 export function translateError(error: any): string {
   if (!error) return "Đã có lỗi xảy ra, vui lòng thử lại.";
