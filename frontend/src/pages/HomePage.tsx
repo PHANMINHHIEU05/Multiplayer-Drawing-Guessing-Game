@@ -22,13 +22,24 @@ const AVATAR_SEEDS = [
   "Gizmo",
 ];
 
+const INTRO_SEEN_KEY = "dopamine_intro_seen";
+let introSeenInMemory = false;
+
+function hasSeenIntro() {
+  try {
+    return introSeenInMemory || window.sessionStorage.getItem(INTRO_SEEN_KEY) === "1";
+  } catch {
+    return introSeenInMemory;
+  }
+}
+
 export const HomePage: React.FC = () => {
   const { username, playerId } = usePlayerStore((s) => s);
   const [inputName, setInputName] = useState(username);
   const [activeTab, setActiveTab] = useState<"create" | "join">("create");
   const [avatarIndex, setAvatarIndex] = useState(0);
-  const [replayIntro, setReplayIntro] = useState(false);
-  const [hasRevealed, setHasRevealed] = useState(false);
+  const [showIntro, setShowIntro] = useState(() => !hasSeenIntro());
+  const [hasRevealed, setHasRevealed] = useState(!showIntro);
   const [showGlobalChat, setShowGlobalChat] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
@@ -68,31 +79,28 @@ export const HomePage: React.FC = () => {
     setChatInput("");
   };
 
-  const handleIntroComplete = useCallback(() => {
-    setHasRevealed(true);
-    setReplayIntro(false);
-    audioManager.playBGM("lobby");
-  }, []);
+  const revealHome = useCallback(() => setHasRevealed(true), []);
+  const handleIntroComplete = useCallback(() => setShowIntro(false), []);
 
   useEffect(() => {
-    if (hasRevealed && !replayIntro) {
-      audioManager.playBGM("lobby");
+    if (showIntro) {
+      introSeenInMemory = true;
+      try { window.sessionStorage.setItem(INTRO_SEEN_KEY, "1"); } catch { /* storage unavailable */ }
     }
-  }, [hasRevealed, replayIntro]);
+    audioManager.playBGM(showIntro ? "intro" : "lobby");
+    return () => audioManager.stopBGM();
+  }, [showIntro]);
 
   const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${AVATAR_SEEDS[avatarIndex]}`;
 
   return (
     <>
-      <PaintSplashOverlay
-        forcePlay={replayIntro}
-        onComplete={handleIntroComplete}
-      />
+      {showIntro && <PaintSplashOverlay onReveal={revealHome} onComplete={handleIntroComplete} />}
 
       <div className="dg-page min-h-screen flex flex-col justify-between py-3 sm:py-4 text-slate-800">
         <header
           className={`dg-topbar flex items-center justify-between gap-3 transition-all duration-700 ${
-            hasRevealed ? "animate-pop-in" : "opacity-0"
+            hasRevealed ? (showIntro ? "animate-pop-in" : "opacity-100") : "opacity-0"
           }`}
         >
           <div className="dg-brand">
@@ -105,9 +113,8 @@ export const HomePage: React.FC = () => {
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => {
-                audioManager.stopBGM();
                 setHasRevealed(false);
-                setReplayIntro(true);
+                setShowIntro(true);
               }}
               title="Xem lại hiệu ứng cọ vẽ đổ sơn"
               className="dg-yellow-button px-3 py-2 text-xs flex items-center gap-1.5"
@@ -127,7 +134,7 @@ export const HomePage: React.FC = () => {
 
         <main
           className={`dg-home-stage flex-1 flex flex-col items-center justify-center gap-6 py-8 sm:py-10 transition-all duration-700 ${
-            hasRevealed ? "animate-pop-in" : "opacity-0 scale-90"
+            hasRevealed ? (showIntro ? "animate-pop-in" : "opacity-100") : "opacity-0 scale-90"
           }`}
         >
           <div className="text-center group select-none">

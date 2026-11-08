@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { audioManager } from '../audio/AudioManager';
 
 interface PaintSplashOverlayProps {
-  forcePlay?: boolean;
-  onComplete?: () => void;
+  onReveal: () => void;
+  onComplete: () => void;
 }
 
 interface Particle {
@@ -16,39 +15,28 @@ interface Particle {
   alpha: number;
 }
 
-export const PaintSplashOverlay: React.FC<PaintSplashOverlayProps> = ({ forcePlay = false, onComplete }) => {
-  const [isVisible, setIsVisible] = useState(true);
-  const [isFading, setIsFading] = useState(false);
+export const PaintSplashOverlay: React.FC<PaintSplashOverlayProps> = ({ onReveal, onComplete }) => {
+  const [fadeDuration, setFadeDuration] = useState<number | null>(null);
+  const isFading = fadeDuration !== null;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const onCompleteRef = useRef(onComplete);
-  onCompleteRef.current = onComplete;
 
   useEffect(() => {
-    if (forcePlay) {
-      setIsVisible(true);
-      setIsFading(false);
-    }
-  }, [forcePlay]);
-
-  // Audio: Play intro BGM while visible, stop when hidden
-  useEffect(() => {
-    if (isVisible) {
-      audioManager.playBGM('intro');
-    } else {
-      audioManager.stopBGM();
-    }
-    return () => {
-      audioManager.stopBGM();
-    };
-  }, [isVisible]);
+    if (fadeDuration === null) return;
+    const timeout = window.setTimeout(onComplete, fadeDuration);
+    return () => window.clearTimeout(timeout);
+  }, [fadeDuration, onComplete]);
 
   useEffect(() => {
-    if (!isVisible) return;
+    if (isFading) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      onReveal();
+      setFadeDuration(0);
+      return;
+    }
 
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
@@ -400,21 +388,14 @@ export const PaintSplashOverlay: React.FC<PaintSplashOverlayProps> = ({ forcePla
       // Notify completion once (~2.3s) so Page 1 pops in as paint floods screen
       if (elapsed >= 2.3 && !notifiedComplete) {
         notifiedComplete = true;
-        onCompleteRef.current?.();
+        onReveal();
       }
 
       // Finish condition (after 3.2s)
       if (elapsed < 3.2) {
         animationFrameId = requestAnimationFrame(render);
       } else {
-        setIsFading(true);
-        setTimeout(() => {
-          setIsVisible(false);
-          if (!notifiedComplete) {
-            notifiedComplete = true;
-            onCompleteRef.current?.();
-          }
-        }, 500);
+        setFadeDuration(500);
       }
     };
 
@@ -424,17 +405,11 @@ export const PaintSplashOverlay: React.FC<PaintSplashOverlayProps> = ({ forcePla
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
     };
-  }, [isVisible]);
-
-  if (!isVisible) return null;
+  }, [isFading, onReveal]);
 
   const handleSkip = () => {
-    audioManager.stopBGM();
-    setIsFading(true);
-    onCompleteRef.current?.();
-    setTimeout(() => {
-      setIsVisible(false);
-    }, 200);
+    onReveal();
+    setFadeDuration(200);
   };
 
   return (
